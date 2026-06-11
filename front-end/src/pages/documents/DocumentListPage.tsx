@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Sidebar } from '../../components/common/Sidebar';
+import { StatusBadge } from '@/components/common/StatusBadge';
+import type { DocumentStatus, TaskStage } from '@/types/document';
 import {
   Home,
   FileText,
@@ -41,7 +43,8 @@ interface Document {
   uploadDate: string;
   size: string;
   pages: number;
-  status: 'ocr-processing' | 'summarizing' | 'embedding' | 'completed' | 'failed';
+  status: DocumentStatus;
+  stage?: TaskStage;
   category?: string;
   summary?: string;
   progress?: number;
@@ -92,7 +95,7 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
       uploadDate: '2024-05-27 14:30',
       size: '2.4 MB',
       pages: 15,
-      status: 'completed',
+      status: 'COMPLETED',
       category: '제안서',
       summary: 'AI 문서 자동화 플랫폼 개발 프로젝트 제안서'
     },
@@ -102,7 +105,8 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
       uploadDate: '2024-05-27 13:15',
       size: '1.2 MB',
       pages: 8,
-      status: 'summarizing',
+      status: 'PROCESSING',
+      stage: 'SUMMARY',
       category: '계약서',
       progress: 65
     },
@@ -112,7 +116,7 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
       uploadDate: '2024-05-27 12:00',
       size: '0.8 MB',
       pages: 3,
-      status: 'completed',
+      status: 'COMPLETED',
       category: '회의록',
       summary: '주간 프로젝트 미팅 회의록'
     },
@@ -122,7 +126,8 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
       uploadDate: '2024-05-27 11:45',
       size: '3.1 MB',
       pages: 22,
-      status: 'ocr-processing',
+      status: 'PROCESSING',
+      stage: 'OCR',
       category: '기술문서',
       progress: 35
     },
@@ -132,7 +137,7 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
       uploadDate: '2024-05-26 16:20',
       size: '4.5 MB',
       pages: 28,
-      status: 'completed',
+      status: 'COMPLETED',
       category: '보고서',
       summary: '2024년 1분기 실적 보고서'
     },
@@ -142,54 +147,10 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
       uploadDate: '2024-05-26 14:10',
       size: '1.8 MB',
       pages: 12,
-      status: 'failed',
+      status: 'FAILED',
       category: '매뉴얼'
     }
   ];
-
-  const getStatusConfig = (status: Document['status']) => {
-    const configs = {
-      'ocr-processing': {
-        label: 'OCR 처리 중',
-        icon: Loader2,
-        color: 'text-blue-400',
-        bgColor: 'bg-blue-500/10',
-        borderColor: 'border-blue-500/20',
-        animate: true
-      },
-      'summarizing': {
-        label: 'AI 요약 중',
-        icon: Brain,
-        color: 'text-purple-400',
-        bgColor: 'bg-purple-500/10',
-        borderColor: 'border-purple-500/20',
-        animate: true
-      },
-      'embedding': {
-        label: '임베딩 중',
-        icon: Sparkles,
-        color: 'text-yellow-400',
-        bgColor: 'bg-yellow-500/10',
-        borderColor: 'border-yellow-500/20',
-        animate: true
-      },
-      'completed': {
-        label: '완료',
-        icon: CheckCircle2,
-        color: 'text-green-400',
-        bgColor: 'bg-green-500/10',
-        borderColor: 'border-green-500/20'
-      },
-      'failed': {
-        label: '실패',
-        icon: AlertCircle,
-        color: 'text-red-400',
-        bgColor: 'bg-red-500/10',
-        borderColor: 'border-red-500/20'
-      }
-    };
-    return configs[status];
-  };
 
   const filteredDocuments = documents.filter(doc => {
     const matchesSearch = doc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -199,18 +160,18 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
 
     const matchesFilter =
       filterStatus === 'all' ? true :
-      filterStatus === 'processing' ? ['ocr-processing', 'summarizing', 'embedding'].includes(doc.status) :
-      filterStatus === 'completed' ? doc.status === 'completed' :
-      filterStatus === 'failed' ? doc.status === 'failed' : true;
+      filterStatus === 'processing' ? doc.status === 'PENDING' || doc.status === 'PROCESSING' || doc.status === 'REVIEW_REQUIRED' :
+      filterStatus === 'completed' ? doc.status === 'COMPLETED' :
+      filterStatus === 'failed' ? doc.status === 'FAILED' : true;
 
     return matchesSearch && matchesFilter;
   });
 
   const stats = {
     total: documents.length,
-    completed: documents.filter(d => d.status === 'completed').length,
-    processing: documents.filter(d => ['ocr-processing', 'summarizing', 'embedding'].includes(d.status)).length,
-    failed: documents.filter(d => d.status === 'failed').length
+    completed: documents.filter(d => d.status === 'COMPLETED').length,
+    processing: documents.filter(d => d.status === 'PENDING' || d.status === 'PROCESSING' || d.status === 'REVIEW_REQUIRED').length,
+    failed: documents.filter(d => d.status === 'FAILED').length
   };
 
   return (
@@ -436,9 +397,6 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
               // Grid view
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {filteredDocuments.map((doc) => {
-                  const statusConfig = getStatusConfig(doc.status);
-                  const StatusIcon = statusConfig.icon;
-
                   return (
                     <div
                       key={doc.id}
@@ -482,10 +440,7 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
 
                       {/* Status */}
                       <div className="mb-4">
-                        <div className={`inline-flex items-center gap-2 px-3 py-1.5 ${statusConfig.bgColor} border ${statusConfig.borderColor} rounded-lg`}>
-                          <StatusIcon className={`w-3.5 h-3.5 ${statusConfig.color} ${('animate' in statusConfig && statusConfig.animate) ? 'animate-spin' : ''}`} />
-                          <span className={`text-xs font-medium ${statusConfig.color}`}>{statusConfig.label}</span>
-                        </div>
+                        <StatusBadge status={doc.status} stage={doc.stage} />
 
                         {doc.category && (
                           <span className="inline-flex items-center gap-1.5 ml-2 px-2 py-1 bg-white/5 border border-white/10 rounded text-xs text-zinc-200">
@@ -495,7 +450,7 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                       </div>
 
                       {/* Progress bar */}
-                      {doc.progress !== undefined && doc.status !== 'completed' && (
+                      {doc.progress !== undefined && doc.status !== 'COMPLETED' && (
                         <div className="mb-4">
                           <div className="w-full bg-white/5 rounded-full h-1.5">
                             <div
@@ -515,7 +470,7 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                       )}
 
                       {/* Actions */}
-                      {doc.status === 'completed' && (
+                      {doc.status === 'COMPLETED' && (
                         <div className="flex items-center gap-2 pt-4 border-t border-white/10">
                           <button
                             type="button"
@@ -542,7 +497,7 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                         </div>
                       )}
 
-                      {doc.status === 'failed' && (
+                      {doc.status === 'FAILED' && (
                         <button
                           type="button"
                           className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-lg transition-colors text-sm text-red-400"
@@ -584,9 +539,6 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                     </thead>
                     <tbody className="divide-y divide-white/5">
                       {filteredDocuments.map((doc) => {
-                        const statusConfig = getStatusConfig(doc.status);
-                        const StatusIcon = statusConfig.icon;
-
                         return (
                           <tr key={doc.id} className="hover:bg-white/5 transition-colors">
                             <td className="px-6 py-4 whitespace-nowrap">
@@ -614,14 +566,11 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                               {doc.pages}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
-                              <div className={`inline-flex items-center gap-2 px-3 py-1 ${statusConfig.bgColor} border ${statusConfig.borderColor} rounded-lg`}>
-                                <StatusIcon className={`w-3.5 h-3.5 ${statusConfig.color} ${('animate' in statusConfig && statusConfig.animate) ? 'animate-spin' : ''}`} />
-                                <span className={`text-xs font-medium ${statusConfig.color}`}>{statusConfig.label}</span>
-                              </div>
+                              <StatusBadge status={doc.status} stage={doc.stage} size="sm" />
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-right">
                               <div className="flex items-center justify-end gap-2">
-                                {doc.status === 'completed' && (
+                                {doc.status === 'COMPLETED' && (
                                   <>
                                     <button
                                       type="button"
@@ -648,7 +597,7 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                                     </button>
                                   </>
                                 )}
-                                {doc.status === 'failed' && (
+                                {doc.status === 'FAILED' && (
                                   <button
                                     type="button"
                                     className="p-2 hover:bg-white/10 rounded-lg transition-colors"
