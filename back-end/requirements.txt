@@ -1,0 +1,188 @@
+# =====================================================
+# FastAPI Server
+# =====================================================
+
+fastapi==0.115.12
+# FastAPI 웹 프레임워크
+
+uvicorn[standard]==0.34.2
+# ASGI 서버 (개발환경 실행용)
+
+gunicorn==23.0.0
+# Production Multi Worker Process 실행용
+
+
+# =====================================================
+# Database / ORM / Vector DB
+# =====================================================
+
+faiss-cpu==1.11.0.post1
+# Local Vector Test
+
+sqlalchemy==2.0.41
+# ORM (DB Model ↔ Python 객체 매핑)
+
+psycopg2-binary==2.9.10
+# PostgreSQL Driver
+
+pgvector==0.4.1
+# PostgreSQL Vector Search Extension 지원
+
+
+# =====================================================
+# Validation / Settings
+# =====================================================
+
+pydantic==2.11.5
+# Request / Response Validation
+
+pydantic-settings==2.9.1
+# .env 환경변수 관리
+
+
+# =====================================================
+# File Upload / Environment
+# =====================================================
+
+python-multipart==0.0.32
+# FastAPI File Upload 지원
+
+python-dotenv==1.2.0
+# .env 파일 로딩
+
+
+# =====================================================
+# Data Processing
+# =====================================================
+
+numpy>=1.26,<2.0
+# 수치 연산
+
+pandas==2.2.3
+# 데이터 처리 / 분석
+
+
+# =====================================================
+# Async / HTTP
+# =====================================================
+
+httpx==0.28.1
+# 비동기 HTTP Client
+
+aiofiles==24.1.0
+# 비동기 파일 읽기/쓰기
+
+
+# =====================================================
+# LangChain / AI Workflow
+# =====================================================
+
+langchain==0.3.27
+# LangChain Core Framework
+
+langchain-community==0.3.27
+# Community Integrations
+
+langchain-core==0.3.81
+# LangChain 내부 Core
+
+langchain-ollama==0.3.7
+# Ollama Embedding / LLM 연결
+
+langchain-text-splitters==0.3.11
+# Chunking
+
+langgraph==0.6.11
+# AI Workflow / Agent Graph
+
+# =====================================================
+# LLM
+# =====================================================
+
+ollama==0.5.3
+# Ollama Python Client
+
+sentence-transformers
+
+datasets
+
+peft
+
+FlagEmbedding
+
+torch
+
+
+# =====================================================
+# OCR / PDF Processing
+# =====================================================
+
+pymupdf==1.26.0
+# PDF Parsing / Text / Image Extraction
+
+pypdf==6.13.0
+# PDF Loader 지원
+
+pytesseract==0.3.13
+# OCR Engine Wrapper
+
+pillow==12.2.0
+# Image Processing
+
+opencv-python-headless==4.11.0.86
+
+# =====================================================
+# Token / Chunk
+# =====================================================
+
+tiktoken==0.9.0
+# Token Count / Chunk Size 계산
+
+
+# =====================================================
+# Database Migration
+# =====================================================
+
+alembic==1.16.1
+# SQLAlchemy Migration Tool
+
+
+# =====================================================
+# Queue / Background Processing
+# =====================================================
+
+redis==6.1.0
+# Queue Broker / Cache
+
+celery==5.5.2
+# Background Task Worker
+
+
+# =====================================================
+# Authentication / Security
+# =====================================================
+
+python-jose[cryptography]==3.5.0
+# JWT 생성 / 검증
+
+passlib[bcrypt]==1.7.4
+# Password Hashing
+
+bcrypt==4.3.0
+# 실제 암호화 알고리즘
+
+
+# =====================================================
+# Validation
+# =====================================================
+
+email-validator==2.2.0
+# Email 형식 검증
+
+
+# =====================================================
+# Celery Monitoring
+# =====================================================
+
+flower==2.0.1
+# Celery Monitoring Dashboard

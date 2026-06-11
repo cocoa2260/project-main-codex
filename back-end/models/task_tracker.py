@@ -1,0 +1,120 @@
+import uuid
+
+from sqlalchemy import Column
+from sqlalchemy import DateTime
+from sqlalchemy import Enum
+from sqlalchemy import ForeignKey
+from sqlalchemy import Integer
+from sqlalchemy import String
+from sqlalchemy import Text
+from sqlalchemy import func
+
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship
+
+from db.database import Base
+
+
+class TaskType:
+    OCR = "OCR"
+    SUMMARY = "SUMMARY"
+    EMBEDDING = "EMBEDDING"
+    RAG_INDEXING = "RAG_INDEXING"
+
+
+class TaskStatus:
+    PENDING = "PENDING"
+    PROCESSING = "PROCESSING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
+
+class TaskTracker(Base):
+    __tablename__ = "task_trackers"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    document_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    celery_task_id = Column(
+        String(255),
+        nullable=True,
+        index=True,
+    )
+
+    task_type = Column(
+        Enum(
+            TaskType.OCR,
+            TaskType.SUMMARY,
+            TaskType.EMBEDDING,
+            TaskType.RAG_INDEXING,
+            name="task_type",
+        ),
+        nullable=False,
+    )
+
+    status = Column(
+        Enum(
+            TaskStatus.PENDING,
+            TaskStatus.PROCESSING,
+            TaskStatus.COMPLETED,
+            TaskStatus.FAILED,
+            name="task_status",
+        ),
+        nullable=False,
+        default=TaskStatus.PENDING,
+    )
+
+    progress = Column(
+        Integer,
+        nullable=False,
+        default=0,
+    )
+
+    stage = Column(
+        String(100),
+        nullable=True,
+    )
+
+    message = Column(
+        Text,
+        nullable=True,
+    )
+    
+    error_message = Column(
+        Text,
+        nullable=True,
+    )
+
+    started_at = Column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    completed_at = Column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    created_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    document = relationship(
+        "Document",
+        back_populates="tasks",
+    )

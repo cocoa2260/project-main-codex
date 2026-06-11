@@ -1,0 +1,110 @@
+services:
+  frontend:
+    build:
+      context: ./front-end
+    container_name: frontend
+    ports:
+      - "5173:5173"
+    env_file:
+      - .env
+    depends_on:
+      - backend
+    volumes:
+      - ./front-end:/app
+      - /app/node_modules
+
+  backend:
+    build:
+      context: ./back-end
+    image: project-main-backend:latest
+    container_name: backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      ollama:
+        condition: service_started
+    volumes:
+      - ./back-end:/app
+      - ./storage:/storage
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  celery-worker:
+    image: project-main-backend:latest
+    container_name: celery-worker
+    restart: unless-stopped
+    command: celery -A app.worker:celery_app worker --loglevel=info --concurrency=2
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      ollama:
+        condition: service_started
+    volumes:
+      - ./back-end:/app
+      - ./storage:/storage
+
+  flower:
+    image: project-main-backend:latest
+    container_name: flower
+    command: celery -A app.worker:celery_app flower --port=5555
+    ports:
+      - "5555:5555"
+    env_file:
+      - .env
+    depends_on:
+      redis:
+        condition: service_started
+      celery-worker:
+        condition: service_started
+    volumes:
+      - ./back-end:/app
+      - ./storage:/storage
+
+  ollama:
+    image: ollama/ollama
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
+volumes:
+  postgres_data:
+  redis_data:
+  ollama_data:
