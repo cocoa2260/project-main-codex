@@ -1,10 +1,12 @@
 import { FileText, Download, Trash2, MessageSquare, Eye } from 'lucide-react';
+import { StatusBadge } from '@/components/common/StatusBadge';
+import type { DocumentStatus } from '@/types/document';
 
 interface Document {
   id: string;
   name: string;
   uploadDate: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
+  status: DocumentStatus;
   summary?: string;
   pages?: number;
 }
@@ -18,20 +20,6 @@ interface DocumentCardProps {
 }
 
 export function DocumentCard({ document, onView, onChat, onDownload, onDelete }: DocumentCardProps) {
-  const statusColors = {
-    pending: 'bg-muted text-muted-foreground',
-    processing: 'bg-primary/10 text-primary',
-    completed: 'bg-green-50 text-green-700',
-    failed: 'bg-destructive/10 text-destructive'
-  };
-
-  const statusText = {
-    pending: '대기 중',
-    processing: '처리 중',
-    completed: '완료',
-    failed: '실패'
-  };
-
   return (
     <div className="p-4 bg-card border border-border rounded-lg hover:shadow-md transition-shadow">
       <div className="flex items-start gap-3">
@@ -49,9 +37,7 @@ export function DocumentCard({ document, onView, onChat, onDownload, onDelete }:
           </div>
 
           <div className="mt-2">
-            <span className={`inline-block px-3 py-1 rounded-full ${statusColors[document.status]}`}>
-              {statusText[document.status]}
-            </span>
+            <StatusBadge status={document.status} />
           </div>
 
           {document.summary && (
@@ -62,7 +48,7 @@ export function DocumentCard({ document, onView, onChat, onDownload, onDelete }:
         </div>
       </div>
 
-      {document.status === 'completed' && (
+      {document.status === 'COMPLETED' && (
         <div className="flex items-center gap-2 mt-4 pt-4 border-t border-border">
           <button
             onClick={onView}

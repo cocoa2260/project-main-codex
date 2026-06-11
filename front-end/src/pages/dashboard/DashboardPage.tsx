@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sidebar } from '../../components/common/Sidebar';
+import { StatusBadge } from '@/components/common/StatusBadge';
 import {
   Home,
   FileText,
@@ -30,7 +31,7 @@ import {
 } from 'lucide-react';
 import type { Document, DocumentItem } from '@/types/document';
 import { getDocuments } from '@/api/document';
-import { toDocumentDisplayStatus, getDocumentProgress } from '@/utils/documentStatus'
+import { getDocumentProgress } from '@/utils/documentStatus'
 import { formatDateTime } from '@/utils/date'
 
 interface DashboardPageProps {
@@ -77,7 +78,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     id: doc.id,
     name: doc.file_name,
     uploadDate: formatDateTime(doc.upload_at),
-    status: toDocumentDisplayStatus(doc.status),
+    status: doc.status,
     progress: getDocumentProgress(doc.status),
     pages: doc.page_count ?? 0,
     summary: doc.summary,
@@ -94,45 +95,6 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
   if (totalCount === 0) return 0;
   return Math.round((count / totalCount) * 100);
 };
-
-  const getStatusConfig = (status: Document['status']) => {
-    const configs = {
-      'processing': {
-        label: 'OCR 처리 중',
-        icon: Loader2,
-        color: 'text-blue-400',
-        bgColor: 'bg-blue-500/10',
-        animate: true
-      },
-      'review-required': {
-        label: '리뷰 필요',
-        icon: ClipboardCheck,
-        color: 'text-purple-400',
-        bgColor: 'bg-purple-500/10',
-        animate: true
-      },
-      'embedding': {
-        label: '임베딩 중',
-        icon: Sparkles,
-        color: 'text-yellow-400',
-        bgColor: 'bg-yellow-500/10',
-        animate: true
-      },
-      'completed': {
-        label: '완료',
-        icon: CheckCircle2,
-        color: 'text-green-400',
-        bgColor: 'bg-green-500/10'
-      },
-      'failed': {
-        label: '실패',
-        icon: AlertCircle,
-        color: 'text-red-400',
-        bgColor: 'bg-red-500/10'
-      }
-    };
-    return configs[status];
-  };
 
   return (
     <div className="min-h-screen w-full bg-[#0f0f17] flex">
@@ -331,9 +293,6 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
 
                   <div className="space-y-3">
                     {recentDocuments.map((doc) => {
-                      const statusConfig = getStatusConfig(doc.status);
-                      const StatusIcon = statusConfig.icon;
-
                       return (
                         <div
                           key={doc.id}
@@ -362,14 +321,11 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
 
                               {/* Status */}
                               <div className="flex items-center gap-2 mb-2">
-                                <div className={`p-1.5 ${statusConfig.bgColor} rounded-lg`}>
-                                  <StatusIcon className={`w-3.5 h-3.5 ${statusConfig.color} ${('animate' in statusConfig && statusConfig.animate) ? 'animate-spin' : ''}`} />
-                                </div>
-                                <span className={`text-sm ${statusConfig.color}`}>{statusConfig.label}</span>
+                                <StatusBadge status={doc.status} />
                               </div>
 
                               {/* Progress bar */}
-                              {doc.status !== 'completed' && doc.status !== 'failed' && (
+                              {doc.status !== 'COMPLETED' && doc.status !== 'FAILED' && (
                                 <div className="mb-2">
                                   <div className="w-full bg-white/5 rounded-full h-1.5">
                                     <div
@@ -385,7 +341,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
                                 <p className="text-zinc-300 text-sm line-clamp-1">{doc.summary}</p>
                               )}
 
-                              {doc.status === 'completed' && (
+                              {doc.status === 'COMPLETED' && (
                                 <div className="flex items-center gap-2 mt-3 pt-3 border-t border-white/10">
                                   <button
                                     type="button"

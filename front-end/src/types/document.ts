@@ -12,12 +12,21 @@ export type TaskStatus =
   | "COMPLETED"
   | "FAILED";
 
+export type TaskType =
+  | "OCR"
+  | "SUMMARY"
+  | "EMBEDDING"
+  | "RAG_INDEXING";
+
+export type TaskStage = TaskType;
+
 
 export interface Document {
   id: string;
   name: string;
   uploadDate: string;
-  status: 'processing' | 'review-required' | 'embedding' | 'completed' | 'failed';
+  status: DocumentStatus;
+  stage?: TaskStage;
   progress: number;
   pages?: number;
   summary?: string;
@@ -31,7 +40,8 @@ export interface DocumentList {
   uploadDate: string;
   size: string;
   pages: number;
-  status: 'ocr-processing' | 'summarizing' | 'embedding' | 'completed' | 'failed';
+  status: DocumentStatus;
+  stage?: TaskStage;
   category?: string;
   summary?: string;
   progress?: number;
@@ -75,7 +85,7 @@ export interface DocumentStatusResponse {
   document_id: string;
   task_id: string | null;
   status: DocumentProcessingStatus | string;
-  stage: string | null;
+  stage: TaskStage | string | null;
   progress: number;
   message: string | null;
 }
