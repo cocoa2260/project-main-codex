@@ -9,11 +9,8 @@ Generative AI Document Automation Platform
 ## Completed Tasks
 
 ### FE-001 - StatusBadge Integration
-
 Status: DONE
-
 Summary:
-
 * Implemented common StatusBadge component
 * Centralized status metadata in documentStatus.ts
 * Removed duplicated status mapping logic
@@ -22,22 +19,14 @@ Summary:
 * Applied StatusBadge to DocumentCard
 * Applied StatusBadge to ProcessingStatus
 
-
-
 ### FE-002-A
-
 PipelineStepper Component
-
 Status: DONE
 
 ### FE-002-B
-
 DocumentStatusPage Integration
-
 Status: DONE
-
 Summary:
-
 - Replaced duplicated stepper rendering logic
 - Integrated reusable PipelineStepper
 - Preserved review redirect behavior
@@ -45,8 +34,17 @@ Summary:
 - Preserved activity log and right panel
 - Preserved 6-step visual pipeline
 
-Merged:
+### FE-006
+DocumentList API Integration
+Status: DONE
+Summary:
+- Replaced mock document list with real API data
+- Connected getDocuments() API
+- Preserved StatusBadge integration
+- Fixed statusParam filter issue
+- Build passed
 
+Merged:
 * develop
 
 ---

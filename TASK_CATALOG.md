@@ -16,7 +16,7 @@ FE-005	Topbar 공통화	Medium	TODO
 PHASE 2 - User Pages
 
 ID	Task	Priority	Status
-FE-006	DocumentList API 연결	High	TODO
+FE-006	DocumentList API 연결	High	DONE
 FE-007	Document Upload API 연결	High	TODO
 FE-008	Review Page API 연결	High	TODO
 FE-009	Summary Page API 연결	High	TODO
