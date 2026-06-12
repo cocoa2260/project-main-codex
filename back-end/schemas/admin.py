@@ -38,3 +38,58 @@ class AdminDashboardSummaryResponse(BaseModel):
     documents: DocumentStatsResponse
     tasks: TaskStatsResponse
     recent_events: list[RecentEventResponse]
+
+
+class AdminOwnerResponse(BaseModel):
+    id: UUID
+    email: str
+    name: str
+    role: str
+
+
+class AdminLatestTaskResponse(BaseModel):
+    id: UUID
+    task_type: str
+    status: str
+    stage: str | None = None
+    progress: int
+    message: str | None = None
+    error_message: str | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AdminDocumentListItemResponse(BaseModel):
+    id: UUID
+    file_name: str
+    status: str
+    category: str | None = None
+    file_size: int
+    page_count: int | None = 0
+    selected_embedding_model: str | None = None
+    upload_at: datetime
+    process_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+    owner: AdminOwnerResponse
+    latest_task: AdminLatestTaskResponse | None = None
+
+
+class AdminPaginationResponse(BaseModel):
+    page: int
+    limit: int
+    total: int
+    total_pages: int
+
+
+class AdminDocumentListResponse(BaseModel):
+    items: list[AdminDocumentListItemResponse]
+    pagination: AdminPaginationResponse
+
+
+class AdminDocumentDetailResponse(AdminDocumentListItemResponse):
+    summary: str | None = None
+    chunk_count: int
+    keywords: list[str]

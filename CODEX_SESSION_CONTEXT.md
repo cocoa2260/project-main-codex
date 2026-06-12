@@ -124,6 +124,25 @@ Endpoint
 사용 예정
 - FE-014 Admin Dashboard API Integration
 
+### BE-ADMIN-002 완료
+
+Endpoint
+- GET /api/admin/documents
+- GET /api/admin/documents/{document_id}
+
+구현 내용
+- Admin 전용 전체 문서 목록 조회
+- Pagination(page, limit, total, total_pages)
+- Filters(status, owner_id, search, uploaded_from, uploaded_to)
+- Sorting(upload_at, updated_at, file_name, file_size, page_count, status)
+- Owner 정보 포함
+- TaskTracker updated_at desc 기준 latest task 포함
+- 상세 응답에 summary, chunk_count, keywords 포함
+- storage_path, celery_task_id, ocr_markdown 미노출
+
+사용 예정
+- FE-015 Admin Document Management API Integration
+
 ---
 
 ## Current Backlog
