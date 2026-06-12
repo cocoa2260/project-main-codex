@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic import BaseModel
 from pydantic import EmailStr
 
@@ -13,6 +15,14 @@ class LoginRequest(BaseModel):
     password:str
 
 
+class UserResponse(BaseModel):
+    id:str
+    email:EmailStr
+    name:Optional[str]=None
+    role:str
+
+
 class TokenResponse(BaseModel):
     access_token:str
     token_type:str="bearer"
+    user:UserResponse
