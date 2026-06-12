@@ -1,24 +1,26 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { getAdminDocumentDetail, getAdminDocuments } from '../../api/admin';
 import { Sidebar } from '../../components/common/Sidebar';
+import { StatusBadge } from '../../components/common/StatusBadge';
+import type { AdminDocumentDetailResponse, AdminDocumentItem } from '../../types/admin';
+import type { DocumentStatus, TaskType } from '../../types/document';
 import {
-  Home,
+  getDocumentStatusPresentation,
+  getTaskStageLabel,
+  normalizeDocumentStatus,
+  normalizeTaskStage,
+} from '../../utils/documentStatus';
+import {
   FileText,
   Upload,
   MessageSquare,
   Clock,
-  Settings,
-  Shield,
   Menu,
   X,
   Search,
   Bell,
-  User,
-  Users,
-  Filter,
   RefreshCw,
   Download,
-  Trash2,
   Eye,
   CheckCircle2,
   XCircle,
@@ -27,217 +29,231 @@ import {
   MoreVertical,
   Calendar,
   FileType,
-  Layers,
-  Brain,
-  Sparkles,
-  Database,
-  Activity,
   TrendingUp,
   AlertTriangle,
-  PlayCircle
 } from 'lucide-react';
 
-interface DocumentData {
-  id: string;
-  name: string;
-  owner: string;
-  uploadDate: string;
-  size: string;
-  pages: number;
-  category?: string;
-  stage: 'upload' | 'ocr' | 'summary' | 'embedding' | 'rag';
-  progress: number;
-  status: 'processing' | 'completed' | 'failed' | 'waiting';
-  error?: string;
-}
+type FilterStatus = 'all' | 'processing' | 'review_required' | 'completed' | 'failed';
 
 interface AdminDocumentPageProps {
   onLogout?: () => void;
 }
 
+const PAGE_LIMIT = 20;
+
+const filterStatusMap: Record<Exclude<FilterStatus, 'all'>, DocumentStatus> = {
+  processing: 'PROCESSING',
+  review_required: 'REVIEW_REQUIRED',
+  completed: 'COMPLETED',
+  failed: 'FAILED',
+};
+
+const taskTypeLabels: Record<TaskType, string> = {
+  OCR: 'OCR',
+  SUMMARY: 'AI 요약',
+  EMBEDDING: '임베딩',
+  RAG_INDEXING: 'RAG 준비',
+};
+
+const taskTypeColors: Record<TaskType, string> = {
+  OCR: 'text-blue-400',
+  SUMMARY: 'text-purple-400',
+  EMBEDDING: 'text-yellow-400',
+  RAG_INDEXING: 'text-green-400',
+};
+
+function getApiErrorMessage(error: unknown): string {
+  const response = (error as { response?: { data?: { detail?: string; message?: string } } }).response;
+  return response?.data?.detail ?? response?.data?.message ?? (error instanceof Error ? error.message : '문서 목록을 불러오지 못했습니다.');
+}
+
+function formatDateTime(value?: string | null): string {
+  if (!value) return '-';
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return new Intl.DateTimeFormat('ko-KR', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+}
+
+function formatFileSize(bytes?: number | null): string {
+  if (!bytes || bytes <= 0) return '0 B';
+
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const unitIndex = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / 1024 ** unitIndex;
+
+  return `${value.toFixed(value >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
+function normalizeTaskType(taskType?: string | null): TaskType | null {
+  const normalized = taskType?.toUpperCase();
+  if (normalized === 'OCR' || normalized === 'SUMMARY' || normalized === 'EMBEDDING' || normalized === 'RAG_INDEXING') {
+    return normalized;
+  }
+
+  return null;
+}
+
+function getDocumentProgress(doc: AdminDocumentItem): number {
+  if (doc.latest_task) return Math.max(0, Math.min(100, doc.latest_task.progress));
+
+  const status = normalizeDocumentStatus(doc.status);
+  if (status === 'COMPLETED' || status === 'REVIEW_REQUIRED') return 100;
+  return 0;
+}
+
+function getOwnerLabel(doc: AdminDocumentItem): string {
+  return doc.owner.name || doc.owner.email;
+}
+
 export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
-  const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<'all' | 'processing' | 'completed' | 'failed'>('all');
-
-  const menuItems = [
-    { id: 'dashboard', label: 'Overview', icon: Home },
-    { id: 'users', label: 'Users', icon: Users },
-    { id: 'documents', label: 'Documents', icon: FileText },
-    { id: 'jobs', label: 'Jobs', icon: Activity },
-    { id: 'system', label: 'System', icon: Shield },
-    { id: 'settings', label: 'Settings', icon: Settings }
-  ];
-
-
-
-  const adminMenuRoutes: Record<string, string> = {
-    dashboard: '/admin',
-    users: '/admin/users',
-    documents: '/admin/documents',
-    jobs: '/admin/jobs',
-    system: '/admin/logs',
-    settings: '/admin/settings',
-  };
-
-  const handleMenuClick = (menuId: string) => {
-    const route = adminMenuRoutes[menuId];
-    if (route) navigate(route);
-  };
-  const stats = [
-    { label: '전체 문서', value: '8,456', change: '+12.8%', icon: FileText, color: 'primary' },
-    { label: '처리 중', value: '23', change: '+5', icon: Loader2, color: 'blue', animate: true },
-    { label: '처리 완료', value: '8,128', change: '+11.2%', icon: CheckCircle2, color: 'green' },
-    { label: '실패', value: '15', change: '+3', icon: XCircle, color: 'red' },
-    { label: '대기 큐', value: '12', change: '+4', icon: Clock, color: 'yellow' },
-    { label: '오늘 업로드', value: '156', change: '+23', icon: Upload, color: 'purple' }
-  ];
-
-  const documents: DocumentData[] = [
-    {
-      id: '1',
-      name: '프로젝트_제안서_2024.pdf',
-      owner: '김철수',
-      uploadDate: '2024-05-27 14:30',
-      size: '2.4 MB',
-      pages: 15,
-      category: '제안서',
-      stage: 'rag',
-      progress: 100,
-      status: 'completed'
-    },
-    {
-      id: '2',
-      name: '계약서_검토본.pdf',
-      owner: '이영희',
-      uploadDate: '2024-05-27 13:15',
-      size: '1.2 MB',
-      pages: 8,
-      category: '계약서',
-      stage: 'summary',
-      progress: 65,
-      status: 'processing'
-    },
-    {
-      id: '3',
-      name: '회의록_0515.pdf',
-      owner: '박민수',
-      uploadDate: '2024-05-27 12:00',
-      size: '0.8 MB',
-      pages: 3,
-      category: '회의록',
-      stage: 'rag',
-      progress: 100,
-      status: 'completed'
-    },
-    {
-      id: '4',
-      name: '기술문서_API.pdf',
-      owner: '정수진',
-      uploadDate: '2024-05-27 11:45',
-      size: '3.1 MB',
-      pages: 22,
-      category: '기술문서',
-      stage: 'ocr',
-      progress: 35,
-      status: 'failed',
-      error: 'OCR processing timeout'
-    },
-    {
-      id: '5',
-      name: '보고서_Q1_2024.pdf',
-      owner: '최민지',
-      uploadDate: '2024-05-26 16:20',
-      size: '4.5 MB',
-      pages: 28,
-      category: '보고서',
-      stage: 'rag',
-      progress: 100,
-      status: 'completed'
-    },
-    {
-      id: '6',
-      name: '사용자_매뉴얼.pdf',
-      owner: '홍길동',
-      uploadDate: '2024-05-26 14:10',
-      size: '1.8 MB',
-      pages: 12,
-      category: '매뉴얼',
-      stage: 'ocr',
-      progress: 0,
-      status: 'waiting'
-    }
-  ];
-
-  const filteredDocuments = documents.filter(doc => {
-    const matchesSearch = doc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         doc.owner.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         doc.category?.toLowerCase().includes(searchQuery.toLowerCase());
-
-    const matchesFilter =
-      filterStatus === 'all' ? true :
-      filterStatus === 'processing' ? doc.status === 'processing' || doc.status === 'waiting' :
-      filterStatus === 'completed' ? doc.status === 'completed' :
-      filterStatus === 'failed' ? doc.status === 'failed' : true;
-
-    return matchesSearch && matchesFilter;
+  const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
+  const [sortBy, setSortBy] = useState<'upload_at' | 'updated_at' | 'file_name' | 'file_size' | 'page_count' | 'status'>('updated_at');
+  const [documents, setDocuments] = useState<AdminDocumentItem[]>([]);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: PAGE_LIMIT,
+    total: 0,
+    total_pages: 0,
   });
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [selectedDocument, setSelectedDocument] = useState<AdminDocumentDetailResponse | null>(null);
+  const [detailErrorMessage, setDetailErrorMessage] = useState<string | null>(null);
+  const [isDetailLoading, setIsDetailLoading] = useState(false);
 
-  const getStageLabel = (stage: DocumentData['stage']) => {
-    switch (stage) {
-      case 'upload': return '업로드';
-      case 'ocr': return 'OCR';
-      case 'summary': return 'AI 요약';
-      case 'embedding': return '임베딩';
-      case 'rag': return 'RAG 준비';
+  const fetchDocuments = useCallback(async (page: number, showLoading = false) => {
+    if (showLoading) {
+      setIsLoading(true);
+    } else {
+      setIsRefreshing(true);
+    }
+
+    setErrorMessage(null);
+
+    try {
+      const response = await getAdminDocuments({
+        page,
+        limit: PAGE_LIMIT,
+        status: filterStatus === 'all' ? undefined : filterStatusMap[filterStatus],
+        search: searchQuery.trim() || undefined,
+        sort_by: sortBy,
+        sort_order: 'desc',
+      });
+
+      setDocuments(response.items);
+      setPagination(response.pagination);
+    } catch (error) {
+      setErrorMessage(getApiErrorMessage(error));
+      setDocuments([]);
+      setPagination((current) => ({ ...current, page, total: 0, total_pages: 0 }));
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, [filterStatus, searchQuery, sortBy]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      void fetchDocuments(1, true);
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [fetchDocuments]);
+
+  const handleRefresh = () => {
+    void fetchDocuments(pagination.page, false);
+  };
+
+  const handlePageChange = (nextPage: number) => {
+    if (nextPage < 1 || (pagination.total_pages > 0 && nextPage > pagination.total_pages)) return;
+    void fetchDocuments(nextPage, true);
+  };
+
+  const handleDocumentDetail = async (documentId: string) => {
+    setIsDetailLoading(true);
+    setDetailErrorMessage(null);
+
+    try {
+      const detail = await getAdminDocumentDetail(documentId);
+      setSelectedDocument(detail);
+    } catch (error) {
+      setDetailErrorMessage(getApiErrorMessage(error));
+    } finally {
+      setIsDetailLoading(false);
     }
   };
 
-  const getStageColor = (stage: DocumentData['stage']) => {
-    switch (stage) {
-      case 'upload': return 'bg-gray-500/10 text-gray-400';
-      case 'ocr': return 'bg-blue-500/10 text-blue-400';
-      case 'summary': return 'bg-purple-500/10 text-purple-400';
-      case 'embedding': return 'bg-yellow-500/10 text-yellow-400';
-      case 'rag': return 'bg-green-500/10 text-green-400';
-    }
-  };
+  const stats = useMemo(() => {
+    const countByStatus = documents.reduce<Record<DocumentStatus, number>>((counts, doc) => {
+      const status = normalizeDocumentStatus(doc.status);
+      counts[status] += 1;
+      return counts;
+    }, { PENDING: 0, PROCESSING: 0, REVIEW_REQUIRED: 0, COMPLETED: 0, FAILED: 0 });
 
-  const getStatusColor = (status: DocumentData['status']) => {
-    switch (status) {
-      case 'processing': return 'text-blue-400 bg-blue-500/10 border-blue-500/20';
-      case 'completed': return 'text-green-400 bg-green-500/10 border-green-500/20';
-      case 'failed': return 'text-red-400 bg-red-500/10 border-red-500/20';
-      case 'waiting': return 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20';
-    }
-  };
+    const today = new Date().toDateString();
+    const uploadedToday = documents.filter((doc) => {
+      const uploadDate = new Date(doc.upload_at);
+      return !Number.isNaN(uploadDate.getTime()) && uploadDate.toDateString() === today;
+    }).length;
 
-  const getStatusLabel = (status: DocumentData['status']) => {
-    switch (status) {
-      case 'processing': return '처리 중';
-      case 'completed': return '완료';
-      case 'failed': return '실패';
-      case 'waiting': return '대기';
-    }
-  };
+    return [
+      { label: '전체 문서', value: pagination.total.toLocaleString(), change: `page ${pagination.page}`, icon: FileText, color: 'primary' },
+      { label: '처리 중', value: countByStatus.PROCESSING.toLocaleString(), change: '현재 페이지', icon: Loader2, color: 'blue', animate: countByStatus.PROCESSING > 0 },
+      { label: '처리 완료', value: countByStatus.COMPLETED.toLocaleString(), change: '현재 페이지', icon: CheckCircle2, color: 'green' },
+      { label: '실패', value: countByStatus.FAILED.toLocaleString(), change: '현재 페이지', icon: XCircle, color: 'red' },
+      { label: '검토 필요', value: countByStatus.REVIEW_REQUIRED.toLocaleString(), change: '현재 페이지', icon: Clock, color: 'yellow' },
+      { label: '오늘 업로드', value: uploadedToday.toLocaleString(), change: '현재 페이지', icon: Upload, color: 'purple' },
+    ];
+  }, [documents, pagination.page, pagination.total]);
 
-  const recentUploads = documents.slice(0, 3);
-  const failedDocs = documents.filter(d => d.status === 'failed');
-  const processingDocs = documents.filter(d => d.status === 'processing' || d.status === 'waiting');
+  const recentUploads = useMemo(() => documents.slice(0, 3), [documents]);
+  const failedDocs = useMemo(
+    () => documents.filter((doc) => normalizeDocumentStatus(doc.status) === 'FAILED'),
+    [documents],
+  );
+  const processingDocs = useMemo(
+    () => documents.filter((doc) => {
+      const status = normalizeDocumentStatus(doc.status);
+      return status === 'PENDING' || status === 'PROCESSING' || status === 'REVIEW_REQUIRED';
+    }),
+    [documents],
+  );
+
+  const distribution = useMemo(() => {
+    const counts: Record<TaskType, number> = { OCR: 0, SUMMARY: 0, EMBEDDING: 0, RAG_INDEXING: 0 };
+
+    documents.forEach((doc) => {
+      const taskType = normalizeTaskType(doc.latest_task?.task_type) ?? normalizeTaskStage(doc.latest_task?.stage);
+      if (taskType) counts[taskType] += 1;
+    });
+
+    const total = Math.max(1, Object.values(counts).reduce((sum, count) => sum + count, 0));
+    return Object.entries(counts).map(([type, count]) => ({
+      type: type as TaskType,
+      percent: Math.round((count / total) * 100),
+    }));
+  }, [documents]);
 
   return (
     <div className="min-h-screen w-full bg-[#0a0a0f] flex">
-      {/* Sidebar */}
       <Sidebar
         variant="admin"
         sidebarOpen={sidebarOpen}
         onLogout={onLogout}
       />
 
-      {/* Main content */}
       <div className="flex-1 flex flex-col min-h-screen lg:ml-0">
-        {/* Top navigation */}
         <header className="h-16 bg-[#111116]/80 backdrop-blur-xl border-b border-white/5 flex items-center justify-between px-6 sticky top-0 z-20">
           <div className="flex items-center gap-4">
             <button
@@ -263,6 +279,15 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
           <div className="flex items-center gap-3">
             <button
               type="button"
+              onClick={handleRefresh}
+              className="p-2 hover:bg-white/5 rounded-lg transition-colors"
+              title="새로고침"
+            >
+              <RefreshCw className={`w-5 h-5 text-gray-400 ${isRefreshing ? 'animate-spin' : ''}`} />
+            </button>
+
+            <button
+              type="button"
               className="p-2 hover:bg-white/5 rounded-lg transition-colors relative"
             >
               <Bell className="w-5 h-5 text-gray-400" />
@@ -279,18 +304,15 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
           </div>
         </header>
 
-        {/* Content */}
         <main className="flex-1 p-6 overflow-auto">
           <div className="max-w-[1800px] mx-auto space-y-6">
-            {/* Header */}
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-2xl font-bold text-white mb-1">문서 관리</h2>
-                <p className="text-gray-400">총 {documents.length}개의 문서</p>
+                <p className="text-gray-400">총 {pagination.total.toLocaleString()}개의 문서</p>
               </div>
             </div>
 
-            {/* Stats */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
               {stats.map((stat, idx) => {
                 const Icon = stat.icon;
@@ -311,7 +333,7 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
                             stat.color === 'primary' ? 'text-primary' :
                             stat.color === 'green' ? 'text-green-400' :
                             stat.color === 'red' ? 'text-red-400' :
-                            stat.color === 'blue' ? 'text-blue-400 ' + (stat.animate ? 'animate-spin' : '') :
+                            stat.color === 'blue' ? 'text-blue-400 ' + ('animate' in stat && stat.animate ? 'animate-spin' : '') :
                             stat.color === 'yellow' ? 'text-yellow-400' :
                             'text-purple-400'
                           }`} />
@@ -327,251 +349,365 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
             </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
-              {/* Document table */}
               <div className="xl:col-span-3 space-y-4">
-                {/* Filters */}
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setFilterStatus('all')}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                      filterStatus === 'all'
-                        ? 'bg-primary text-white'
-                        : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
-                    }`}
-                  >
-                    전체
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFilterStatus('processing')}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                      filterStatus === 'processing'
-                        ? 'bg-primary text-white'
-                        : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
-                    }`}
-                  >
-                    처리 중
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFilterStatus('completed')}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                      filterStatus === 'completed'
-                        ? 'bg-primary text-white'
-                        : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
-                    }`}
-                  >
-                    완료
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFilterStatus('failed')}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                      filterStatus === 'failed'
-                        ? 'bg-primary text-white'
-                        : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
-                    }`}
-                  >
-                    실패
-                  </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  {([
+                    ['all', '전체'],
+                    ['processing', '처리 중'],
+                    ['review_required', '검토 필요'],
+                    ['completed', '완료'],
+                    ['failed', '실패'],
+                  ] as const).map(([status, label]) => (
+                    <button
+                      key={status}
+                      type="button"
+                      onClick={() => setFilterStatus(status)}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                        filterStatus === status
+                          ? 'bg-primary text-white'
+                          : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
 
                   <div className="flex-1" />
 
+                  <select
+                    value={sortBy}
+                    onChange={(event) => setSortBy(event.target.value as typeof sortBy)}
+                    className="h-10 rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-gray-300 focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    title="정렬"
+                  >
+                    <option value="updated_at">최근 수정순</option>
+                    <option value="upload_at">업로드순</option>
+                    <option value="file_name">문서명순</option>
+                    <option value="file_size">파일 크기순</option>
+                    <option value="page_count">페이지순</option>
+                    <option value="status">상태순</option>
+                  </select>
+
                   <button
                     type="button"
-                    className="p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg transition-colors"
+                    className="p-2 bg-white/5 border border-white/10 rounded-lg transition-colors opacity-50 cursor-not-allowed"
+                    title="준비 중"
+                    disabled
                   >
                     <Download className="w-4 h-4 text-gray-400" />
                   </button>
                   <button
                     type="button"
+                    onClick={handleRefresh}
                     className="p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg transition-colors"
+                    title="새로고침"
                   >
-                    <RefreshCw className="w-4 h-4 text-gray-400" />
+                    <RefreshCw className={`w-4 h-4 text-gray-400 ${isRefreshing ? 'animate-spin' : ''}`} />
                   </button>
                 </div>
 
-                {/* Table */}
+                {errorMessage && (
+                  <div className="flex items-start gap-3 rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-red-300">
+                    <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">문서 목록 오류</p>
+                      <p className="mt-1 text-sm text-red-300/80">{errorMessage}</p>
+                    </div>
+                  </div>
+                )}
+
                 <div className="bg-[#111116] border border-white/10 rounded-xl overflow-hidden">
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead className="bg-white/5 border-b border-white/10">
                         <tr>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                            문서명
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                            소유자
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                            업로드
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                            크기
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                            단계
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                            진행률
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                            상태
-                          </th>
-                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
-                            액션
-                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">문서명</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">소유자</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">업로드</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">크기</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">최근 작업</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">진행률</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">상태</th>
+                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">액션</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-white/5">
-                        {filteredDocuments.map((doc) => (
-                          <tr key={doc.id} className="hover:bg-white/5 transition-colors">
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="flex items-center gap-3">
-                                <div className="p-2 bg-primary/10 rounded-lg">
-                                  <FileText className="w-4 h-4 text-primary" />
+                        {isLoading ? (
+                          <tr>
+                            <td colSpan={8} className="px-6 py-12 text-center">
+                              <Loader2 className="mx-auto mb-3 h-6 w-6 animate-spin text-primary" />
+                              <p className="text-sm text-gray-400">문서 목록을 불러오는 중입니다.</p>
+                            </td>
+                          </tr>
+                        ) : documents.length === 0 ? (
+                          <tr>
+                            <td colSpan={8} className="px-6 py-12 text-center">
+                              <FileText className="mx-auto mb-3 h-6 w-6 text-gray-500" />
+                              <p className="text-sm font-medium text-white">표시할 문서가 없습니다.</p>
+                              <p className="mt-1 text-sm text-gray-500">검색어나 상태 필터를 변경하거나 새로고침해 주세요.</p>
+                            </td>
+                          </tr>
+                        ) : documents.map((doc) => {
+                          const normalizedStatus = normalizeDocumentStatus(doc.status);
+                          const progress = getDocumentProgress(doc);
+                          const taskType = normalizeTaskType(doc.latest_task?.task_type);
+                          const statusPresentation = getDocumentStatusPresentation(doc.status, doc.latest_task?.stage);
+
+                          return (
+                            <tr key={doc.id} className="hover:bg-white/5 transition-colors">
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="flex items-center gap-3">
+                                  <div className="p-2 bg-primary/10 rounded-lg">
+                                    <FileText className="w-4 h-4 text-primary" />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="text-white font-medium text-sm truncate max-w-xs">{doc.file_name}</p>
+                                    <div className="mt-1 flex items-center gap-2">
+                                      {doc.category && (
+                                        <span className="inline-block px-2 py-0.5 bg-white/5 border border-white/10 rounded text-xs text-gray-400">
+                                          {doc.category}
+                                        </span>
+                                      )}
+                                      <span className="text-xs text-gray-500">{doc.page_count ?? 0}p</span>
+                                    </div>
+                                  </div>
                                 </div>
-                                <div className="min-w-0">
-                                  <p className="text-white font-medium text-sm truncate max-w-xs">{doc.name}</p>
-                                  {doc.category && (
-                                    <span className="inline-block px-2 py-0.5 bg-white/5 border border-white/10 rounded text-xs text-gray-400 mt-1">
-                                      {doc.category}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                                <div>
+                                  <p>{getOwnerLabel(doc)}</p>
+                                  <p className="text-xs text-gray-500">{doc.owner.email}</p>
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
+                                <div className="flex items-center gap-1.5">
+                                  <Calendar className="w-3.5 h-3.5" />
+                                  {formatDateTime(doc.upload_at)}
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                                <div className="flex items-center gap-1.5">
+                                  <FileType className="w-3.5 h-3.5 text-gray-400" />
+                                  {formatFileSize(doc.file_size)}
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                {doc.latest_task ? (
+                                  <div className="space-y-1">
+                                    <span className={`text-xs font-medium ${taskType ? taskTypeColors[taskType] : 'text-gray-400'}`}>
+                                      {taskType ? taskTypeLabels[taskType] : doc.latest_task.task_type}
                                     </span>
-                                  )}
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                              {doc.owner}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
-                              <div className="flex items-center gap-1.5">
-                                <Calendar className="w-3.5 h-3.5" />
-                                {doc.uploadDate}
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                              <div className="flex items-center gap-1.5">
-                                <FileType className="w-3.5 h-3.5 text-gray-400" />
-                                {doc.size}
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium ${getStageColor(doc.stage)}`}>
-                                {getStageLabel(doc.stage)}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              {doc.status === 'processing' || doc.status === 'waiting' ? (
+                                    <p className="text-xs text-gray-500">{getTaskStageLabel(doc.latest_task.stage)}</p>
+                                  </div>
+                                ) : (
+                                  <span className="text-sm text-gray-500">-</span>
+                                )}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="w-32">
                                   <div className="flex items-center justify-between mb-1">
-                                    <span className="text-xs text-gray-400">{doc.progress}%</span>
+                                    <span className="text-xs text-gray-400">{progress}%</span>
                                   </div>
                                   <div className="w-full bg-white/5 rounded-full h-1.5">
                                     <div
-                                      className="bg-gradient-to-r from-blue-500 to-purple-500 h-1.5 rounded-full transition-all duration-500"
-                                      style={{ width: `${doc.progress}%` }}
+                                      className={`${statusPresentation.progressColor} h-1.5 rounded-full transition-all duration-500`}
+                                      style={{ width: `${progress}%` }}
                                     />
                                   </div>
                                 </div>
-                              ) : doc.status === 'completed' ? (
-                                <span className="text-sm text-green-400">100%</span>
-                              ) : (
-                                <span className="text-sm text-red-400">{doc.progress}%</span>
-                              )}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 border rounded-lg text-xs font-medium ${getStatusColor(doc.status)}`}>
-                                {doc.status === 'processing' && <Loader2 className="w-3 h-3 animate-spin" />}
-                                {doc.status === 'completed' && <CheckCircle2 className="w-3 h-3" />}
-                                {doc.status === 'failed' && <XCircle className="w-3 h-3" />}
-                                {doc.status === 'waiting' && <Clock className="w-3 h-3" />}
-                                {getStatusLabel(doc.status)}
-                              </span>
-                              {doc.error && (
-                                <p className="text-xs text-red-400/80 mt-1">{doc.error}</p>
-                              )}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-right">
-                              <div className="flex items-center justify-end gap-2">
-                                {doc.status === 'completed' && (
-                                  <>
-                                    <button
-                                      type="button"
-                                      className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-                                      title="요약 보기"
-                                    >
-                                      <Eye className="w-4 h-4 text-gray-400" />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-                                      title="채팅"
-                                    >
-                                      <MessageSquare className="w-4 h-4 text-gray-400" />
-                                    </button>
-                                  </>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <StatusBadge status={doc.status} stage={doc.latest_task?.stage} size="sm" />
+                                {doc.latest_task?.error_message && (
+                                  <p className="text-xs text-red-400/80 mt-1 max-w-xs truncate">{doc.latest_task.error_message}</p>
                                 )}
-                                {doc.status === 'failed' && (
+                                {doc.process_at && (
+                                  <p className="text-xs text-gray-500 mt-1">처리: {formatDateTime(doc.process_at)}</p>
+                                )}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-right">
+                                <div className="flex items-center justify-end gap-2">
+                                  {(normalizedStatus === 'COMPLETED' || normalizedStatus === 'REVIEW_REQUIRED') && (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => void handleDocumentDetail(doc.id)}
+                                        className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                                        title="상세보기"
+                                      >
+                                        <Eye className="w-4 h-4 text-gray-400" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="p-2 rounded-lg transition-colors opacity-50 cursor-not-allowed"
+                                        title="준비 중"
+                                        disabled
+                                      >
+                                        <MessageSquare className="w-4 h-4 text-gray-400" />
+                                      </button>
+                                    </>
+                                  )}
+                                  {normalizedStatus === 'FAILED' && (
+                                    <button
+                                      type="button"
+                                      className="p-2 rounded-lg transition-colors opacity-50 cursor-not-allowed"
+                                      title="준비 중"
+                                      disabled
+                                    >
+                                      <RefreshCw className="w-4 h-4 text-yellow-400" />
+                                    </button>
+                                  )}
                                   <button
                                     type="button"
-                                    className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-                                    title="재시도"
+                                    className="p-2 rounded-lg transition-colors opacity-50 cursor-not-allowed"
+                                    title="준비 중"
+                                    disabled
                                   >
-                                    <RefreshCw className="w-4 h-4 text-yellow-400" />
+                                    <Download className="w-4 h-4 text-gray-400" />
                                   </button>
-                                )}
-                                <button
-                                  type="button"
-                                  className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-                                  title="다운로드"
-                                >
-                                  <Download className="w-4 h-4 text-gray-400" />
-                                </button>
-                                <button
-                                  type="button"
-                                  className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-                                >
-                                  <MoreVertical className="w-4 h-4 text-gray-400" />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
+                                  <button
+                                    type="button"
+                                    className="p-2 rounded-lg transition-colors opacity-50 cursor-not-allowed"
+                                    title="준비 중"
+                                    disabled
+                                  >
+                                    <MoreVertical className="w-4 h-4 text-gray-400" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
                 </div>
+
+                <div className="flex items-center justify-between rounded-xl border border-white/10 bg-[#111116] px-4 py-3">
+                  <p className="text-sm text-gray-400">
+                    {pagination.total.toLocaleString()}개 중 {documents.length.toLocaleString()}개 표시
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handlePageChange(pagination.page - 1)}
+                      disabled={pagination.page <= 1 || isLoading}
+                      className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-gray-300 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      이전
+                    </button>
+                    <span className="min-w-24 text-center text-sm text-gray-400">
+                      {pagination.page} / {Math.max(1, pagination.total_pages)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handlePageChange(pagination.page + 1)}
+                      disabled={pagination.page >= pagination.total_pages || isLoading || pagination.total_pages === 0}
+                      className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-gray-300 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      다음
+                    </button>
+                  </div>
+                </div>
+
+                {(selectedDocument || detailErrorMessage || isDetailLoading) && (
+                  <div className="bg-[#111116] border border-white/10 rounded-xl p-6">
+                    <div className="mb-4 flex items-center justify-between">
+                      <h3 className="text-white font-semibold text-lg flex items-center gap-2">
+                        <Eye className="w-5 h-5 text-primary" />
+                        문서 상세
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedDocument(null);
+                          setDetailErrorMessage(null);
+                        }}
+                        className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                        title="닫기"
+                      >
+                        <X className="h-4 w-4 text-gray-400" />
+                      </button>
+                    </div>
+                    {isDetailLoading ? (
+                      <div className="flex items-center gap-2 text-sm text-gray-400">
+                        <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                        상세 정보를 불러오는 중입니다.
+                      </div>
+                    ) : detailErrorMessage ? (
+                      <p className="text-sm text-red-300">{detailErrorMessage}</p>
+                    ) : selectedDocument && (
+                      <dl className="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
+                        <div>
+                          <dt className="text-gray-500">문서명</dt>
+                          <dd className="text-white">{selectedDocument.file_name}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-gray-500">소유자</dt>
+                          <dd className="text-white">{getOwnerLabel(selectedDocument)}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-gray-500">상태</dt>
+                          <dd><StatusBadge status={selectedDocument.status} stage={selectedDocument.latest_task?.stage} size="sm" /></dd>
+                        </div>
+                        <div>
+                          <dt className="text-gray-500">최근 작업</dt>
+                          <dd className="text-white">{selectedDocument.latest_task?.task_type ?? '-'}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-gray-500">페이지 / 청크</dt>
+                          <dd className="text-white">{selectedDocument.page_count ?? 0}p / {selectedDocument.chunk_count}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-gray-500">파일 크기</dt>
+                          <dd className="text-white">{formatFileSize(selectedDocument.file_size)}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-gray-500">업로드</dt>
+                          <dd className="text-white">{formatDateTime(selectedDocument.upload_at)}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-gray-500">처리</dt>
+                          <dd className="text-white">{formatDateTime(selectedDocument.process_at)}</dd>
+                        </div>
+                        <div className="md:col-span-2">
+                          <dt className="text-gray-500">키워드</dt>
+                          <dd className="text-white">{selectedDocument.keywords.length ? selectedDocument.keywords.join(', ') : '-'}</dd>
+                        </div>
+                        <div className="md:col-span-2">
+                          <dt className="text-gray-500">요약</dt>
+                          <dd className="text-white">{selectedDocument.summary ?? '-'}</dd>
+                        </div>
+                      </dl>
+                    )}
+                  </div>
+                )}
               </div>
 
-              {/* Right panel */}
               <div className="space-y-6">
-                {/* Recent uploads */}
                 <div className="bg-[#111116] border border-white/10 rounded-xl p-6">
                   <h3 className="text-white font-semibold text-lg mb-4">최근 업로드</h3>
                   <div className="space-y-3">
-                    {recentUploads.map((doc) => (
+                    {recentUploads.length === 0 ? (
+                      <p className="text-sm text-gray-500">최근 업로드 문서가 없습니다.</p>
+                    ) : recentUploads.map((doc) => (
                       <div
                         key={doc.id}
                         className="p-3 bg-white/5 rounded-lg hover:bg-white/10 transition-colors"
                       >
                         <div className="flex items-start gap-2 mb-2">
                           <FileText className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
-                          <p className="text-white text-sm font-medium line-clamp-1">{doc.name}</p>
+                          <p className="text-white text-sm font-medium line-clamp-1">{doc.file_name}</p>
                         </div>
                         <div className="flex items-center justify-between text-xs">
-                          <span className="text-gray-400">{doc.owner}</span>
-                          <span className={`px-2 py-0.5 rounded ${getStageColor(doc.stage)}`}>
-                            {getStageLabel(doc.stage)}
-                          </span>
+                          <span className="text-gray-400">{getOwnerLabel(doc)}</span>
+                          <span className="text-gray-500">{formatDateTime(doc.upload_at)}</span>
                         </div>
                       </div>
                     ))}
                   </div>
                 </div>
 
-                {/* Failed documents */}
                 {failedDocs.length > 0 && (
                   <div className="bg-[#111116] border border-red-500/20 rounded-xl p-6">
                     <div className="flex items-center gap-2 mb-4">
@@ -584,11 +720,13 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
                           key={doc.id}
                           className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg"
                         >
-                          <p className="text-white text-sm font-medium mb-1 line-clamp-1">{doc.name}</p>
-                          <p className="text-red-400/80 text-xs mb-2">{doc.error}</p>
+                          <p className="text-white text-sm font-medium mb-1 line-clamp-1">{doc.file_name}</p>
+                          <p className="text-red-400/80 text-xs mb-2">{doc.latest_task?.error_message ?? doc.latest_task?.message ?? '-'}</p>
                           <button
                             type="button"
-                            className="w-full py-1.5 px-3 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded text-red-400 text-xs transition-colors flex items-center justify-center gap-1.5"
+                            className="w-full py-1.5 px-3 bg-red-500/20 border border-red-500/30 rounded text-red-400 text-xs transition-colors flex items-center justify-center gap-1.5 opacity-50 cursor-not-allowed"
+                            title="준비 중"
+                            disabled
                           >
                             <RefreshCw className="w-3 h-3" />
                             재시도
@@ -599,7 +737,6 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
                   </div>
                 )}
 
-                {/* Queue status */}
                 <div className="bg-[#111116] border border-white/10 rounded-xl p-6">
                   <h3 className="text-white font-semibold text-lg mb-4">큐 상태</h3>
                   <div className="space-y-4">
@@ -607,58 +744,47 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
                       <div className="flex justify-between mb-2">
                         <span className="text-gray-400 text-sm">처리 중</span>
                         <span className="text-white text-sm font-medium">
-                          {processingDocs.filter(d => d.status === 'processing').length}
+                          {processingDocs.filter((doc) => normalizeDocumentStatus(doc.status) === 'PROCESSING').length}
                         </span>
                       </div>
                       <div className="w-full bg-white/5 rounded-full h-2">
-                        <div className="bg-blue-500 h-2 rounded-full" style={{ width: '60%' }} />
+                        <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${Math.min(100, processingDocs.length * 20)}%` }} />
                       </div>
                     </div>
 
                     <div>
                       <div className="flex justify-between mb-2">
-                        <span className="text-gray-400 text-sm">대기</span>
+                        <span className="text-gray-400 text-sm">대기/검토</span>
                         <span className="text-white text-sm font-medium">
-                          {processingDocs.filter(d => d.status === 'waiting').length}
+                          {processingDocs.filter((doc) => normalizeDocumentStatus(doc.status) !== 'PROCESSING').length}
                         </span>
                       </div>
                       <div className="w-full bg-white/5 rounded-full h-2">
-                        <div className="bg-yellow-500 h-2 rounded-full" style={{ width: '40%' }} />
+                        <div className="bg-yellow-500 h-2 rounded-full" style={{ width: `${Math.min(100, processingDocs.length * 20)}%` }} />
                       </div>
                     </div>
 
                     <div className="pt-3 border-t border-white/5">
                       <div className="flex items-center gap-2">
                         <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-                        <span className="text-green-400 text-sm">작업 처리 중</span>
+                        <span className="text-green-400 text-sm">API 연동됨</span>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Processing distribution */}
                 <div className="bg-[#111116] border border-white/10 rounded-xl p-6">
                   <h3 className="text-white font-semibold text-lg mb-4 flex items-center gap-2">
                     <TrendingUp className="w-5 h-5 text-primary" />
                     처리 분포
                   </h3>
                   <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-400 text-sm">OCR</span>
-                      <span className="text-blue-400 text-sm font-medium">35%</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-400 text-sm">AI 요약</span>
-                      <span className="text-purple-400 text-sm font-medium">28%</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-400 text-sm">임베딩</span>
-                      <span className="text-yellow-400 text-sm font-medium">22%</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-400 text-sm">RAG 준비</span>
-                      <span className="text-green-400 text-sm font-medium">15%</span>
-                    </div>
+                    {distribution.map(({ type, percent }) => (
+                      <div key={type} className="flex items-center justify-between">
+                        <span className="text-gray-400 text-sm">{taskTypeLabels[type]}</span>
+                        <span className={`${taskTypeColors[type]} text-sm font-medium`}>{percent}%</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>

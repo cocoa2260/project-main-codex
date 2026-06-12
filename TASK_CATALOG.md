@@ -93,7 +93,7 @@
 | BE-ADMIN-002 | Admin Document List API | High | DONE |
 | BE-ADMIN-003 | Admin Task List API | High | DONE |
 | FE-014 | Admin Dashboard API Integration | High | DONE |
-| FE-015 | Admin Document Management API Integration | High | TODO |
+| FE-015 | Admin Document Management API Integration | High | DONE |
 | FE-016 | Admin Task Monitoring API Integration | High | DONE |
 
 ---
@@ -187,6 +187,20 @@ Status: DONE
 - Pagination / Refresh / 30초 Auto Refresh 지원
 - TaskStatus / TaskType 기존 document.ts 타입 재사용
 - documentStatus.ts 상태 표시 유틸 재사용
+
+Priority: High
+Status: DONE
+
+### FE-015 Admin Document Management API Integration
+
+- AdminDocumentPage 문서 mock data 제거
+- GET /api/admin/documents 목록 연동
+- GET /api/admin/documents/{document_id} 상세 조회 연동
+- Owner / DocumentStatus / Latest Task / progress / file metadata 표시
+- API pagination / search / status filter / sorting 연동
+- Loading / Error / Empty / Refresh 상태 추가
+- API 없는 action은 삭제하지 않고 준비 중/비활성 처리
+- DocumentStatus / TaskStatus / TaskType 기존 document.ts 타입 및 documentStatus.ts 상태 표시 유틸 재사용
 
 Priority: High
 Status: DONE
