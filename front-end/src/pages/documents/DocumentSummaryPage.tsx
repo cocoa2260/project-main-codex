@@ -14,10 +14,12 @@ import {
   MessageSquare,
   RefreshCw,
   Sparkles,
+  Tag,
 } from 'lucide-react';
 
 import { getDocumentSummary } from '../../api/document';
 import type { DocumentSummaryResponse } from '../../types/document';
+import { normalizeDocumentStatus } from '../../utils/documentStatus';
 
 interface DocumentSummaryPageProps {
   onBack?: () => void;
@@ -106,6 +108,34 @@ function renderSummary(summary: string) {
   });
 }
 
+function getStatusNotice(status?: string | null) {
+  switch (normalizeDocumentStatus(status)) {
+    case 'FAILED':
+      return '요약 작업이 실패한 문서입니다. 저장된 요약이 없을 수 있습니다.';
+    case 'PROCESSING':
+    case 'PENDING':
+      return '요약 작업이 아직 진행 중입니다. 완료 후 다시 확인해주세요.';
+    case 'REVIEW_REQUIRED':
+      return 'OCR Markdown 검토가 필요한 문서입니다. 검토 후 요약을 진행할 수 있습니다.';
+    default:
+      return null;
+  }
+}
+
+function getStatusBadgeClassName(status?: string | null) {
+  switch (normalizeDocumentStatus(status)) {
+    case 'FAILED':
+      return 'border-red-500/20 bg-red-500/10 text-red-300';
+    case 'PROCESSING':
+    case 'PENDING':
+      return 'border-blue-500/20 bg-blue-500/10 text-blue-300';
+    case 'REVIEW_REQUIRED':
+      return 'border-purple-500/20 bg-purple-500/10 text-purple-300';
+    default:
+      return 'border-green-500/20 bg-green-500/10 text-green-300';
+  }
+}
+
 export function DocumentSummaryPage({ onBack, onLogout }: DocumentSummaryPageProps) {
   const navigate = useNavigate();
   const { documentId } = useParams();
@@ -138,6 +168,8 @@ export function DocumentSummaryPage({ onBack, onLogout }: DocumentSummaryPagePro
   }, [documentId]);
 
   const summary = summaryData?.summary ?? '';
+  const keywords = summaryData?.keywords ?? [];
+  const statusNotice = summaryData ? getStatusNotice(summaryData.status) : null;
   const summaryStats = useMemo(() => {
     const words = summary.trim() ? summary.trim().split(/\s+/).length : 0;
     const lines = summary ? summary.split('\n').length : 0;
@@ -224,6 +256,13 @@ export function DocumentSummaryPage({ onBack, onLogout }: DocumentSummaryPagePro
             </div>
           )}
 
+          {statusNotice && (
+            <div className="flex items-center gap-3 rounded-lg border border-amber-500/20 bg-amber-500/10 p-4 text-amber-100">
+              <AlertCircle className="h-5 w-5" />
+              <span>{statusNotice}</span>
+            </div>
+          )}
+
           {summaryData && (
             <>
               <section className="rounded-lg border border-white/10 bg-[#15151c] p-5">
@@ -247,9 +286,9 @@ export function DocumentSummaryPage({ onBack, onLogout }: DocumentSummaryPagePro
                     </div>
                   </div>
 
-                  <div className="inline-flex w-fit items-center gap-2 rounded-lg border border-green-500/20 bg-green-500/10 px-3 py-1.5">
-                    <CheckCircle2 className="h-4 w-4 text-green-400" />
-                    <span className="text-sm font-medium text-green-300">{summaryData.status}</span>
+                  <div className={`inline-flex w-fit items-center gap-2 rounded-lg border px-3 py-1.5 ${getStatusBadgeClassName(summaryData.status)}`}>
+                    <CheckCircle2 className="h-4 w-4" />
+                    <span className="text-sm font-medium">{summaryData.status}</span>
                   </div>
                 </div>
               </section>
@@ -321,6 +360,25 @@ export function DocumentSummaryPage({ onBack, onLogout }: DocumentSummaryPagePro
                       </div>
                     </div>
                   </section>
+
+                  {keywords.length > 0 && (
+                    <section className="rounded-lg border border-white/10 bg-[#15151c] p-5">
+                      <h3 className="mb-4 flex items-center gap-2 text-lg font-semibold text-white">
+                        <Tag className="h-5 w-5 text-blue-300" />
+                        핵심 키워드
+                      </h3>
+                      <div className="flex flex-wrap gap-2">
+                        {keywords.map((keyword) => (
+                          <span
+                            key={keyword}
+                            className="rounded-lg border border-blue-300/20 bg-blue-500/10 px-3 py-1 text-sm text-blue-100"
+                          >
+                            {keyword}
+                          </span>
+                        ))}
+                      </div>
+                    </section>
+                  )}
 
                   <section className="rounded-lg border border-white/10 bg-[#15151c] p-5">
                     <h3 className="mb-4 text-lg font-semibold text-white">요약 통계</h3>

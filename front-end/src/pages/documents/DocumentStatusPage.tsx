@@ -64,6 +64,7 @@ export function DocumentStatusPage({ onBack, onLogout, onOpenSummary, onOpenChat
   const isProcessing = normalizedStatus === 'PENDING' || normalizedStatus === 'PROCESSING';
   const isReviewRequired = normalizedStatus === 'REVIEW_REQUIRED';
   const isFailed = normalizedStatus === 'FAILED';
+  const isCompleted = normalizedStatus === 'COMPLETED';
 
   useEffect(() => {
     if (!documentId || normalizedStatus !== 'REVIEW_REQUIRED') return;
@@ -312,7 +313,7 @@ export function DocumentStatusPage({ onBack, onLogout, onOpenSummary, onOpenChat
                         취소
                       </button>
                     </>
-                  ) : (
+                  ) : isCompleted ? (
                     <>
                       <button
                         type="button"
@@ -337,6 +338,8 @@ export function DocumentStatusPage({ onBack, onLogout, onOpenSummary, onOpenChat
                         <Download className="w-5 h-5" />
                       </button>
                     </>
+                  ) : (
+                    null
                   )}
                 </div>
               </div>
