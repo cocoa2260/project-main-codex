@@ -26,8 +26,13 @@ export type PipelineStepState =
   | "completed"
   | "failed";
 
+export type PipelineStepId =
+  | "upload"
+  | "extraction"
+  | TaskStage;
+
 export interface PipelineStep {
-  id: TaskStage;
+  id: PipelineStepId;
   label: string;
   state: PipelineStepState;
 }
