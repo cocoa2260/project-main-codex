@@ -28,6 +28,10 @@ from schemas.admin import AdminTaskDetailResponse
 from schemas.admin import AdminTaskDocumentResponse
 from schemas.admin import AdminTaskListItemResponse
 from schemas.admin import AdminTaskListResponse
+from schemas.admin import AdminUserDetailResponse
+from schemas.admin import AdminUserDocumentResponse
+from schemas.admin import AdminUserListItemResponse
+from schemas.admin import AdminUserListResponse
 from schemas.admin import AdminLatestTaskResponse
 from schemas.admin import AdminOwnerResponse
 from schemas.admin import AdminPaginationResponse
@@ -189,6 +193,30 @@ def _task_list_item_response(row) -> AdminTaskListItemResponse:
     )
 
 
+def _user_list_item_response(row) -> AdminUserListItemResponse:
+    document_count = row.document_count or 0
+
+    return AdminUserListItemResponse(
+        id=row.user_id,
+        name=row.name,
+        email=row.email,
+        role=row.role,
+        document_count=document_count,
+        upload_count=document_count,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+def _user_document_response(document: Document) -> AdminUserDocumentResponse:
+    return AdminUserDocumentResponse(
+        id=document.id,
+        file_name=document.file_name,
+        status=document.status,
+        upload_at=document.upload_at,
+    )
+
+
 def _apply_document_filters(
     query,
     status: str | None,
@@ -270,6 +298,28 @@ def _apply_task_filters(
     return query
 
 
+def _apply_user_filters(
+    query,
+    q: str | None,
+    role: str | None,
+):
+    if q:
+        search_text = q.strip()
+        if search_text:
+            keyword = f"%{search_text}%"
+            query = query.filter(
+                or_(
+                    User.name.ilike(keyword),
+                    User.email.ilike(keyword),
+                )
+            )
+
+    if role:
+        query = query.filter(User.role == role)
+
+    return query
+
+
 def _sort_expression(sort_by: str, sort_order: str):
     sort_columns = {
         "upload_at": Document.upload_at,
@@ -298,6 +348,24 @@ def _task_sort_expression(sort_by: str, sort_order: str):
         "task_type": TaskTracker.task_type,
     }
     column = sort_columns.get(sort_by, TaskTracker.updated_at)
+
+    if sort_order.lower() == "asc":
+        return column.asc()
+
+    return column.desc()
+
+
+def _user_sort_expression(sort_by: str, sort_order: str, document_count_column):
+    sort_columns = {
+        "created_at": User.created_at,
+        "updated_at": User.updated_at,
+        "name": User.name,
+        "email": User.email,
+        "role": User.role,
+        "document_count": document_count_column,
+        "upload_count": document_count_column,
+    }
+    column = sort_columns.get(sort_by, User.created_at)
 
     if sort_order.lower() == "asc":
         return column.asc()
@@ -437,6 +505,112 @@ def get_dashboard_summary(db: Session) -> AdminDashboardSummaryResponse:
         documents=get_document_stats(db),
         tasks=get_task_stats(db),
         recent_events=get_recent_events(db),
+    )
+
+
+def _user_document_count_subquery(db: Session):
+    return (
+        db.query(
+            Document.user_id.label("user_id"),
+            func.count(Document.id).label("document_count"),
+        )
+        .group_by(Document.user_id)
+        .subquery()
+    )
+
+
+def list_admin_users(
+    db: Session,
+    q: str | None = None,
+    role: str | None = None,
+    page: int = 1,
+    limit: int = 20,
+    sort_by: str = "created_at",
+    sort_order: str = "desc",
+) -> AdminUserListResponse:
+    page = max(page, 1)
+    limit = min(max(limit, 1), 100)
+
+    count_query = db.query(func.count(User.id))
+    count_query = _apply_user_filters(
+        count_query,
+        q=q,
+        role=role,
+    )
+    total = count_query.scalar() or 0
+
+    document_counts = _user_document_count_subquery(db)
+    document_count_column = func.coalesce(document_counts.c.document_count, 0)
+    query = (
+        db.query(
+            User.id.label("user_id"),
+            User.name.label("name"),
+            User.email.label("email"),
+            User.role.label("role"),
+            User.created_at.label("created_at"),
+            User.updated_at.label("updated_at"),
+            document_count_column.label("document_count"),
+        )
+        .outerjoin(document_counts, document_counts.c.user_id == User.id)
+    )
+    query = _apply_user_filters(
+        query,
+        q=q,
+        role=role,
+    )
+    rows = (
+        query.order_by(_user_sort_expression(sort_by, sort_order, document_count_column), User.id.desc())
+        .offset((page - 1) * limit)
+        .limit(limit)
+        .all()
+    )
+
+    return AdminUserListResponse(
+        items=[_user_list_item_response(row) for row in rows],
+        pagination=AdminPaginationResponse(
+            page=page,
+            limit=limit,
+            total=total,
+            total_pages=ceil(total / limit) if total else 0,
+        ),
+    )
+
+
+def get_admin_user_detail(
+    db: Session,
+    user_id: UUID,
+) -> AdminUserDetailResponse | None:
+    user = db.query(User).filter(User.id == user_id).first()
+
+    if user is None:
+        return None
+
+    documents = (
+        db.query(Document)
+        .filter(Document.user_id == user.id)
+        .order_by(Document.upload_at.desc(), Document.id.desc())
+        .all()
+    )
+    document_count = len(documents)
+    recent_task_rows = (
+        _base_task_query(db)
+        .filter(User.id == user.id)
+        .order_by(TaskTracker.updated_at.desc(), TaskTracker.id.desc())
+        .limit(10)
+        .all()
+    )
+
+    return AdminUserDetailResponse(
+        id=user.id,
+        name=user.name,
+        email=user.email,
+        role=user.role,
+        document_count=document_count,
+        upload_count=document_count,
+        created_at=user.created_at,
+        updated_at=user.updated_at,
+        documents=[_user_document_response(document) for document in documents],
+        recent_tasks=[_task_list_item_response(row) for row in recent_task_rows],
     )
 
 

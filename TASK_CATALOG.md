@@ -102,7 +102,7 @@
 
 | ID | Task | Priority | Status |
 |------|------|------|------|
-| BE-ADMIN-004 | Admin User List API | Medium | TODO |
+| BE-ADMIN-004 | Admin User List API | Medium | DONE |
 | FE-017 | Admin User Management API Integration | Medium | TODO |
 | BE-ADMIN-005 | Admin System Health API | Medium | TODO |
 | FE-018 | Admin System Health Integration | Medium | TODO |
@@ -216,4 +216,17 @@ Status: DONE
 - DocumentStatus / TaskStatus / TaskType 기존 타입 및 documentStatus.ts 상태 표시 유틸 재사용
 
 Priority: High
+Status: DONE
+
+### BE-ADMIN-004 Admin Users API
+
+- Admin 전체 사용자 조회 API 추가
+- Admin 사용자 상세 조회 API 추가
+- Pagination / Search(q) / Role Filter / Sorting 지원
+- User별 document_count / upload_count 집계 추가
+- 사용자 상세에 문서 목록 및 최근 TaskTracker 10개 포함
+- 모든 endpoint require_admin 보호
+- DB model 변경 및 migration 없음
+
+Priority: Medium
 Status: DONE

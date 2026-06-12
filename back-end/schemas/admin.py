@@ -127,3 +127,31 @@ class AdminTaskListResponse(BaseModel):
 
 class AdminTaskDetailResponse(AdminTaskListItemResponse):
     pass
+
+
+class AdminUserListItemResponse(BaseModel):
+    id: UUID
+    name: str
+    email: str
+    role: str
+    document_count: int
+    upload_count: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class AdminUserDocumentResponse(BaseModel):
+    id: UUID
+    file_name: str
+    status: str
+    upload_at: datetime
+
+
+class AdminUserListResponse(BaseModel):
+    items: list[AdminUserListItemResponse]
+    pagination: AdminPaginationResponse
+
+
+class AdminUserDetailResponse(AdminUserListItemResponse):
+    documents: list[AdminUserDocumentResponse]
+    recent_tasks: list[AdminTaskListItemResponse]

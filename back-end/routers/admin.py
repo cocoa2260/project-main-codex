@@ -13,17 +13,22 @@ from models.task_tracker import TaskStage
 from models.task_tracker import TaskStatus
 from models.task_tracker import TaskType
 from models.user import User
+from models.user import UserRole
 from routers.deps import require_admin
 from schemas.admin import AdminDashboardSummaryResponse
 from schemas.admin import AdminDocumentDetailResponse
 from schemas.admin import AdminDocumentListResponse
 from schemas.admin import AdminTaskDetailResponse
 from schemas.admin import AdminTaskListResponse
+from schemas.admin import AdminUserDetailResponse
+from schemas.admin import AdminUserListResponse
 from services.admin_service import get_admin_document_detail
 from services.admin_service import get_admin_task_detail
+from services.admin_service import get_admin_user_detail
 from services.admin_service import get_dashboard_summary
 from services.admin_service import list_admin_documents
 from services.admin_service import list_admin_tasks
+from services.admin_service import list_admin_users
 
 
 router = APIRouter()
@@ -80,6 +85,19 @@ TASK_SORT_FIELDS = {
     "status",
     "task_type",
 }
+USER_ROLES = {
+    UserRole.USER,
+    UserRole.ADMIN,
+}
+USER_SORT_FIELDS = {
+    "created_at",
+    "updated_at",
+    "name",
+    "email",
+    "role",
+    "document_count",
+    "upload_count",
+}
 SORT_ORDERS = {"asc", "desc"}
 
 
@@ -92,6 +110,57 @@ def dashboard_summary(
     current_user: User = Depends(require_admin),
 ):
     return get_dashboard_summary(db)
+
+
+@router.get(
+    "/users",
+    response_model=AdminUserListResponse,
+)
+def list_users(
+    q: str | None = None,
+    role: str | None = None,
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=20, ge=1, le=100),
+    sort_by: str = Query(default="created_at"),
+    sort_order: str = Query(default="desc"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    if role and role not in USER_ROLES:
+        raise HTTPException(status_code=400, detail="지원하지 않는 사용자 역할입니다.")
+
+    if sort_by not in USER_SORT_FIELDS:
+        raise HTTPException(status_code=400, detail="지원하지 않는 정렬 필드입니다.")
+
+    if sort_order.lower() not in SORT_ORDERS:
+        raise HTTPException(status_code=400, detail="지원하지 않는 정렬 방향입니다.")
+
+    return list_admin_users(
+        db=db,
+        q=q,
+        role=role,
+        page=page,
+        limit=limit,
+        sort_by=sort_by,
+        sort_order=sort_order,
+    )
+
+
+@router.get(
+    "/users/{user_id}",
+    response_model=AdminUserDetailResponse,
+)
+def get_user(
+    user_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    user = get_admin_user_detail(db=db, user_id=user_id)
+
+    if user is None:
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+
+    return user
 
 
 @router.get(
