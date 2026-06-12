@@ -88,6 +88,19 @@ Summary:
 - Removed misleading hardcoded RAG/chunk information
 - Build passed
 
+### FE-016
+Admin Task Monitoring API Integration
+Status: DONE
+Summary:
+- Added admin task API client for GET /api/admin/tasks and GET /api/admin/tasks/{task_id}
+- Added admin task DTO types reusing TaskStatus, TaskType, TaskStage, and DocumentStatus from document.ts
+- Replaced AdminJobPage task mock data with admin task API data
+- Added loading, error, empty, pagination, manual refresh, and 30 second polling states
+- Reused documentStatus.ts status presentation utilities for task status rendering
+- Displayed API progress, task_type, status, stage, message, and error_message
+- Preserved existing page layout, table columns, worker/queue/activity panels, and disabled future retry/cancel actions
+- Build passed
+
 Merged:
 - develop
 
@@ -176,7 +189,7 @@ Endpoint
 - FE-016 Admin Task Monitoring API Integration
 
 Next Recommended Task
-- FE-016 Admin Task Monitoring API Integration
+- FE-014 Admin Dashboard API Integration
 
 ---
 

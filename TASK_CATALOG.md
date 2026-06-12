@@ -94,7 +94,7 @@
 | BE-ADMIN-003 | Admin Task List API | High | DONE |
 | FE-014 | Admin Dashboard API Integration | High | TODO |
 | FE-015 | Admin Document Management API Integration | High | TODO |
-| FE-016 | Admin Task Monitoring API Integration | High | TODO |
+| FE-016 | Admin Task Monitoring API Integration | High | DONE |
 
 ---
 
@@ -174,6 +174,19 @@ Status: DONE
 - Pagination / Filters / Sorting 지원
 - Document / Owner 정보 포함
 - celery_task_id 및 내부 경로 미노출
+
+Priority: High
+Status: DONE
+
+### FE-016 Admin Task Monitoring API Integration
+
+- AdminJobPage 작업 mock data 제거
+- GET /api/admin/tasks 목록 연동
+- GET /api/admin/tasks/{task_id} 상세 조회 연동
+- Loading / Error / Empty 상태 추가
+- Pagination / Refresh / 30초 Auto Refresh 지원
+- TaskStatus / TaskType 기존 document.ts 타입 재사용
+- documentStatus.ts 상태 표시 유틸 재사용
 
 Priority: High
 Status: DONE
