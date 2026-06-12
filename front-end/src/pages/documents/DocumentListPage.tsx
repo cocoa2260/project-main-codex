@@ -1,8 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Sidebar } from '../../components/common/Sidebar';
 import { StatusBadge } from '@/components/common/StatusBadge';
-import type { DocumentStatus, TaskStage } from '@/types/document';
+import { getDocuments } from '@/api/document';
+import type { DocumentItem, DocumentStatus, TaskStage } from '@/types/document';
+import { formatDateTime } from '@/utils/date';
+import { getDocumentProgress, normalizeDocumentStatus } from '@/utils/documentStatus';
 import {
   Home,
   FileText,
@@ -64,8 +67,12 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
   const [sortBy, setSortBy] = useState<'recent' | 'oldest' | 'name'>('recent');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [showFilters, setShowFilters] = useState(false);
+  const [documents, setDocuments] = useState<Document[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchParams] = useSearchParams();
   const statusParam = searchParams.get('status');
+  const normalizedStatusParam = statusParam ? normalizeDocumentStatus(statusParam) : null;
   
   const menuItems = [
     { id: 'dashboard', label: '대시보드', icon: Home },
@@ -87,76 +94,57 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
     if (route) navigate(route);
   };
 
+  useEffect(() => {
+    let isMounted = true;
 
-  const documents: Document[] = [
-    {
-      id: '1',
-      name: '프로젝트_제안서_2024.pdf',
-      uploadDate: '2024-05-27 14:30',
-      size: '2.4 MB',
-      pages: 15,
-      status: 'COMPLETED',
-      category: '제안서',
-      summary: 'AI 문서 자동화 플랫폼 개발 프로젝트 제안서'
-    },
-    {
-      id: '2',
-      name: '계약서_검토본.pdf',
-      uploadDate: '2024-05-27 13:15',
-      size: '1.2 MB',
-      pages: 8,
-      status: 'PROCESSING',
-      stage: 'SUMMARY',
-      category: '계약서',
-      progress: 65
-    },
-    {
-      id: '3',
-      name: '회의록_0515.pdf',
-      uploadDate: '2024-05-27 12:00',
-      size: '0.8 MB',
-      pages: 3,
-      status: 'COMPLETED',
-      category: '회의록',
-      summary: '주간 프로젝트 미팅 회의록'
-    },
-    {
-      id: '4',
-      name: '기술문서_API.pdf',
-      uploadDate: '2024-05-27 11:45',
-      size: '3.1 MB',
-      pages: 22,
-      status: 'PROCESSING',
-      stage: 'OCR',
-      category: '기술문서',
-      progress: 35
-    },
-    {
-      id: '5',
-      name: '보고서_Q1_2024.pdf',
-      uploadDate: '2024-05-26 16:20',
-      size: '4.5 MB',
-      pages: 28,
-      status: 'COMPLETED',
-      category: '보고서',
-      summary: '2024년 1분기 실적 보고서'
-    },
-    {
-      id: '6',
-      name: '사용자_매뉴얼.pdf',
-      uploadDate: '2024-05-26 14:10',
-      size: '1.8 MB',
-      pages: 12,
-      status: 'FAILED',
-      category: '매뉴얼'
-    }
-  ];
+    const mapDocument = (doc: DocumentItem): Document => {
+      const status = normalizeDocumentStatus(doc.status);
+
+      return {
+        id: doc.id,
+        name: doc.file_name,
+        uploadDate: formatDateTime(doc.upload_at),
+        size: '-',
+        pages: doc.page_count ?? 0,
+        status,
+        category: doc.category ?? undefined,
+        summary: doc.summary ?? undefined,
+        progress: getDocumentProgress(status),
+      };
+    };
+
+    const loadDocuments = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+
+        const docs = await getDocuments();
+
+        if (!isMounted) return;
+        setDocuments(docs.map(mapDocument));
+      } catch (loadError) {
+        if (!isMounted) return;
+        console.error('문서 목록을 불러오는 중 오류 발생:', loadError);
+        setError('문서 목록을 불러오지 못했습니다.');
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    void loadDocuments();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const filteredDocuments = documents.filter(doc => {
     const matchesSearch = doc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          doc.category?.toLowerCase().includes(searchQuery.toLowerCase());
 
-    const matchesStatus =!statusParam || doc.status === statusParam;
+    const matchesStatus = !normalizedStatusParam || doc.status === normalizedStatusParam;
 
     const matchesFilter =
       filterStatus === 'all' ? true :
@@ -164,7 +152,7 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
       filterStatus === 'completed' ? doc.status === 'COMPLETED' :
       filterStatus === 'failed' ? doc.status === 'FAILED' : true;
 
-    return matchesSearch && matchesFilter;
+    return matchesSearch && matchesStatus && matchesFilter;
   });
 
   const stats = {
@@ -377,7 +365,17 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
             </div>
 
             {/* Document list */}
-            {filteredDocuments.length === 0 ? (
+            {isLoading ? (
+              <div className="flex items-center justify-center gap-3 py-20 text-zinc-300">
+                <Loader2 className="w-5 h-5 animate-spin text-blue-400" />
+                <span>문서 목록을 불러오는 중입니다.</span>
+              </div>
+            ) : error ? (
+              <div className="flex items-center justify-center gap-3 py-20 text-red-300">
+                <AlertCircle className="w-5 h-5 text-red-400" />
+                <span>{error}</span>
+              </div>
+            ) : filteredDocuments.length === 0 ? (
               // Empty state
               <div className="flex flex-col items-center justify-center py-20">
                 <div className="p-6 bg-white/5 rounded-full mb-6">
