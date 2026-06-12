@@ -18,6 +18,7 @@ import {
   getDocumentMarkdown,
 } from '../../api/document';
 import type { DocumentMarkdownResponse } from '../../types/document';
+import { normalizeDocumentStatus } from '../../utils/documentStatus';
 
 function getErrorMessage(error: unknown) {
   if (typeof error === 'object' && error !== null && 'response' in error) {
@@ -57,6 +58,8 @@ export function DocumentReviewPage() {
 
     return { lineCount, charCount, headingCount };
   }, [markdown]);
+  const normalizedStatus = reviewData ? normalizeDocumentStatus(reviewData.status) : null;
+  const isReviewRequired = normalizedStatus === 'REVIEW_REQUIRED';
 
   useEffect(() => {
     if (!documentId) {
@@ -103,7 +106,7 @@ export function DocumentReviewPage() {
       setIsSubmitting(true);
       setError(null);
       await cancelDocumentSummary(documentId);
-      navigate('/documents');
+      navigate('/documents?status=REVIEW_REQUIRED');
     } catch (cancelError) {
       setError(getErrorMessage(cancelError));
     } finally {
@@ -181,6 +184,13 @@ export function DocumentReviewPage() {
           </div>
         )}
 
+        {reviewData && !isReviewRequired && (
+          <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 text-amber-200 flex items-center gap-3">
+            <AlertCircle className="w-5 h-5" />
+            <span>현재 문서는 검토 대기 상태가 아닙니다. 상태를 확인한 뒤 필요한 작업을 진행해주세요.</span>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px] gap-6">
           <section className="bg-[#111116] border border-white/10 rounded-2xl overflow-hidden">
             <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between">
@@ -215,10 +225,6 @@ export function DocumentReviewPage() {
                 검토 정보
               </h3>
               <div className="space-y-3 text-sm">
-                <div className="flex items-center justify-between border-b border-white/5 pb-3">
-                  <span className="text-gray-400">문서 ID</span>
-                  <span className="text-white font-medium">{documentId?.slice(0, 8) ?? '-'}</span>
-                </div>
                 <div className="flex items-center justify-between border-b border-white/5 pb-3">
                   <span className="text-gray-400">상태</span>
                   <span className="text-purple-300 font-medium">{reviewData?.status ?? '-'}</span>
@@ -265,7 +271,7 @@ export function DocumentReviewPage() {
                 className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 bg-white/5 border border-white/10 text-white rounded-xl hover:bg-white/10 disabled:opacity-50 transition-colors font-medium"
               >
                 <MessageSquare className="w-4 h-4" />
-                나중에 하기
+                요약 보류
               </button>
             </div>
           </aside>
