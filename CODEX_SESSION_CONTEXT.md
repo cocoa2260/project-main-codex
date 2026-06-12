@@ -104,6 +104,18 @@ Summary:
 Merged:
 - develop
 
+### FE-014
+Admin Dashboard API Integration
+Status: DONE
+Summary:
+- Added admin dashboard summary API client for GET /api/admin/dashboard/summary
+- Added AdminDashboardSummaryResponse, AdminUserStats, AdminDocumentStats, AdminTaskStats, and AdminRecentEvent frontend DTOs
+- Replaced AdminDashboardPage dashboard mock stats/events with API-backed data
+- Added loading, error, empty, manual refresh, and 30 second polling states
+- Reused DocumentStatus / TaskStatus / TaskType and documentStatus.ts status presentation utilities
+- Preserved the existing dashboard layout, cards, and page sections
+- Build passed
+
 ---
 
 ### FE-011
@@ -189,7 +201,7 @@ Endpoint
 - FE-016 Admin Task Monitoring API Integration
 
 Next Recommended Task
-- FE-014 Admin Dashboard API Integration
+- FE-015 Admin Document Management API Integration
 
 ---
 

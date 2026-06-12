@@ -1,5 +1,41 @@
 import type { DocumentStatus, TaskStage, TaskStatus, TaskType } from './document';
 
+export interface AdminUserStats {
+  total_users: number;
+  admin_users: number;
+  today_users: number;
+}
+
+export interface AdminDocumentStats {
+  total: number;
+  uploaded_today: number;
+  by_status: Partial<Record<DocumentStatus, number>>;
+}
+
+export interface AdminTaskStats {
+  total: number;
+  by_status: Partial<Record<TaskStatus, number>>;
+  by_type: Partial<Record<TaskType, number>>;
+}
+
+export interface AdminRecentEvent {
+  id: string;
+  event_type: string;
+  message: string;
+  occurred_at: string;
+  document_id: string | null;
+  document_name: string | null;
+  task_type: TaskType | string | null;
+  status: TaskStatus | DocumentStatus | string | null;
+}
+
+export interface AdminDashboardSummaryResponse {
+  users: AdminUserStats;
+  documents: AdminDocumentStats;
+  tasks: AdminTaskStats;
+  recent_events: AdminRecentEvent[];
+}
+
 export interface AdminOwnerResponse {
   id: string;
   email: string;

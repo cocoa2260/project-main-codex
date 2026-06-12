@@ -1,30 +1,27 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { getAdminDashboardSummary } from '../../api/admin';
 import { Sidebar } from '../../components/common/Sidebar';
+import type { AdminDashboardSummaryResponse, AdminRecentEvent } from '../../types/admin';
+import type { TaskStatus, TaskType } from '../../types/document';
+import { getDocumentStatusPresentation, normalizeDocumentStatus } from '../../utils/documentStatus';
 import {
   Home,
   FileText,
-  Upload,
-  MessageSquare,
   Clock,
   Settings,
-  Shield,
   Menu,
   X,
   Search,
   Bell,
-  User,
   Users,
   Activity,
   CheckCircle2,
-  AlertCircle,
   XCircle,
   Loader2,
   Database,
   Zap,
   TrendingUp,
-  TrendingDown,
-  BarChart3,
   RefreshCw,
   PlayCircle,
   FileWarning,
@@ -33,7 +30,6 @@ import {
   Cpu,
   HardDrive,
   Layers,
-  Calendar
 } from 'lucide-react';
 
 interface SystemService {
@@ -47,10 +43,10 @@ interface SystemService {
 interface Job {
   id: string;
   documentName: string;
-  type: 'ocr' | 'summary' | 'embedding';
+  type: TaskType;
   progress: number;
   user: string;
-  status: 'running' | 'queued' | 'failed';
+  status: TaskStatus;
   startedAt: string;
 }
 
@@ -58,10 +54,68 @@ interface AdminDashboardPageProps {
   onLogout?: () => void;
 }
 
+const AUTO_REFRESH_INTERVAL_MS = 30_000;
+const taskTypes: TaskType[] = ['OCR', 'SUMMARY', 'EMBEDDING', 'RAG_INDEXING'];
+
+function getApiErrorMessage(error: unknown): string {
+  const response = (error as { response?: { data?: { detail?: string; message?: string } } }).response;
+  return response?.data?.detail ?? response?.data?.message ?? (error instanceof Error ? error.message : '관리자 대시보드 정보를 불러오지 못했습니다.');
+}
+
+function normalizeTaskStatus(status?: string | null): TaskStatus {
+  const normalizedStatus = normalizeDocumentStatus(status);
+  return normalizedStatus === 'REVIEW_REQUIRED' ? 'PROCESSING' : normalizedStatus;
+}
+
+function normalizeTaskType(taskType?: string | null): TaskType | null {
+  const normalizedType = taskType?.toUpperCase();
+  return taskTypes.find((type) => type === normalizedType) ?? null;
+}
+
+function getCount<T extends string>(counts: Partial<Record<T, number>> | undefined, key: T): number {
+  return counts?.[key] ?? 0;
+}
+
+function formatDateTime(value?: string | null): string {
+  if (!value) return '-';
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return new Intl.DateTimeFormat('ko-KR', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+}
+
+function formatRelativeTime(value?: string | null): string {
+  if (!value) return '-';
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  const diffSeconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000));
+  if (diffSeconds < 60) return '방금';
+
+  const diffMinutes = Math.floor(diffSeconds / 60);
+  if (diffMinutes < 60) return `${diffMinutes}분 전`;
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}시간 전`;
+
+  return formatDateTime(value);
+}
+
 export function AdminDashboardPage({ onLogout }: AdminDashboardPageProps) {
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [summary, setSummary] = useState<AdminDashboardSummaryResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const menuItems = [
     { id: 'dashboard', label: 'Overview', icon: Home },
@@ -87,171 +141,225 @@ export function AdminDashboardPage({ onLogout }: AdminDashboardPageProps) {
     const route = adminMenuRoutes[menuId];
     if (route) navigate(route);
   };
+
+  const fetchDashboardSummary = useCallback(async (showLoading = false) => {
+    if (showLoading) {
+      setIsLoading(true);
+    } else {
+      setIsRefreshing(true);
+    }
+
+    setErrorMessage(null);
+
+    try {
+      const response = await getAdminDashboardSummary();
+      setSummary(response);
+    } catch (error) {
+      setErrorMessage(getApiErrorMessage(error));
+      setSummary(null);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchDashboardSummary(true);
+  }, [fetchDashboardSummary]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      void fetchDashboardSummary(false);
+    }, AUTO_REFRESH_INTERVAL_MS);
+
+    return () => window.clearInterval(intervalId);
+  }, [fetchDashboardSummary]);
+
+  const handleRefresh = () => {
+    void fetchDashboardSummary(false);
+  };
+
+  const taskStatusCounts = summary?.tasks.by_status;
+  const documentStatusCounts = summary?.documents.by_status;
+  const processingTasks = getCount(taskStatusCounts, 'PROCESSING');
+  const failedTasks = getCount(taskStatusCounts, 'FAILED');
+  const pendingTasks = getCount(taskStatusCounts, 'PENDING');
+  const completedTasks = getCount(taskStatusCounts, 'COMPLETED');
+  const processingDocuments = getCount(documentStatusCounts, 'PROCESSING') + getCount(documentStatusCounts, 'REVIEW_REQUIRED');
+  const completedDocuments = getCount(documentStatusCounts, 'COMPLETED');
+  const failedDocuments = getCount(documentStatusCounts, 'FAILED');
+  const taskTotal = summary?.tasks.total ?? 0;
+  const documentTotal = summary?.documents.total ?? 0;
+  const processingTaskRate = taskTotal > 0 ? Math.round((processingTasks / taskTotal) * 100) : 0;
+  const completedTaskRate = taskTotal > 0 ? Math.round((completedTasks / taskTotal) * 100) : 0;
+  const completedDocumentRate = documentTotal > 0 ? Math.round((completedDocuments / documentTotal) * 100) : 0;
+  const pendingTaskRate = taskTotal > 0 ? Math.round((pendingTasks / taskTotal) * 100) : 0;
+
+  const hasDashboardData = Boolean(summary) && (
+    (summary?.users.total_users ?? 0) > 0
+    || (summary?.documents.total ?? 0) > 0
+    || (summary?.tasks.total ?? 0) > 0
+    || (summary?.recent_events.length ?? 0) > 0
+  );
+
   const stats = [
     {
       label: '전체 사용자',
-      value: '1,234',
-      change: '+5.2%',
+      value: (summary?.users.total_users ?? 0).toLocaleString(),
+      change: `관리자 ${(summary?.users.admin_users ?? 0).toLocaleString()}`,
       trend: 'up' as const,
       icon: Users,
       color: 'primary'
     },
     {
       label: '전체 문서',
-      value: '8,456',
-      change: '+12.8%',
+      value: (summary?.documents.total ?? 0).toLocaleString(),
+      change: `오늘 ${(summary?.documents.uploaded_today ?? 0).toLocaleString()}`,
       trend: 'up' as const,
       icon: FileText,
       color: 'blue'
     },
     {
       label: '처리 중 작업',
-      value: '23',
-      change: '-3',
-      trend: 'down' as const,
+      value: processingTasks.toLocaleString(),
+      change: `${processingDocuments.toLocaleString()} 문서`,
+      trend: 'up' as const,
       icon: Loader2,
       color: 'purple'
     },
     {
       label: '실패한 작업',
-      value: '5',
-      change: '+2',
+      value: failedTasks.toLocaleString(),
+      change: `${failedDocuments.toLocaleString()} 문서`,
       trend: 'up' as const,
       icon: XCircle,
       color: 'red'
     },
     {
       label: '대기 큐',
-      value: '12',
-      change: '+4',
+      value: pendingTasks.toLocaleString(),
+      change: `${(summary?.tasks.total ?? 0).toLocaleString()} 전체`,
       trend: 'up' as const,
       icon: Clock,
       color: 'yellow'
     },
     {
-      label: '오늘 처리량',
-      value: '342',
-      change: '+18%',
+      label: '완료 작업',
+      value: completedTasks.toLocaleString(),
+      change: `${(summary?.documents.uploaded_today ?? 0).toLocaleString()} 오늘 문서`,
       trend: 'up' as const,
       icon: TrendingUp,
       color: 'green'
     }
   ];
 
-  const systemServices: SystemService[] = [
+  const systemServices: SystemService[] = useMemo(() => [
     {
-      name: 'OCR Workers',
-      status: 'healthy',
+      name: 'OCR Queue',
+      status: getCount(summary?.tasks.by_type, 'OCR') > 0 ? 'healthy' : 'offline',
       icon: FileText,
-      details: '3 / 5 active',
-      uptime: '99.9%'
+      details: `${getCount(summary?.tasks.by_type, 'OCR').toLocaleString()} tasks`,
+      uptime: `${processingTasks.toLocaleString()} active`
     },
     {
-      name: 'Celery Workers',
-      status: 'healthy',
+      name: 'Summary Queue',
+      status: getCount(summary?.tasks.by_type, 'SUMMARY') > 0 ? 'healthy' : 'offline',
       icon: Zap,
-      details: '4 / 5 active',
-      uptime: '99.8%'
+      details: `${getCount(summary?.tasks.by_type, 'SUMMARY').toLocaleString()} tasks`,
+      uptime: `${pendingTasks.toLocaleString()} queued`
     },
     {
-      name: 'Redis',
-      status: 'healthy',
+      name: 'Document Store',
+      status: failedDocuments > 0 ? 'warning' : 'healthy',
       icon: Database,
-      details: 'Connected',
-      uptime: '100%'
+      details: `${(summary?.documents.total ?? 0).toLocaleString()} documents`,
+      uptime: `${failedDocuments.toLocaleString()} failed`
     },
     {
-      name: 'Ollama',
-      status: 'warning',
+      name: 'Embedding Queue',
+      status: getCount(summary?.tasks.by_type, 'EMBEDDING') > 0 ? 'healthy' : 'offline',
       icon: Activity,
-      details: 'High load',
-      uptime: '98.5%'
+      details: `${getCount(summary?.tasks.by_type, 'EMBEDDING').toLocaleString()} tasks`,
+      uptime: `${completedTasks.toLocaleString()} completed`
     },
     {
-      name: 'PostgreSQL',
-      status: 'healthy',
+      name: 'Users',
+      status: (summary?.users.total_users ?? 0) > 0 ? 'healthy' : 'offline',
       icon: Database,
-      details: 'Connected',
-      uptime: '100%'
+      details: `${(summary?.users.total_users ?? 0).toLocaleString()} users`,
+      uptime: `${(summary?.users.today_users ?? 0).toLocaleString()} today`
     },
     {
       name: 'Queue System',
-      status: 'healthy',
+      status: failedTasks > 0 ? 'warning' : 'healthy',
       icon: Layers,
-      details: '12 queued',
-      uptime: '99.9%'
+      details: `${pendingTasks.toLocaleString()} queued`,
+      uptime: `${failedTasks.toLocaleString()} failed`
     }
+  ], [completedTasks, failedDocuments, failedTasks, pendingTasks, processingTasks, summary]);
+
+  const activeJobs: Job[] = useMemo(() => (
+    (summary?.recent_events ?? [])
+      .map((event) => {
+        const taskType = normalizeTaskType(event.task_type);
+        if (!taskType) return null;
+
+        return {
+          id: event.id,
+          documentName: event.document_name ?? event.message,
+          type: taskType,
+          progress: normalizeTaskStatus(event.status) === 'COMPLETED' ? 100 : 0,
+          user: event.event_type,
+          status: normalizeTaskStatus(event.status),
+          startedAt: formatRelativeTime(event.occurred_at),
+        };
+      })
+      .filter((job): job is Job => Boolean(job))
+      .filter((job) => job.status === 'PROCESSING' || job.status === 'PENDING' || job.status === 'FAILED')
+      .slice(0, 4)
+  ), [summary]);
+
+  const recentEvents = summary?.recent_events ?? [];
+
+  const resourceUsage = [
+    { label: '처리 중 작업', value: processingTaskRate, icon: Cpu, color: 'bg-blue-500', textColor: 'text-blue-400' },
+    { label: '작업 완료율', value: completedTaskRate, icon: Activity, color: 'bg-green-500', textColor: 'text-green-400' },
+    { label: '문서 완료율', value: completedDocumentRate, icon: HardDrive, color: 'bg-purple-500', textColor: 'text-purple-400' },
+    { label: '큐 사용률', value: pendingTaskRate, icon: Database, color: 'bg-yellow-500', textColor: 'text-yellow-400' },
   ];
 
-  const activeJobs: Job[] = [
-    {
-      id: '1',
-      documentName: '계약서_검토본.pdf',
-      type: 'ocr',
-      progress: 65,
-      user: '김철수',
-      status: 'running',
-      startedAt: '2분 전'
-    },
-    {
-      id: '2',
-      documentName: '프로젝트_제안서.pdf',
-      type: 'summary',
-      progress: 45,
-      user: '이영희',
-      status: 'running',
-      startedAt: '5분 전'
-    },
-    {
-      id: '3',
-      documentName: '보고서_Q1.pdf',
-      type: 'embedding',
-      progress: 0,
-      user: '박민수',
-      status: 'queued',
-      startedAt: '방금'
-    },
-    {
-      id: '4',
-      documentName: '기술문서_API.pdf',
-      type: 'ocr',
-      progress: 0,
-      user: '정수진',
-      status: 'failed',
-      startedAt: '10분 전'
-    }
-  ];
-
-  const recentEvents = [
-    {
-      id: '1',
-      type: 'success' as const,
-      message: '회의록_0515.pdf 처리 완료',
-      time: '1분 전',
-      user: '홍길동'
-    },
-    {
-      id: '2',
-      type: 'error' as const,
-      message: '기술문서_API.pdf OCR 실패',
-      time: '5분 전',
-      user: '정수진'
-    },
-    {
-      id: '3',
-      type: 'warning' as const,
-      message: 'Ollama worker 높은 부하',
-      time: '10분 전',
-      user: 'System'
-    },
-    {
-      id: '4',
-      type: 'info' as const,
-      message: '새 사용자 등록',
-      time: '15분 전',
-      user: '최민지'
-    }
-  ];
+  const alerts = [
+    failedTasks > 0
+      ? {
+        id: 'failed-tasks',
+        icon: FileWarning,
+        title: '실패한 작업 감지',
+        message: `${failedTasks.toLocaleString()}개 작업 실패`,
+        className: 'bg-red-500/10 border-red-500/20',
+        textClassName: 'text-red-400',
+      }
+      : null,
+    failedDocuments > 0
+      ? {
+        id: 'failed-documents',
+        icon: AlertTriangle,
+        title: '실패한 문서 감지',
+        message: `${failedDocuments.toLocaleString()}개 문서 실패`,
+        className: 'bg-yellow-500/10 border-yellow-500/20',
+        textClassName: 'text-yellow-400',
+      }
+      : null,
+    pendingTasks > 0
+      ? {
+        id: 'pending-tasks',
+        icon: Clock,
+        title: '대기 작업 존재',
+        message: `${pendingTasks.toLocaleString()}개 작업 대기 중`,
+        className: 'bg-yellow-500/10 border-yellow-500/20',
+        textClassName: 'text-yellow-400',
+      }
+      : null,
+  ].filter((alert): alert is NonNullable<typeof alert> => Boolean(alert));
 
   const getStatusColor = (status: SystemService['status']) => {
     switch (status) {
@@ -266,35 +374,39 @@ export function AdminDashboardPage({ onLogout }: AdminDashboardPageProps) {
     }
   };
 
-  const getJobTypeLabel = (type: Job['type']) => {
+  const getJobTypeLabel = (type: TaskType) => {
     switch (type) {
-      case 'ocr':
+      case 'OCR':
         return 'OCR 처리';
-      case 'summary':
+      case 'SUMMARY':
         return 'AI 요약';
-      case 'embedding':
+      case 'EMBEDDING':
         return '임베딩';
+      case 'RAG_INDEXING':
+        return 'RAG 인덱싱';
     }
   };
 
-  const getJobTypeColor = (type: Job['type']) => {
+  const getJobTypeColor = (type: TaskType) => {
     switch (type) {
-      case 'ocr':
+      case 'OCR':
         return 'bg-blue-500/10 text-blue-400';
-      case 'summary':
+      case 'SUMMARY':
         return 'bg-purple-500/10 text-purple-400';
-      case 'embedding':
+      case 'EMBEDDING':
         return 'bg-yellow-500/10 text-yellow-400';
+      case 'RAG_INDEXING':
+        return 'bg-green-500/10 text-green-400';
     }
   };
 
-  const getEventIcon = (type: 'success' | 'error' | 'warning' | 'info') => {
-    switch (type) {
-      case 'success':
+  const getEventIcon = (event: AdminRecentEvent) => {
+    switch (normalizeTaskStatus(event.status)) {
+      case 'COMPLETED':
         return <CheckCircle2 className="w-4 h-4 text-green-400" />;
-      case 'error':
+      case 'FAILED':
         return <XCircle className="w-4 h-4 text-red-400" />;
-      case 'warning':
+      case 'PENDING':
         return <AlertTriangle className="w-4 h-4 text-yellow-400" />;
       default:
         return <Activity className="w-4 h-4 text-blue-400" />;
@@ -324,9 +436,15 @@ export function AdminDashboardPage({ onLogout }: AdminDashboardPageProps) {
             </button>
 
             {/* System status badge */}
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/10 border border-green-500/20 rounded-lg">
-              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-              <span className="text-green-400 text-sm font-medium">All Systems Operational</span>
+            <div className={`flex items-center gap-2 px-3 py-1.5 border rounded-lg ${
+              errorMessage
+                ? 'bg-red-500/10 border-red-500/20'
+                : 'bg-green-500/10 border-green-500/20'
+            }`}>
+              <div className={`w-2 h-2 rounded-full animate-pulse ${errorMessage ? 'bg-red-400' : 'bg-green-400'}`} />
+              <span className={`text-sm font-medium ${errorMessage ? 'text-red-400' : 'text-green-400'}`}>
+                {errorMessage ? 'Dashboard API Error' : isLoading ? 'Loading Dashboard' : 'Dashboard API Connected'}
+              </span>
             </div>
 
             {/* Search */}
@@ -366,9 +484,46 @@ export function AdminDashboardPage({ onLogout }: AdminDashboardPageProps) {
           <div className="max-w-[1800px] mx-auto space-y-6">
             {/* Header */}
             <div>
-              <h2 className="text-2xl font-bold text-white mb-1">관리자 대시보드</h2>
-              <p className="text-gray-400">AI 문서 자동화 플랫폼 통합 관리</p>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-2xl font-bold text-white mb-1">관리자 대시보드</h2>
+                  <p className="text-gray-400">AI 문서 자동화 플랫폼 통합 관리</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRefresh}
+                  disabled={isLoading || isRefreshing}
+                  className="inline-flex items-center gap-2 px-3 py-2 bg-white/5 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed border border-white/10 rounded-lg transition-colors text-gray-300 text-sm"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                  새로고침
+                </button>
+              </div>
             </div>
+
+            {errorMessage && (
+              <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl">
+                <div className="flex items-start gap-3">
+                  <XCircle className="w-5 h-5 text-red-400 mt-0.5" />
+                  <div>
+                    <p className="text-red-400 font-medium">대시보드 데이터를 불러오지 못했습니다.</p>
+                    <p className="text-red-400/80 text-sm mt-1">{errorMessage}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {!isLoading && !errorMessage && !hasDashboardData && (
+              <div className="p-4 bg-white/5 border border-white/10 rounded-xl">
+                <div className="flex items-start gap-3">
+                  <Activity className="w-5 h-5 text-gray-400 mt-0.5" />
+                  <div>
+                    <p className="text-white font-medium">아직 집계된 대시보드 데이터가 없습니다.</p>
+                    <p className="text-gray-400 text-sm mt-1">사용자, 문서 또는 작업이 생성되면 이 화면에 표시됩니다.</p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Stats cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
@@ -405,7 +560,7 @@ export function AdminDashboardPage({ onLogout }: AdminDashboardPageProps) {
                         </span>
                       </div>
                       <p className="text-gray-400 text-sm mb-1">{stat.label}</p>
-                      <p className="text-2xl font-bold text-white">{stat.value}</p>
+                      <p className="text-2xl font-bold text-white">{isLoading ? '-' : stat.value}</p>
                     </div>
                   </div>
                 );
@@ -420,9 +575,11 @@ export function AdminDashboardPage({ onLogout }: AdminDashboardPageProps) {
                     <h3 className="text-white font-semibold text-lg">시스템 상태</h3>
                     <button
                       type="button"
+                      onClick={handleRefresh}
+                      disabled={isLoading || isRefreshing}
                       className="p-2 hover:bg-white/5 rounded-lg transition-colors"
                     >
-                      <RefreshCw className="w-4 h-4 text-gray-400" />
+                      <RefreshCw className={`w-4 h-4 text-gray-400 ${isRefreshing ? 'animate-spin' : ''}`} />
                     </button>
                   </div>
 
@@ -464,62 +621,83 @@ export function AdminDashboardPage({ onLogout }: AdminDashboardPageProps) {
                   </div>
 
                   <div className="space-y-3">
-                    {activeJobs.map((job) => (
-                      <div
-                        key={job.id}
-                        className="p-4 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 transition-colors"
-                      >
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-2">
-                              <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                              <h4 className="text-white font-medium text-sm truncate">
-                                {job.documentName}
-                              </h4>
+                    {isLoading && (
+                      <div className="p-4 bg-white/5 border border-white/10 rounded-lg">
+                        <div className="flex items-center gap-3 text-gray-400 text-sm">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          활성 작업을 불러오는 중입니다.
+                        </div>
+                      </div>
+                    )}
+                    {!isLoading && activeJobs.length === 0 && (
+                      <div className="p-4 bg-white/5 border border-white/10 rounded-lg text-gray-400 text-sm">
+                        현재 표시할 활성 작업이 없습니다.
+                      </div>
+                    )}
+                    {activeJobs.map((job) => {
+                      const statusPresentation = getDocumentStatusPresentation(job.status);
+
+                      return (
+                        <div
+                          key={job.id}
+                          className="p-4 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 transition-colors"
+                        >
+                          <div className="flex items-start justify-between mb-3">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-2">
+                                <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                                <h4 className="text-white font-medium text-sm truncate">
+                                  {job.documentName}
+                                </h4>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2 text-xs">
+                                <span className={`px-2 py-1 rounded ${getJobTypeColor(job.type)}`}>
+                                  {getJobTypeLabel(job.type)}
+                                </span>
+                                <span className={`px-2 py-1 border rounded ${statusPresentation.color} ${statusPresentation.bgColor} ${statusPresentation.borderColor}`}>
+                                  {statusPresentation.label}
+                                </span>
+                                <span className="text-gray-400">• {job.user}</span>
+                                <span className="text-gray-500">• {job.startedAt}</span>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-2 text-xs">
-                              <span className={`px-2 py-1 rounded ${getJobTypeColor(job.type)}`}>
-                                {getJobTypeLabel(job.type)}
-                              </span>
-                              <span className="text-gray-400">• {job.user}</span>
-                              <span className="text-gray-500">• {job.startedAt}</span>
-                            </div>
+
+                            {job.status === 'PROCESSING' ? (
+                              <Loader2 className="w-4 h-4 text-blue-400 animate-spin flex-shrink-0" />
+                            ) : job.status === 'FAILED' ? (
+                              <XCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
+                            ) : (
+                              <Clock className="w-4 h-4 text-yellow-400 flex-shrink-0" />
+                            )}
                           </div>
 
-                          {job.status === 'running' ? (
-                            <Loader2 className="w-4 h-4 text-blue-400 animate-spin flex-shrink-0" />
-                          ) : job.status === 'failed' ? (
-                            <XCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
-                          ) : (
-                            <Clock className="w-4 h-4 text-yellow-400 flex-shrink-0" />
+                          {job.status === 'PROCESSING' && (
+                            <div>
+                              <div className="flex justify-between text-xs mb-1">
+                                <span className="text-gray-400">진행률</span>
+                                <span className="text-white font-medium">{job.progress}%</span>
+                              </div>
+                              <div className="w-full bg-white/5 rounded-full h-1.5">
+                                <div
+                                  className="bg-gradient-to-r from-blue-500 to-purple-500 h-1.5 rounded-full transition-all duration-500"
+                                  style={{ width: `${job.progress}%` }}
+                                />
+                              </div>
+                            </div>
+                          )}
+
+                          {job.status === 'FAILED' && (
+                            <button
+                              type="button"
+                              disabled
+                              className="w-full mt-2 py-2 px-3 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded text-red-400 text-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                            >
+                              재시도
+                            </button>
                           )}
                         </div>
-
-                        {job.status === 'running' && (
-                          <div>
-                            <div className="flex justify-between text-xs mb-1">
-                              <span className="text-gray-400">진행률</span>
-                              <span className="text-white font-medium">{job.progress}%</span>
-                            </div>
-                            <div className="w-full bg-white/5 rounded-full h-1.5">
-                              <div
-                                className="bg-gradient-to-r from-blue-500 to-purple-500 h-1.5 rounded-full transition-all duration-500"
-                                style={{ width: `${job.progress}%` }}
-                              />
-                            </div>
-                          </div>
-                        )}
-
-                        {job.status === 'failed' && (
-                          <button
-                            type="button"
-                            className="w-full mt-2 py-2 px-3 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded text-red-400 text-sm transition-colors"
-                          >
-                            재시도
-                          </button>
-                        )}
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -565,20 +743,33 @@ export function AdminDashboardPage({ onLogout }: AdminDashboardPageProps) {
                 <div className="bg-[#111116] border border-white/10 rounded-xl p-6">
                   <h3 className="text-white font-semibold text-lg mb-4">최근 이벤트</h3>
                   <div className="space-y-3">
+                    {isLoading && (
+                      <div className="p-3 bg-white/5 rounded-lg">
+                        <div className="flex items-center gap-3 text-gray-400 text-sm">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          최근 이벤트를 불러오는 중입니다.
+                        </div>
+                      </div>
+                    )}
+                    {!isLoading && recentEvents.length === 0 && (
+                      <div className="p-3 bg-white/5 rounded-lg text-gray-400 text-sm">
+                        표시할 최근 이벤트가 없습니다.
+                      </div>
+                    )}
                     {recentEvents.map((event) => (
                       <div
                         key={event.id}
                         className="flex items-start gap-3 p-3 bg-white/5 rounded-lg hover:bg-white/10 transition-colors"
                       >
                         <div className="mt-0.5">
-                          {getEventIcon(event.type)}
+                          {getEventIcon(event)}
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-gray-300 text-sm">{event.message}</p>
                           <div className="flex items-center gap-2 mt-1">
-                            <p className="text-gray-500 text-xs">{event.time}</p>
+                            <p className="text-gray-500 text-xs">{formatRelativeTime(event.occurred_at)}</p>
                             <span className="text-gray-600">•</span>
-                            <p className="text-gray-500 text-xs">{event.user}</p>
+                            <p className="text-gray-500 text-xs">{event.document_name ?? event.event_type}</p>
                           </div>
                         </div>
                       </div>
@@ -590,57 +781,24 @@ export function AdminDashboardPage({ onLogout }: AdminDashboardPageProps) {
                 <div className="bg-[#111116] border border-white/10 rounded-xl p-6">
                   <h3 className="text-white font-semibold text-lg mb-4">리소스 사용량</h3>
                   <div className="space-y-4">
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <Cpu className="w-4 h-4 text-blue-400" />
-                          <span className="text-gray-400 text-sm">CPU</span>
-                        </div>
-                        <span className="text-white text-sm font-medium">45%</span>
-                      </div>
-                      <div className="w-full bg-white/5 rounded-full h-2">
-                        <div className="bg-blue-500 h-2 rounded-full" style={{ width: '45%' }} />
-                      </div>
-                    </div>
+                    {resourceUsage.map((item) => {
+                      const Icon = item.icon;
 
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <Activity className="w-4 h-4 text-green-400" />
-                          <span className="text-gray-400 text-sm">메모리</span>
+                      return (
+                        <div key={item.label}>
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <Icon className={`w-4 h-4 ${item.textColor}`} />
+                              <span className="text-gray-400 text-sm">{item.label}</span>
+                            </div>
+                            <span className="text-white text-sm font-medium">{item.value}%</span>
+                          </div>
+                          <div className="w-full bg-white/5 rounded-full h-2">
+                            <div className={`${item.color} h-2 rounded-full transition-all duration-500`} style={{ width: `${item.value}%` }} />
+                          </div>
                         </div>
-                        <span className="text-white text-sm font-medium">62%</span>
-                      </div>
-                      <div className="w-full bg-white/5 rounded-full h-2">
-                        <div className="bg-green-500 h-2 rounded-full" style={{ width: '62%' }} />
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <HardDrive className="w-4 h-4 text-purple-400" />
-                          <span className="text-gray-400 text-sm">디스크</span>
-                        </div>
-                        <span className="text-white text-sm font-medium">78%</span>
-                      </div>
-                      <div className="w-full bg-white/5 rounded-full h-2">
-                        <div className="bg-purple-500 h-2 rounded-full" style={{ width: '78%' }} />
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <Database className="w-4 h-4 text-yellow-400" />
-                          <span className="text-gray-400 text-sm">큐 사용률</span>
-                        </div>
-                        <span className="text-white text-sm font-medium">34%</span>
-                      </div>
-                      <div className="w-full bg-white/5 rounded-full h-2">
-                        <div className="bg-yellow-500 h-2 rounded-full" style={{ width: '34%' }} />
-                      </div>
-                    </div>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -648,25 +806,26 @@ export function AdminDashboardPage({ onLogout }: AdminDashboardPageProps) {
                 <div className="bg-[#111116] border border-white/10 rounded-xl p-6">
                   <h3 className="text-white font-semibold text-lg mb-4">알림</h3>
                   <div className="space-y-3">
-                    <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
-                      <div className="flex items-start gap-2">
-                        <AlertTriangle className="w-4 h-4 text-yellow-400 mt-0.5" />
-                        <div>
-                          <p className="text-yellow-400 text-sm font-medium">높은 부하 감지</p>
-                          <p className="text-yellow-400/80 text-xs mt-1">Ollama worker 부하 85%</p>
-                        </div>
+                    {alerts.length === 0 && (
+                      <div className="p-3 bg-white/5 border border-white/10 rounded-lg text-gray-400 text-sm">
+                        현재 표시할 알림이 없습니다.
                       </div>
-                    </div>
+                    )}
+                    {alerts.map((alert) => {
+                      const Icon = alert.icon;
 
-                    <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
-                      <div className="flex items-start gap-2">
-                        <FileWarning className="w-4 h-4 text-red-400 mt-0.5" />
-                        <div>
-                          <p className="text-red-400 text-sm font-medium">실패한 작업 증가</p>
-                          <p className="text-red-400/80 text-xs mt-1">최근 1시간 5개 실패</p>
+                      return (
+                        <div key={alert.id} className={`p-3 border rounded-lg ${alert.className}`}>
+                          <div className="flex items-start gap-2">
+                            <Icon className={`w-4 h-4 mt-0.5 ${alert.textClassName}`} />
+                            <div>
+                              <p className={`${alert.textClassName} text-sm font-medium`}>{alert.title}</p>
+                              <p className={`${alert.textClassName} text-xs mt-1 opacity-80`}>{alert.message}</p>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
