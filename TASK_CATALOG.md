@@ -41,21 +41,52 @@
 
 | ID | Task | Priority | Status |
 |------|------|------|------|
-| FE-010-A | Workspace Summary API Integration | High | DONE |
 | FE-011 | Admin Route Audit | High | DONE |
-| AUTH-001 | Align login response role with frontend auth state | High | DONE |
-| FE-012 | Admin Page Mock Audit | High | TODO |
+| FE-012 | Admin Page Mock Audit | High | DONE |
 | FE-013 | Admin API Spec | High | TODO |
 
 ---
 
-## PHASE 5 - Admin MVP
+## PHASE 5 - Admin MVP Read APIs
 
 | ID | Task | Priority | Status |
 |------|------|------|------|
-| FE-014 | Admin Dashboard | Medium | TODO |
-| FE-015 | Admin Document Management | Medium | TODO |
-| FE-016 | Admin Task Monitoring | Medium | TODO |
+| BE-ADMIN-001 | Admin Dashboard Summary API | High | TODO |
+| BE-ADMIN-002 | Admin Document List API | High | TODO |
+| BE-ADMIN-003 | Admin Task List API | High | TODO |
+| FE-014 | Admin Dashboard API Integration | High | TODO |
+| FE-015 | Admin Document Management API Integration | High | TODO |
+| FE-016 | Admin Task Monitoring API Integration | High | TODO |
+
+---
+
+## PHASE 6 - Admin Extended Features
+
+| ID | Task | Priority | Status |
+|------|------|------|------|
+| BE-ADMIN-004 | Admin User List API | Medium | TODO |
+| FE-017 | Admin User Management API Integration | Medium | TODO |
+| BE-ADMIN-005 | Admin System Health API | Medium | TODO |
+| FE-018 | Admin System Health Integration | Medium | TODO |
+| BE-ADMIN-006 | Admin Log List API | Medium | TODO |
+| FE-019 | Admin Log Page API Integration | Medium | TODO |
+| BE-ADMIN-007 | Admin Settings Read API | Medium | TODO |
+| FE-020 | Admin Settings Page API Integration | Medium | TODO |
+
+---
+
+## PHASE 7 - Admin Control Actions
+
+| ID | Task | Priority | Status |
+|------|------|------|------|
+| BE-ADMIN-008 | Failed Task Retry API | Medium | TODO |
+| FE-021 | Failed Task Retry UI Integration | Medium | TODO |
+| BE-ADMIN-009 | Document Retry API | Medium | TODO |
+| FE-022 | Document Retry UI Integration | Medium | TODO |
+| BE-ADMIN-010 | User Role Update API | Medium | TODO |
+| FE-023 | User Role Update UI Integration | Medium | TODO |
+| BE-ADMIN-011 | User Account Status API | Low | TODO |
+| FE-024 | User Account Status UI Integration | Low | TODO |
 
 ---
 

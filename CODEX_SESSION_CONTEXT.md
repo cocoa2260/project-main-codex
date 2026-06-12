@@ -154,3 +154,43 @@ Not Allowed:
 * FE-001 has already centralized status badge rendering.
 * Do not reintroduce duplicated status mapping logic.
 * Reuse documentStatus.ts as the source of truth.
+
+## Product Scope Policy
+
+Important:
+
+Admin pages currently contain many mock/static sections.
+
+These features must not be treated as permanently excluded.
+
+If a feature exists in the current UI design, it is considered part of the planned product scope.
+
+When Codex recommends excluding a feature from MVP, it means:
+
+- defer implementation to a later phase
+- do not delete the UI
+- do not remove the route
+- do not remove the planned task from TASK_CATALOG
+- do not describe it as unnecessary
+
+MVP means implementation order, not product scope reduction.
+
+Current Admin features that remain in final scope:
+
+- Admin Dashboard
+- Admin User Management
+- Admin Document Management
+- Admin Job Monitoring
+- Admin Settings
+- Admin Logs
+- System Health
+- Queue/Worker Monitoring
+- Retry/Cancel actions where supported by backend policy
+- Role-based access control
+
+Implementation policy:
+
+1. Read-only APIs first
+2. State-changing Admin actions later
+3. Infrastructure/control actions last
+4. Sensitive settings/logs require explicit security review
