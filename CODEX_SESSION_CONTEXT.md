@@ -129,6 +129,21 @@ Summary:
 - Preserved existing page layout, table actions, right panels, and disabled future action buttons where backend APIs do not exist
 - Build passed
 
+### BE-ADMIN-004
+Admin Users API
+Status: DONE
+Summary:
+- Added admin users list API at GET /api/admin/users
+- Added admin user detail API at GET /api/admin/users/{user_id}
+- Added AdminUserListResponse, AdminUserListItemResponse, AdminUserDetailResponse, and AdminUserDocumentResponse DTOs
+- Added pagination, q search, role filtering, and sorting support for admin user list
+- Added User.name/User.email search and USER/ADMIN role filter validation
+- Added document_count/upload_count aggregation from Document records
+- Added user detail documents and recent TaskTracker data
+- Protected endpoints with require_admin
+- No DB migration or model changes
+- py_compile and API auth checks passed
+
 ---
 
 ### FE-011
