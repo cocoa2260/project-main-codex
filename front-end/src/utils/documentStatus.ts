@@ -69,19 +69,30 @@ export function normalizeTaskStage(stage?: TaskStage | string | null): TaskStage
   switch (upperStage) {
     case "READY":
     case "PDF_ANALYSIS":
+    case "UPLOAD_COMPLETED":
+    case "OCR_PENDING":
+    case "OCR_PROCESSING":
+    case "OCR_COMPLETED":
     case "MARKDOWN_REVIEW":
     case "OCR":
       return "OCR";
     case "SUMMARY_PENDING":
+    case "SUMMARY_PROCESSING":
+    case "SUMMARY_COMPLETED":
     case "CHUNKING":
     case "SUMMARY":
       return "SUMMARY";
+    case "CHUNKING_PROCESSING":
+    case "CHUNKING_COMPLETED":
+    case "EMBEDDING_PROCESSING":
     case "EMBEDDING_COMPLETED":
     case "EMBEDDING":
       return "EMBEDDING";
     case "RAG":
     case "RAG_INDEXING":
+    case "RAG_READY":
       return "RAG_INDEXING";
+    case "FAILED":
     default:
       return null;
   }
@@ -90,6 +101,32 @@ export function normalizeTaskStage(stage?: TaskStage | string | null): TaskStage
 export function getTaskStageLabel(stage?: TaskStage | string | null): string {
   const normalizedStage = normalizeTaskStage(stage);
   return normalizedStage ? pipelineStepLabels[normalizedStage] : "문서 처리";
+}
+
+export function getCurrentTaskStageLabel(
+  stage?: TaskStage | string | null,
+  status?: DocumentProcessingStatus | DocumentStatus | string | null
+): string {
+  const normalizedStatus = normalizeDocumentStatus(status);
+  const normalizedStage = normalizeTaskStage(stage);
+
+  if (normalizedStatus === "REVIEW_REQUIRED") return "Markdown 검토 대기 중";
+  if (normalizedStatus === "COMPLETED") return "처리 완료";
+  if (normalizedStatus === "FAILED") return "처리 실패";
+  if (normalizedStatus === "PENDING") return "작업 대기 중";
+
+  switch (normalizedStage) {
+    case "OCR":
+      return "OCR 처리 중";
+    case "SUMMARY":
+      return "AI 요약 중";
+    case "EMBEDDING":
+      return "벡터 임베딩 중";
+    case "RAG_INDEXING":
+      return "RAG 준비 중";
+    default:
+      return "문서 처리 중";
+  }
 }
 
 export function getPipelineStepOrder(): TaskStage[] {
