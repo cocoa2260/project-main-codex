@@ -34,6 +34,16 @@ Summary:
 - Preserved activity log and right panel
 - Preserved 6-step visual pipeline
 
+### FE-003-A
+TaskStage Compatibility Patch
+Status: DONE
+Summary:
+- Extended normalizeTaskStage for backend raw stage values
+- Added support for OCR_PENDING, OCR_PROCESSING, SUMMARY_PROCESSING, CHUNKING_PROCESSING, EMBEDDING_PROCESSING, RAG_READY and related stages
+- Removed duplicated stage label logic
+- Reused shared documentStatus utilities
+- Build passed
+
 ### FE-006
 DocumentList API Integration
 Status: DONE

@@ -8,7 +8,7 @@
 | FE-002-A | PipelineStepper Component | High | DONE |
 | FE-002-B | DocumentStatusPage Integration | High | DONE |
 | BUG-001 | EmbeddingModelOption Build Fix | High | DONE |
-| FE-003-A | TaskStage Compatibility Patch | High | TODO |
+| FE-003-A | TaskStage Compatibility Patch | High | DONE |
 | FE-003-B | API Response Type Cleanup | Medium | TODO |
 | FE-004 | Sidebar Structure Cleanup | Medium | TODO |
 | FE-005 | Topbar Commonization | Medium | TODO |
