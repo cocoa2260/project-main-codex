@@ -8,7 +8,6 @@ class BaseRerankerProvider(ABC):
         self,
         documents: list[str],
         question: str,
-        embedding_model: str,
         top_k: int,
     ) -> list[str]:
         pass

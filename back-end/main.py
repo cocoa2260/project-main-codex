@@ -5,6 +5,7 @@ from core.logging_config import get_logger, setup_logging
 
 from routers import auth
 from routers import documents
+from routers import common_codes
 
 
 setup_logging()
@@ -36,4 +37,9 @@ app.include_router(
     documents.router,
     prefix="/api/documents",
     tags=["documents"],
+)
+app.include_router(
+    common_codes.router,
+    prefix="/api/common-codes",
+    tags=["common-codes"],
 )

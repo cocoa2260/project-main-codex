@@ -1,7 +1,7 @@
 import uuid
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, Text, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import relationship
 
 from db.database import Base
@@ -31,6 +31,9 @@ class DocumentChunk(Base):
     chunk_index = Column(Integer, nullable=False)
 
     content = Column(Text, nullable=False)
+
+    # LLM 요약 결과에서 추출한 핵심 키워드를 chunk 단위로 저장한다.
+    keywords = Column(ARRAY(String), nullable=True)
 
     created_at = Column(
         DateTime(timezone=True),

@@ -108,8 +108,6 @@ datasets
 
 peft
 
-FlagEmbedding
-
 torch
 
 

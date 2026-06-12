@@ -13,15 +13,16 @@ from sqlalchemy.dialects.postgresql import UUID
 
 from sqlalchemy.orm import relationship
 
+from constants.pipeline_codes import DocumentStatusCode
 from db.database import Base
 
 
 class DocumentStatus:
-    PENDING = "PENDING"
-    PROCESSING = "PROCESSING"
-    REVIEW_REQUIRED = "REVIEW_REQUIRED"
-    COMPLETED = "COMPLETED"
-    FAILED = "FAILED"
+    PENDING = DocumentStatusCode.PENDING
+    PROCESSING = DocumentStatusCode.PROCESSING
+    REVIEW_REQUIRED = DocumentStatusCode.REVIEW_REQUIRED
+    COMPLETED = DocumentStatusCode.COMPLETED
+    FAILED = DocumentStatusCode.FAILED
 
 
 class Document(Base):

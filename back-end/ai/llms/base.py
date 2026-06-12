@@ -7,3 +7,12 @@ class BaseLLMProvider(ABC):
     @abstractmethod
     def summarize(self, markdown: str) -> str:
         pass
+
+    def summarize_chunk(self, text: str) -> str:
+        return self.summarize(text)
+
+    def summarize_from_chunk_summaries(self, summaries: list[str]) -> str:
+        return self.summarize("\n\n".join(summaries))
+
+    def extract_keywords(self, text: str) -> list[str]:
+        return []

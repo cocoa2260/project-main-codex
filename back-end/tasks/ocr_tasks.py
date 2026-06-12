@@ -5,7 +5,7 @@ from uuid import UUID
 from app.celery_app import celery_app
 from db.database import SessionLocal
 from models.document import Document, DocumentStatus
-from models.task_tracker import TaskTracker, TaskStatus
+from models.task_tracker import TaskStage, TaskTracker, TaskStatus
 
 from utils.extract_file import extract_native_blocks, extract_image_regions, render_clip, extract_ocr_blocks_from_image, sort_blocks, classify_block_type
 from utils.converter import block_to_markdown
@@ -68,7 +68,7 @@ def process_document_ocr(document_id: str, task_id: str):
             task=task,
             status=TaskStatus.PROCESSING,
             progress=5,
-            stage="READY",
+            stage=TaskStage.OCR_PENDING,
             message="문서 처리 작업을 시작합니다.",
         )
         """
@@ -87,7 +87,7 @@ def process_document_ocr(document_id: str, task_id: str):
             task=task,
             status=TaskStatus.PROCESSING,
             progress=15,
-            stage="PDF_ANALYSIS",
+            stage=TaskStage.OCR_PROCESSING,
             message="PDF 문서 구조를 분석하는 중입니다.",
         )
 
@@ -97,7 +97,7 @@ def process_document_ocr(document_id: str, task_id: str):
             task=task,
             status=TaskStatus.PROCESSING,
             progress=25,
-            stage="OCR",
+            stage=TaskStage.OCR_PROCESSING,
             message="OCR로 텍스트를 추출하는 중입니다.",
         )
 
@@ -114,7 +114,7 @@ def process_document_ocr(document_id: str, task_id: str):
 
         task.progress = 100
         task.status = TaskStatus.COMPLETED
-        task.stage = "MARKDOWN_REVIEW"
+        task.stage = TaskStage.MARKDOWN_REVIEW
         task.message = "Markdown 변환이 완료되었습니다. 검토 후 요약 진행 여부를 선택해주세요."
         task.completed_at = datetime.now()
 
@@ -136,7 +136,7 @@ def process_document_ocr(document_id: str, task_id: str):
 
             if task:
                 task.status = TaskStatus.FAILED
-                task.stage = "FAILED"
+                task.stage = TaskStage.FAILED
                 task.message = "문서 처리 중 오류가 발생했습니다."
                 task.error_message = str(exc)
                 task.completed_at = datetime.now()

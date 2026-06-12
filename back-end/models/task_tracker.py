@@ -12,21 +12,40 @@ from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
+from constants.pipeline_codes import TaskStageCode, TaskStatusCode, TaskTypeCode
 from db.database import Base
 
 
 class TaskType:
-    OCR = "OCR"
-    SUMMARY = "SUMMARY"
-    EMBEDDING = "EMBEDDING"
-    RAG_INDEXING = "RAG_INDEXING"
+    OCR = TaskTypeCode.OCR
+    SUMMARY = TaskTypeCode.SUMMARY
+    EMBEDDING = TaskTypeCode.EMBEDDING
+    RAG_INDEXING = TaskTypeCode.RAG_INDEXING
 
 
 class TaskStatus:
-    PENDING = "PENDING"
-    PROCESSING = "PROCESSING"
-    COMPLETED = "COMPLETED"
-    FAILED = "FAILED"
+    PENDING = TaskStatusCode.PENDING
+    PROCESSING = TaskStatusCode.PROCESSING
+    COMPLETED = TaskStatusCode.COMPLETED
+    FAILED = TaskStatusCode.FAILED
+
+
+class TaskStage:
+    UPLOAD_COMPLETED = TaskStageCode.UPLOAD_COMPLETED
+    OCR_PENDING = TaskStageCode.OCR_PENDING
+    OCR_PROCESSING = TaskStageCode.OCR_PROCESSING
+    OCR_COMPLETED = TaskStageCode.OCR_COMPLETED
+    MARKDOWN_REVIEW = TaskStageCode.MARKDOWN_REVIEW
+    SUMMARY_PENDING = TaskStageCode.SUMMARY_PENDING
+    CHUNKING_PROCESSING = TaskStageCode.CHUNKING_PROCESSING
+    CHUNKING_COMPLETED = TaskStageCode.CHUNKING_COMPLETED
+    EMBEDDING_PROCESSING = TaskStageCode.EMBEDDING_PROCESSING
+    EMBEDDING_COMPLETED = TaskStageCode.EMBEDDING_COMPLETED
+    SUMMARY_PROCESSING = TaskStageCode.SUMMARY_PROCESSING
+    SUMMARY_COMPLETED = TaskStageCode.SUMMARY_COMPLETED
+    RAG_INDEXING = TaskStageCode.RAG_INDEXING
+    RAG_READY = TaskStageCode.RAG_READY
+    FAILED = TaskStageCode.FAILED
 
 
 class TaskTracker(Base):
@@ -85,7 +104,7 @@ class TaskTracker(Base):
         Text,
         nullable=True,
     )
-    
+
     error_message = Column(
         Text,
         nullable=True,

@@ -15,13 +15,12 @@ def get_reranker_provider(model_name: str):
             model_name
         ]
 
-    config = EMBEDDING_REGISTRY[
+    config = RERANKING_REGISTRY[
         model_name
     ]
 
     provider = HFRerankingProvider(
-        model_name=config["base_model"],
-        adapter_path=config["adapter_path"]
+        model_name=config["base_model"]
     )
 
     _provider_cache[

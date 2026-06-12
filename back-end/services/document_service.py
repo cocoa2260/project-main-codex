@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from core.config import settings
 from models.document import Document, DocumentStatus
-from models.task_tracker import TaskTracker, TaskStatus, TaskType
+from models.task_tracker import TaskStage, TaskTracker, TaskStatus, TaskType
 from models.document_chunk import DocumentChunk
 from models.document_embedding import DocumentEmbedding
 
@@ -83,7 +83,7 @@ async def create_document_from_upload(
         task_type=TaskType.OCR,
         status=TaskStatus.PENDING,
         progress=0,
-        stage="PENDING",
+        stage=TaskStage.OCR_PENDING,
         message="OCR 작업 대기 중입니다.",
     )
 
@@ -199,55 +199,3 @@ def save_embeddings(
     db.commit()
 
     return embeddings
-
-
-# def get_document_retriver_data(
-#     db: Session,
-#     document_id: str,
-#     embedding_model: str,
-#     embedding: list,
-#     top_k: int = 10,
-# ):
-#     contents = []
-#     # 문서id, 임베딩 모델과 관련된 데이터 추출
-#     rows = (
-#         db.query(
-#             DocumentEmbedding.chunk_id,
-#             DocumentEmbedding.embedding
-#         )
-#         .filter(
-#             DocumentEmbedding.document_id == document_id,
-#             DocumentEmbedding.embedding_model == embedding_model,
-#         )
-#         .all()
-#     )
-
-#     if not rows:
-#         return []
-
-#     # cosine 유사도 계산으로 줄세우기
-#     scored = calc_cos_score(rows, embedding)
-
-#     scored.sort(key=lambda x: x[0], reverse=True)
-
-#     top_chunk_ids = [
-#         chunk_id for _, chunk_id in scored[:top_k]
-#     ]
-
-#     # DB에서 재검색
-#     chunks = (
-#         db.query(DocumentChunk)
-#         .filter(DocumentChunk.id.in_(top_chunk_ids))
-#         .all()
-#     )
-
-#     # 순서 보장 (IN은 순서 보장 안됨)
-#     chunk_map = {c.id: c for c in chunks}
-
-#     ordered_chunks = [ chunk_map[cid] for cid in top_chunk_ids if cid in chunk_map ]
-
-#     for o in ordered_chunks :
-#         contents.append(o.content)
-
-#     return contents
-    

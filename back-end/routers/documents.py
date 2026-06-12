@@ -15,11 +15,12 @@ from sqlalchemy.orm import Session
 from ai.embeddings.embedding_factory import EMBEDDING_REGISTRY
 from core.config import settings
 from core.logging_config import get_logger
-from core.config import settings
 from db.database import SessionLocal
 from db.session import get_db
 from models.document import Document, DocumentStatus
-from models.task_tracker import TaskStatus, TaskType
+from models.document_chunk import DocumentChunk
+from tasks.embedding_tasks import process_document_embedding
+from models.task_tracker import TaskStage, TaskStatus, TaskType
 from models.user import User
 from routers.deps import get_current_user
 from schemas.document import (
@@ -39,7 +40,6 @@ from services.document_service import (
     get_latest_document_task,
 )
 from tasks.ocr_tasks import process_document_ocr
-from tasks.embedding_tasks import process_document_embedding
 from tasks.summary_tasks import process_document_summary
 
 
@@ -220,11 +220,26 @@ def get_document_summary(
     if document is None:
         raise HTTPException(status_code=404, detail="문서를 찾을 수 없습니다.")
 
+    # 요약 자체는 documents.summary에서 가져오고, 핵심 키워드는 document_chunks.keywords에서 모아 응답한다.
+    keywords = []
+    chunks = (
+        db.query(DocumentChunk.keywords)
+        .filter(DocumentChunk.document_id == document.id)
+        .order_by(DocumentChunk.chunk_index.asc())
+        .all()
+    )
+
+    for chunk_keywords, in chunks:
+        for keyword in chunk_keywords or []:
+            if keyword and keyword not in keywords:
+                keywords.append(keyword)
+
     return DocumentSummaryResponse(
         document_id=document.id,
         file_name=document.file_name,
         status=document.status,
         summary=document.summary,
+        keywords=keywords,
         page_count=document.page_count,
         file_size=document.file_size,
         upload_at=document.upload_at,
@@ -265,14 +280,20 @@ def confirm_document_summary(
         db=db,
         document_id=document.id,
         task_type=TaskType.SUMMARY,
-        stage="SUMMARY_PENDING",
+        stage=TaskStage.SUMMARY_PENDING,
         message="요약/임베딩 작업 대기 중입니다.",
     )
 
-    process_document_embedding.delay(
-        document_id=document.id,
+    embedding_result = process_document_embedding.delay(
+        str(document.id),
+        str(task.id),
+        str(document.selected_embedding_model),
+    )
+
+    attach_celery_task_id(
+        db=db,
         task_id=task.id,
-        embedding_model=document.selected_embedding_model,
+        celery_task_id=embedding_result.id,
     )
 
     async_result = process_document_summary.delay(
@@ -320,7 +341,7 @@ def cancel_document_summary(
 
     task = get_latest_document_task(db, document.id)
     if task:
-        task.stage = "MARKDOWN_REVIEW"
+        task.stage = TaskStage.MARKDOWN_REVIEW
         task.message = "사용자가 요약 진행을 보류했습니다."
 
     db.commit()

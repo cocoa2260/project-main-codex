@@ -27,6 +27,12 @@ def upgrade() -> None:
                existing_type=postgresql.ARRAY(sa.DOUBLE_PRECISION(precision=53)),
                type_=VECTOR(dim=1024),
                existing_nullable=False)
+    
+    # LLM에서 추출한 핵심 키워드를 chunk별 ARRAY 컬럼으로 저장하기 위해 추가한다.
+    op.add_column(
+        "document_chunks",
+        sa.Column("keywords", postgresql.ARRAY(sa.String()), nullable=True),
+    )
     # ### end Alembic commands ###
 
 
@@ -37,4 +43,6 @@ def downgrade() -> None:
                existing_type=VECTOR(dim=1024),
                type_=postgresql.ARRAY(sa.DOUBLE_PRECISION(precision=53)),
                existing_nullable=False)
+    
+    op.drop_column("document_chunks", "keywords")
     # ### end Alembic commands ###

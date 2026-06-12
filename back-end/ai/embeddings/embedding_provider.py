@@ -59,7 +59,7 @@ class HFEmbeddingProvider(BaseEmbeddingProvider):
         self,
         db,
         document_id,
-        vector_question: list[float],
+        vector_question,
         embedding_model: str,
         top_k: int,
     ):
@@ -68,52 +68,37 @@ class HFEmbeddingProvider(BaseEmbeddingProvider):
         return contents
 
 def retrieval(
-        self,
         db,
         document_id,
-        vector_question: list[float],
+        vector_question,
         embedding_model: str,
         top_k: int,
     ):
         contents = []
+
         # 문서id, 임베딩 모델과 관련된 데이터 추출
         rows = (
             db.query(
                 DocumentEmbedding.chunk_id,
-                DocumentEmbedding.embedding
+                DocumentChunk.content,
+                DocumentEmbedding.embedding.cosine_distance(vector_question)
+                    .label("distance")
+            )
+            .join(
+                DocumentEmbedding.chunk
             )
             .filter(
-                DocumentEmbedding.document_id == document_id,
                 DocumentEmbedding.embedding_model == embedding_model,
+                DocumentEmbedding.document_id == document_id,
             )
+            .order_by(
+                DocumentEmbedding.embedding.cosine_distance(vector_question)
+            )
+            .limit(top_k)
             .all()
         )
 
-        if not rows:
-            return []
-
-        # cosine 유사도 계산으로 줄세우기
-        scored = calc_cos_score(rows, vector_question)
-
-        scored.sort(key=lambda x: x[0], reverse=True)
-
-        top_chunk_ids = [
-            chunk_id for _, chunk_id in scored[:top_k]
-        ]
-
-        # DB에서 재검색
-        chunks = (
-            db.query(DocumentChunk)
-            .filter(DocumentChunk.id.in_(top_chunk_ids))
-            .all()
-        )
-
-        # 순서 보장 (IN은 순서 보장 안됨)
-        chunk_map = {c.id: c for c in chunks}
-
-        ordered_chunks = [ chunk_map[cid] for cid in top_chunk_ids if cid in chunk_map ]
-
-        for o in ordered_chunks :
+        for o in rows :
             contents.append(o.content)
 
         return contents
