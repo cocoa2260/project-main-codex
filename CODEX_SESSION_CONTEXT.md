@@ -77,24 +77,38 @@ Summary:
 - Preserved existing API contracts and UI layout
 - Build passed
 
+### FE-010-A
+Workspace Summary API Integration
+Status: DONE
+Summary:
+- Connected DocumentWorkspacePage to getDocumentSummary API
+- Replaced hardcoded workspace summary/meta data
+- Added loading, error, and missing documentId handling
+- Disabled question input because Chat/RAG API does not exist yet
+- Removed misleading hardcoded RAG/chunk information
+- Build passed
+
+Merged:
+- develop
+
+---
+
 ### FE-011
 Admin Route Audit
 Status: DONE
 Summary:
 - Admin frontend routes already exist
-- Admin pages already exist but are mostly mock/static
-- Role model exists with USER / ADMIN
+- Admin pages already exist but mostly use mock/static data
+- Sidebar supports admin variant
+- Backend UserRole exists with USER / ADMIN
 - JWT includes role
-- Backend require_admin exists
-- No admin-only backend APIs exist
+- require_admin dependency exists
+- No Admin-only backend APIs exist yet
 - Login response and frontend role storage are mismatched
-- /api/auth/me is expected by frontend but missing in backend
+- Frontend expects /api/auth/me but backend does not provide it
 
 Next:
 - AUTH-001 should be handled before Admin API work
-
-Merged:
-* develop
 
 ---
 
