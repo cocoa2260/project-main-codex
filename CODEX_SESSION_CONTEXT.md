@@ -161,6 +161,26 @@ Not Allowed:
 * Database Schema
 * Authentication Architecture
 
+## Codex Output Rule
+
+For every implementation task (FE / BE):
+
+Codex must always provide:
+
+1. Analysis Summary
+2. Codex Prompt
+3. Branch Name
+4. PR Title
+5. PR Body
+6. TASK_CATALOG.md Update
+7. CODEX_SESSION_CONTEXT.md Update
+
+Do not omit any item.
+
+Even if the task is analysis-first,
+prepare the expected PR / Catalog / Session updates
+so they are ready after implementation.
+
 ---
 
 ## Notes

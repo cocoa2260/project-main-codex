@@ -40,6 +40,21 @@ AI는 MVP 기준으로 기능 제거를 제안해서는 안 된다.
 - Page 제거 제안
 - 기능 범위 축소 제안
 
+## Development Workflow Rule
+
+Every task must produce:
+
+- Branch Name
+- PR Title
+- PR Body
+- TASK_CATALOG.md update entry
+- CODEX_SESSION_CONTEXT.md update entry
+
+These outputs are mandatory.
+
+Implementation is not considered complete
+until documentation updates are prepared.
+
 # 1. Core Principles
 
 The AI Coding Agent must preserve the existing architecture.
