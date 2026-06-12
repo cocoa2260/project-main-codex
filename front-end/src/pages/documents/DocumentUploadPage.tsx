@@ -4,7 +4,8 @@ import { AlertCircle, Loader2 } from 'lucide-react';
 import { uploadDocument } from '../../api/document';
 import { DocumentUpload } from '../../components/document/DocumentUpload';
 
-import { getEmbeddingModels, type EmbeddingModelOption } from '@/api/document'
+import { getEmbeddingModels } from '@/api/document'
+import type { EmbeddingModelOption } from '@/types/document'
 
 function getErrorMessage(error: unknown) {
   if (typeof error === 'object' && error !== null && 'response' in error) {
