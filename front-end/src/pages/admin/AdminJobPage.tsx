@@ -1,55 +1,27 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { getAdminTaskDetail, getAdminTasks } from '../../api/admin';
 import { Sidebar } from '../../components/common/Sidebar';
+import type { AdminTaskDetailResponse, AdminTaskListItemResponse } from '../../types/admin';
+import type { TaskStatus, TaskType } from '../../types/document';
+import { getDocumentStatusPresentation, normalizeDocumentStatus, normalizeTaskStage } from '../../utils/documentStatus';
 import {
-  Home,
-  FileText,
-  Upload,
-  MessageSquare,
   Clock,
-  Settings,
-  Shield,
   Menu,
   X,
   Search,
   Bell,
-  User,
-  Users,
   Activity,
   RefreshCw,
   CheckCircle2,
   XCircle,
   Loader2,
   AlertCircle,
-  PlayCircle,
-  PauseCircle,
   Eye,
-  Trash2,
-  Brain,
-  Sparkles,
-  Database,
-  Zap,
-  TrendingUp,
   AlertTriangle,
-  ChevronRight,
   Cpu
 } from 'lucide-react';
 
-interface Job {
-  id: string;
-  documentName: string;
-  owner: string;
-  type: 'ocr' | 'summary' | 'embedding' | 'rag';
-  status: 'running' | 'waiting' | 'completed' | 'failed' | 'cancelled';
-  stage?: string;
-  progress: number;
-  duration: string;
-  queue: string;
-  worker?: string;
-  createdTime: string;
-  error?: string;
-  retryCount?: number;
-}
+type FilterStatus = 'all' | 'running' | 'waiting' | 'completed' | 'failed';
 
 interface Worker {
   id: string;
@@ -64,205 +36,251 @@ interface AdminJobPageProps {
   onLogout?: () => void;
 }
 
+const PAGE_LIMIT = 20;
+const AUTO_REFRESH_INTERVAL_MS = 30_000;
+
+const taskTypes: TaskType[] = ['OCR', 'SUMMARY', 'EMBEDDING', 'RAG_INDEXING'];
+
+const filterStatusMap: Record<Exclude<FilterStatus, 'all'>, TaskStatus> = {
+  running: 'PROCESSING',
+  waiting: 'PENDING',
+  completed: 'COMPLETED',
+  failed: 'FAILED',
+};
+
+const taskTypeColorClassNames: Record<TaskType, string> = {
+  OCR: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+  SUMMARY: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
+  EMBEDDING: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
+  RAG_INDEXING: 'bg-green-500/10 text-green-400 border-green-500/20',
+};
+
+const queueColorClassNames: Record<TaskType, { text: string; bg: string }> = {
+  OCR: { text: 'text-blue-400', bg: 'bg-blue-500' },
+  SUMMARY: { text: 'text-purple-400', bg: 'bg-purple-500' },
+  EMBEDDING: { text: 'text-yellow-400', bg: 'bg-yellow-500' },
+  RAG_INDEXING: { text: 'text-green-400', bg: 'bg-green-500' },
+};
+
+function getApiErrorMessage(error: unknown): string {
+  const response = (error as { response?: { data?: { detail?: string; message?: string } } }).response;
+  return response?.data?.detail ?? response?.data?.message ?? (error instanceof Error ? error.message : '작업 목록을 불러오지 못했습니다.');
+}
+
+function normalizeTaskStatus(status: string): TaskStatus {
+  return normalizeDocumentStatus(status) as TaskStatus;
+}
+
+function normalizeTaskType(taskType: string): TaskType | null {
+  const normalizedType = taskType.toUpperCase();
+  return taskTypes.find((type) => type === normalizedType) ?? null;
+}
+
+function formatDateTime(value?: string | null): string {
+  if (!value) return '-';
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return new Intl.DateTimeFormat('ko-KR', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+}
+
+function formatDuration(startedAt?: string | null, completedAt?: string | null): string {
+  if (!startedAt) return '-';
+
+  const start = new Date(startedAt);
+  const end = completedAt ? new Date(completedAt) : new Date();
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return '-';
+
+  const totalSeconds = Math.max(0, Math.floor((end.getTime() - start.getTime()) / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+}
+
+function getActivityType(status: string): 'success' | 'error' | 'warning' | 'info' {
+  const normalizedStatus = normalizeTaskStatus(status);
+
+  if (normalizedStatus === 'COMPLETED') return 'success';
+  if (normalizedStatus === 'FAILED') return 'error';
+  if (normalizedStatus === 'PENDING') return 'warning';
+  return 'info';
+}
+
 export function AdminJobPage({ onLogout }: AdminJobPageProps) {
-  const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<'all' | 'running' | 'waiting' | 'completed' | 'failed'>('all');
+  const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
   const [autoRefresh, setAutoRefresh] = useState(true);
-
-  const menuItems = [
-    { id: 'dashboard', label: 'Overview', icon: Home },
-    { id: 'users', label: 'Users', icon: Users },
-    { id: 'documents', label: 'Documents', icon: FileText },
-    { id: 'jobs', label: 'Jobs', icon: Activity },
-    { id: 'system', label: 'System', icon: Shield },
-    { id: 'settings', label: 'Settings', icon: Settings }
-  ];
-
-
-
-  const adminMenuRoutes: Record<string, string> = {
-    dashboard: '/admin',
-    users: '/admin/users',
-    documents: '/admin/documents',
-    jobs: '/admin/jobs',
-    system: '/admin/logs',
-    settings: '/admin/settings',
-  };
-
-  const handleMenuClick = (menuId: string) => {
-    const route = adminMenuRoutes[menuId];
-    if (route) navigate(route);
-  };
-  const stats = [
-    { label: '전체 작업', value: '2,345', change: '+156', icon: Activity, color: 'primary' },
-    { label: '실행 중', value: '23', change: '+5', icon: Loader2, color: 'blue', animate: true },
-    { label: '완료', value: '2,287', change: '+148', icon: CheckCircle2, color: 'green' },
-    { label: '실패', value: '15', change: '+3', icon: XCircle, color: 'red' },
-    { label: '대기 중', value: '20', change: '+8', icon: Clock, color: 'yellow' },
-    { label: 'Worker 사용률', value: '78%', change: '+12%', icon: Cpu, color: 'purple' }
-  ];
-
-  const jobs: Job[] = [
-    {
-      id: 'job-001',
-      documentName: '계약서_검토본.pdf',
-      owner: '김철수',
-      type: 'ocr',
-      status: 'running',
-      stage: 'Text Extraction',
-      progress: 65,
-      duration: '2m 15s',
-      queue: 'ocr-queue',
-      worker: 'worker-1',
-      createdTime: '14:30:00'
-    },
-    {
-      id: 'job-002',
-      documentName: '프로젝트_제안서.pdf',
-      owner: '이영희',
-      type: 'summary',
-      status: 'running',
-      stage: 'AI Processing',
-      progress: 45,
-      duration: '5m 30s',
-      queue: 'summary-queue',
-      worker: 'worker-2',
-      createdTime: '14:25:00'
-    },
-    {
-      id: 'job-003',
-      documentName: '보고서_Q1.pdf',
-      owner: '박민수',
-      type: 'embedding',
-      status: 'waiting',
-      progress: 0,
-      duration: '-',
-      queue: 'embedding-queue',
-      createdTime: '14:35:00'
-    },
-    {
-      id: 'job-004',
-      documentName: '기술문서_API.pdf',
-      owner: '정수진',
-      type: 'ocr',
-      status: 'failed',
-      stage: 'OCR Processing',
-      progress: 35,
-      duration: '3m 20s',
-      queue: 'ocr-queue',
-      createdTime: '14:20:00',
-      error: 'OCR processing timeout after 180s',
-      retryCount: 2
-    },
-    {
-      id: 'job-005',
-      documentName: '회의록_0515.pdf',
-      owner: '최민지',
-      type: 'rag',
-      status: 'completed',
-      progress: 100,
-      duration: '8m 45s',
-      queue: 'rag-queue',
-      worker: 'worker-3',
-      createdTime: '14:15:00'
-    }
-  ];
-
-  const workers: Worker[] = [
-    {
-      id: 'worker-1',
-      name: 'OCR Worker 1',
-      status: 'active',
-      currentQueue: 'ocr-queue',
-      load: 78,
-      jobsProcessed: 145
-    },
-    {
-      id: 'worker-2',
-      name: 'Summary Worker 1',
-      status: 'active',
-      currentQueue: 'summary-queue',
-      load: 65,
-      jobsProcessed: 89
-    },
-    {
-      id: 'worker-3',
-      name: 'Embedding Worker 1',
-      status: 'idle',
-      load: 0,
-      jobsProcessed: 234
-    },
-    {
-      id: 'worker-4',
-      name: 'RAG Worker 1',
-      status: 'offline',
-      load: 0,
-      jobsProcessed: 156
-    }
-  ];
-
-  const activityLog = [
-    { time: '14:40', message: 'Embedding job completed', type: 'success' as const },
-    { time: '14:35', message: 'Summary job started', type: 'info' as const },
-    { time: '14:32', message: 'OCR progress: 65%', type: 'info' as const },
-    { time: '14:30', message: 'OCR job started', type: 'info' as const },
-    { time: '14:25', message: 'Job failed: OCR timeout', type: 'error' as const }
-  ];
-
-  const filteredJobs = jobs.filter(job => {
-    const matchesSearch = job.documentName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         job.owner.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         job.id.toLowerCase().includes(searchQuery.toLowerCase());
-
-    const matchesFilter =
-      filterStatus === 'all' ? true :
-      filterStatus === 'running' ? job.status === 'running' :
-      filterStatus === 'waiting' ? job.status === 'waiting' :
-      filterStatus === 'completed' ? job.status === 'completed' :
-      filterStatus === 'failed' ? job.status === 'failed' : true;
-
-    return matchesSearch && matchesFilter;
+  const [tasks, setTasks] = useState<AdminTaskListItemResponse[]>([]);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: PAGE_LIMIT,
+    total: 0,
+    total_pages: 0,
   });
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [selectedTask, setSelectedTask] = useState<AdminTaskDetailResponse | null>(null);
+  const [detailErrorMessage, setDetailErrorMessage] = useState<string | null>(null);
+  const [isDetailLoading, setIsDetailLoading] = useState(false);
 
-  const getJobTypeLabel = (type: Job['type']) => {
-    switch (type) {
-      case 'ocr': return 'OCR';
-      case 'summary': return 'AI 요약';
-      case 'embedding': return '임베딩';
-      case 'rag': return 'RAG';
+  const fetchTasks = useCallback(async (page: number, showLoading = false) => {
+    if (showLoading) {
+      setIsLoading(true);
+    } else {
+      setIsRefreshing(true);
+    }
+
+    setErrorMessage(null);
+
+    try {
+      const response = await getAdminTasks({
+        page,
+        limit: PAGE_LIMIT,
+        status: filterStatus === 'all' ? undefined : filterStatusMap[filterStatus],
+        search: searchQuery.trim() || undefined,
+        sort_by: 'updated_at',
+        sort_order: 'desc',
+      });
+
+      setTasks(response.items);
+      setPagination(response.pagination);
+    } catch (error) {
+      setErrorMessage(getApiErrorMessage(error));
+      setTasks([]);
+      setPagination((current) => ({ ...current, page, total: 0, total_pages: 0 }));
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, [filterStatus, searchQuery]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      void fetchTasks(1, true);
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [fetchTasks]);
+
+  useEffect(() => {
+    if (!autoRefresh) return;
+
+    const intervalId = window.setInterval(() => {
+      void fetchTasks(pagination.page, false);
+    }, AUTO_REFRESH_INTERVAL_MS);
+
+    return () => window.clearInterval(intervalId);
+  }, [autoRefresh, fetchTasks, pagination.page]);
+
+  const handleRefresh = () => {
+    void fetchTasks(pagination.page, false);
+  };
+
+  const handlePageChange = (nextPage: number) => {
+    if (nextPage < 1 || (pagination.total_pages > 0 && nextPage > pagination.total_pages)) return;
+    void fetchTasks(nextPage, true);
+  };
+
+  const handleTaskDetail = async (taskId: string) => {
+    setIsDetailLoading(true);
+    setDetailErrorMessage(null);
+
+    try {
+      const detail = await getAdminTaskDetail(taskId);
+      setSelectedTask(detail);
+    } catch (error) {
+      setDetailErrorMessage(getApiErrorMessage(error));
+    } finally {
+      setIsDetailLoading(false);
     }
   };
 
-  const getJobTypeColor = (type: Job['type']) => {
-    switch (type) {
-      case 'ocr': return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
-      case 'summary': return 'bg-purple-500/10 text-purple-400 border-purple-500/20';
-      case 'embedding': return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20';
-      case 'rag': return 'bg-green-500/10 text-green-400 border-green-500/20';
-    }
+  const stats = useMemo(() => {
+    const countByStatus = tasks.reduce<Record<TaskStatus, number>>((counts, task) => {
+      const status = normalizeTaskStatus(task.status);
+      counts[status] += 1;
+      return counts;
+    }, { PENDING: 0, PROCESSING: 0, COMPLETED: 0, FAILED: 0 });
+
+    const activeProgressTasks = tasks.filter((task) => normalizeTaskStatus(task.status) === 'PROCESSING');
+    const workerUsage = activeProgressTasks.length
+      ? Math.round(activeProgressTasks.reduce((sum, task) => sum + task.progress, 0) / activeProgressTasks.length)
+      : 0;
+
+    return [
+      { label: '전체 작업', value: pagination.total.toLocaleString(), change: `page ${pagination.page}`, icon: Activity, color: 'primary' },
+      { label: '실행 중', value: countByStatus.PROCESSING.toLocaleString(), change: '현재 페이지', icon: Loader2, color: 'blue', animate: countByStatus.PROCESSING > 0 },
+      { label: '완료', value: countByStatus.COMPLETED.toLocaleString(), change: '현재 페이지', icon: CheckCircle2, color: 'green' },
+      { label: '실패', value: countByStatus.FAILED.toLocaleString(), change: '현재 페이지', icon: XCircle, color: 'red' },
+      { label: '대기 중', value: countByStatus.PENDING.toLocaleString(), change: '현재 페이지', icon: Clock, color: 'yellow' },
+      { label: 'Worker 사용률', value: `${workerUsage}%`, change: '진행률 평균', icon: Cpu, color: 'purple' }
+    ];
+  }, [pagination.page, pagination.total, tasks]);
+
+  const workers: Worker[] = useMemo(() => (
+    taskTypes.map((taskType) => {
+      const typeTasks = tasks.filter((task) => normalizeTaskType(task.task_type) === taskType);
+      const activeTasks = typeTasks.filter((task) => normalizeTaskStatus(task.status) === 'PROCESSING');
+      const waitingTasks = typeTasks.filter((task) => normalizeTaskStatus(task.status) === 'PENDING');
+
+      return {
+        id: taskType,
+        name: `${taskType} Worker`,
+        status: activeTasks.length > 0 ? 'active' : waitingTasks.length > 0 ? 'idle' : 'offline',
+        currentQueue: activeTasks.length > 0 || waitingTasks.length > 0 ? `${taskType.toLowerCase()}-queue` : undefined,
+        load: activeTasks.length > 0
+          ? Math.round(activeTasks.reduce((sum, task) => sum + task.progress, 0) / activeTasks.length)
+          : 0,
+        jobsProcessed: typeTasks.filter((task) => normalizeTaskStatus(task.status) === 'COMPLETED').length,
+      };
+    })
+  ), [tasks]);
+
+  const failedJobs = useMemo(
+    () => tasks.filter((task) => normalizeTaskStatus(task.status) === 'FAILED'),
+    [tasks],
+  );
+
+  const queueStats = useMemo(() => (
+    taskTypes.map((taskType) => ({
+      type: taskType,
+      name: `${taskType} Queue`,
+      count: tasks.filter((task) => normalizeTaskType(task.task_type) === taskType && normalizeTaskStatus(task.status) === 'PENDING').length,
+    }))
+  ), [tasks]);
+
+  const activityLog = useMemo(() => (
+    tasks.slice(0, 5).map((task) => ({
+      id: task.id,
+      time: formatDateTime(task.updated_at),
+      message: task.message ?? task.error_message ?? `${task.task_type} / ${task.status}`,
+      type: getActivityType(task.status),
+    }))
+  ), [tasks]);
+
+  const getJobTypeColor = (type: string) => {
+    const normalizedType = normalizeTaskType(type);
+    return normalizedType ? taskTypeColorClassNames[normalizedType] : 'bg-white/5 text-gray-400 border-white/10';
   };
 
-  const getStatusColor = (status: Job['status']) => {
-    switch (status) {
-      case 'running': return 'text-blue-400 bg-blue-500/10 border-blue-500/20';
-      case 'waiting': return 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20';
-      case 'completed': return 'text-green-400 bg-green-500/10 border-green-500/20';
-      case 'failed': return 'text-red-400 bg-red-500/10 border-red-500/20';
-      case 'cancelled': return 'text-gray-400 bg-gray-500/10 border-gray-500/20';
-    }
+  const getStatusColor = (status: string, stage?: string | null) => {
+    const presentation = getDocumentStatusPresentation(status, stage);
+    return `${presentation.color} ${presentation.bgColor} ${presentation.borderColor}`;
   };
 
-  const getStatusLabel = (status: Job['status']) => {
-    switch (status) {
-      case 'running': return '실행 중';
-      case 'waiting': return '대기';
-      case 'completed': return '완료';
-      case 'failed': return '실패';
-      case 'cancelled': return '취소됨';
-    }
-  };
+  const getStatusLabel = (status: string, stage?: string | null) => (
+    getDocumentStatusPresentation(status, stage).label
+  );
 
   const getWorkerStatusColor = (status: Worker['status']) => {
     switch (status) {
@@ -280,14 +298,6 @@ export function AdminJobPage({ onLogout }: AdminJobPageProps) {
       default: return <Activity className="w-3.5 h-3.5 text-blue-400" />;
     }
   };
-
-  const failedJobs = jobs.filter(j => j.status === 'failed');
-  const queueStats = [
-    { name: 'OCR Queue', count: 8, color: 'blue' },
-    { name: 'Summary Queue', count: 5, color: 'purple' },
-    { name: 'Embedding Queue', count: 4, color: 'yellow' },
-    { name: 'RAG Queue', count: 3, color: 'green' }
-  ];
 
   return (
     <div className="min-h-screen w-full bg-[#0a0a0f] flex">
@@ -335,6 +345,15 @@ export function AdminJobPage({ onLogout }: AdminJobPageProps) {
             >
               <RefreshCw className={`w-4 h-4 ${autoRefresh ? 'animate-spin' : ''}`} />
               <span className="text-sm">자동 새로고침</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleRefresh}
+              className="p-2 hover:bg-white/5 rounded-lg transition-colors"
+              title="새로고침"
+            >
+              <RefreshCw className={`w-5 h-5 text-gray-400 ${isRefreshing ? 'animate-spin' : ''}`} />
             </button>
 
             <button
@@ -470,6 +489,16 @@ export function AdminJobPage({ onLogout }: AdminJobPageProps) {
                   </button>
                 </div>
 
+                {errorMessage && (
+                  <div className="flex items-start gap-3 rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-red-300">
+                    <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">작업 목록 오류</p>
+                      <p className="mt-1 text-sm text-red-300/80">{errorMessage}</p>
+                    </div>
+                  </div>
+                )}
+
                 {/* Table */}
                 <div className="bg-[#111116] border border-white/10 rounded-xl overflow-hidden">
                   <div className="overflow-x-auto">
@@ -487,100 +516,211 @@ export function AdminJobPage({ onLogout }: AdminJobPageProps) {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-white/5">
-                        {filteredJobs.map((job) => (
-                          <tr key={job.id} className="hover:bg-white/5 transition-colors">
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <code className="text-primary text-xs font-mono">{job.id}</code>
+                        {isLoading ? (
+                          <tr>
+                            <td colSpan={8} className="px-6 py-12 text-center">
+                              <Loader2 className="mx-auto mb-3 h-6 w-6 animate-spin text-primary" />
+                              <p className="text-sm text-gray-400">작업 목록을 불러오는 중입니다.</p>
                             </td>
-                            <td className="px-6 py-4">
-                              <div className="min-w-0 max-w-xs">
-                                <p className="text-white text-sm font-medium truncate">{job.documentName}</p>
-                                <p className="text-gray-400 text-xs truncate">{job.owner}</p>
-                              </div>
+                          </tr>
+                        ) : tasks.length === 0 ? (
+                          <tr>
+                            <td colSpan={8} className="px-6 py-12 text-center">
+                              <Activity className="mx-auto mb-3 h-6 w-6 text-gray-500" />
+                              <p className="text-sm font-medium text-white">표시할 작업이 없습니다.</p>
+                              <p className="mt-1 text-sm text-gray-500">검색어나 상태 필터를 변경하거나 새로고침해 주세요.</p>
                             </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <span className={`inline-flex px-2.5 py-1 border rounded-lg text-xs font-medium ${getJobTypeColor(job.type)}`}>
-                                {getJobTypeLabel(job.type)}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              {job.status === 'running' ? (
+                          </tr>
+                        ) : tasks.map((job) => {
+                          const normalizedStatus = normalizeTaskStatus(job.status);
+                          const statusPresentation = getDocumentStatusPresentation(job.status, job.stage);
+                          const normalizedStage = normalizeTaskStage(job.stage);
+
+                          return (
+                            <tr key={job.id} className="hover:bg-white/5 transition-colors">
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <code className="text-primary text-xs font-mono">{job.id}</code>
+                              </td>
+                              <td className="px-6 py-4">
+                                <div className="min-w-0 max-w-xs">
+                                  <p className="text-white text-sm font-medium truncate">{job.document.file_name}</p>
+                                  <p className="text-gray-400 text-xs truncate">{job.owner.name || job.owner.email}</p>
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <span className={`inline-flex px-2.5 py-1 border rounded-lg text-xs font-medium ${getJobTypeColor(job.task_type)}`}>
+                                  {job.task_type}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="w-32">
                                   <div className="flex items-center justify-between mb-1">
                                     <span className="text-xs text-gray-400">{job.progress}%</span>
                                   </div>
                                   <div className="w-full bg-white/5 rounded-full h-1.5">
                                     <div
-                                      className="bg-gradient-to-r from-blue-500 to-purple-500 h-1.5 rounded-full transition-all"
-                                      style={{ width: `${job.progress}%` }}
+                                      className={`${statusPresentation.progressColor} h-1.5 rounded-full transition-all`}
+                                      style={{ width: `${Math.max(0, Math.min(100, job.progress))}%` }}
                                     />
                                   </div>
-                                  {job.stage && <p className="text-xs text-gray-500 mt-1">{job.stage}</p>}
+                                  <p className="text-xs text-gray-500 mt-1">{job.stage ?? normalizedStage ?? '-'}</p>
                                 </div>
-                              ) : job.status === 'completed' ? (
-                                <span className="text-green-400 text-sm">100%</span>
-                              ) : job.status === 'failed' ? (
-                                <span className="text-red-400 text-sm">{job.progress}%</span>
-                              ) : (
-                                <span className="text-yellow-400 text-sm">대기</span>
-                              )}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 border rounded-lg text-xs font-medium ${getStatusColor(job.status)}`}>
-                                {job.status === 'running' && <Loader2 className="w-3 h-3 animate-spin" />}
-                                {job.status === 'completed' && <CheckCircle2 className="w-3 h-3" />}
-                                {job.status === 'failed' && <XCircle className="w-3 h-3" />}
-                                {job.status === 'waiting' && <Clock className="w-3 h-3" />}
-                                {getStatusLabel(job.status)}
-                              </span>
-                              {job.error && (
-                                <p className="text-xs text-red-400/80 mt-1 max-w-xs truncate">{job.error}</p>
-                              )}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                              {job.worker || '-'}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="text-sm">
-                                <p className="text-white">{job.duration}</p>
-                                <p className="text-gray-500 text-xs">{job.createdTime}</p>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-right">
-                              <div className="flex items-center justify-end gap-2">
-                                {job.status === 'failed' && (
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 border rounded-lg text-xs font-medium ${getStatusColor(job.status, job.stage)}`}>
+                                  {normalizedStatus === 'PROCESSING' && <Loader2 className="w-3 h-3 animate-spin" />}
+                                  {normalizedStatus === 'COMPLETED' && <CheckCircle2 className="w-3 h-3" />}
+                                  {normalizedStatus === 'FAILED' && <XCircle className="w-3 h-3" />}
+                                  {normalizedStatus === 'PENDING' && <Clock className="w-3 h-3" />}
+                                  {getStatusLabel(job.status, job.stage)}
+                                </span>
+                                {job.message && (
+                                  <p className="text-xs text-gray-400 mt-1 max-w-xs truncate">{job.message}</p>
+                                )}
+                                {job.error_message && (
+                                  <p className="text-xs text-red-400/80 mt-1 max-w-xs truncate">{job.error_message}</p>
+                                )}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                                {normalizeTaskType(job.task_type) ? `${job.task_type.toLowerCase()}-worker` : '-'}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="text-sm">
+                                  <p className="text-white">{formatDuration(job.started_at, job.completed_at)}</p>
+                                  <p className="text-gray-500 text-xs">{formatDateTime(job.created_at)}</p>
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-right">
+                                <div className="flex items-center justify-end gap-2">
+                                  {normalizedStatus === 'FAILED' && (
+                                    <button
+                                      type="button"
+                                      className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                                      title="재시도"
+                                      disabled
+                                    >
+                                      <RefreshCw className="w-4 h-4 text-yellow-400" />
+                                    </button>
+                                  )}
+                                  {normalizedStatus === 'PROCESSING' && (
+                                    <button
+                                      type="button"
+                                      className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                                      title="취소"
+                                      disabled
+                                    >
+                                      <XCircle className="w-4 h-4 text-red-400" />
+                                    </button>
+                                  )}
                                   <button
                                     type="button"
+                                    onClick={() => void handleTaskDetail(job.id)}
                                     className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-                                    title="재시도"
+                                    title="상세보기"
                                   >
-                                    <RefreshCw className="w-4 h-4 text-yellow-400" />
+                                    <Eye className="w-4 h-4 text-gray-400" />
                                   </button>
-                                )}
-                                {job.status === 'running' && (
-                                  <button
-                                    type="button"
-                                    className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-                                    title="취소"
-                                  >
-                                    <XCircle className="w-4 h-4 text-red-400" />
-                                  </button>
-                                )}
-                                <button
-                                  type="button"
-                                  className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-                                  title="상세보기"
-                                >
-                                  <Eye className="w-4 h-4 text-gray-400" />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
                 </div>
+
+                <div className="flex items-center justify-between rounded-xl border border-white/10 bg-[#111116] px-4 py-3">
+                  <p className="text-sm text-gray-400">
+                    {pagination.total.toLocaleString()}개 중 {tasks.length.toLocaleString()}개 표시
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handlePageChange(pagination.page - 1)}
+                      disabled={pagination.page <= 1 || isLoading}
+                      className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-gray-300 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      이전
+                    </button>
+                    <span className="min-w-24 text-center text-sm text-gray-400">
+                      {pagination.page} / {Math.max(1, pagination.total_pages)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handlePageChange(pagination.page + 1)}
+                      disabled={pagination.page >= pagination.total_pages || isLoading || pagination.total_pages === 0}
+                      className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-gray-300 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      다음
+                    </button>
+                  </div>
+                </div>
+
+                {(selectedTask || detailErrorMessage || isDetailLoading) && (
+                  <div className="bg-[#111116] border border-white/10 rounded-xl p-6">
+                    <div className="mb-4 flex items-center justify-between">
+                      <h3 className="text-white font-semibold text-lg flex items-center gap-2">
+                        <Eye className="w-5 h-5 text-primary" />
+                        작업 상세
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedTask(null);
+                          setDetailErrorMessage(null);
+                        }}
+                        className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                        title="닫기"
+                      >
+                        <X className="h-4 w-4 text-gray-400" />
+                      </button>
+                    </div>
+                    {isDetailLoading ? (
+                      <div className="flex items-center gap-2 text-sm text-gray-400">
+                        <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                        상세 정보를 불러오는 중입니다.
+                      </div>
+                    ) : detailErrorMessage ? (
+                      <p className="text-sm text-red-300">{detailErrorMessage}</p>
+                    ) : selectedTask && (
+                      <dl className="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
+                        <div>
+                          <dt className="text-gray-500">ID</dt>
+                          <dd className="font-mono text-primary">{selectedTask.id}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-gray-500">문서</dt>
+                          <dd className="text-white">{selectedTask.document.file_name}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-gray-500">task_type</dt>
+                          <dd className="text-white">{selectedTask.task_type}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-gray-500">status</dt>
+                          <dd className="text-white">{getStatusLabel(selectedTask.status, selectedTask.stage)}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-gray-500">stage</dt>
+                          <dd className="text-white">{selectedTask.stage ?? '-'}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-gray-500">progress</dt>
+                          <dd className="text-white">{selectedTask.progress}%</dd>
+                        </div>
+                        <div className="md:col-span-2">
+                          <dt className="text-gray-500">message</dt>
+                          <dd className="text-white">{selectedTask.message ?? '-'}</dd>
+                        </div>
+                        <div className="md:col-span-2">
+                          <dt className="text-gray-500">error_message</dt>
+                          <dd className="text-red-300">{selectedTask.error_message ?? '-'}</dd>
+                        </div>
+                      </dl>
+                    )}
+                  </div>
+                )}
 
                 {/* Worker monitoring */}
                 <div className="bg-[#111116] border border-white/10 rounded-xl p-6">
@@ -644,17 +784,18 @@ export function AdminJobPage({ onLogout }: AdminJobPageProps) {
                           key={job.id}
                           className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg"
                         >
-                          <p className="text-white text-sm font-medium mb-1 line-clamp-1">{job.documentName}</p>
-                          <p className="text-red-400/80 text-xs mb-2 line-clamp-2">{job.error}</p>
+                          <p className="text-white text-sm font-medium mb-1 line-clamp-1">{job.document.file_name}</p>
+                          <p className="text-red-400/80 text-xs mb-2 line-clamp-2">{job.error_message ?? job.message ?? '-'}</p>
                           <div className="flex items-center justify-between text-xs mb-2">
-                            <span className="text-gray-400">Retry: {job.retryCount || 0}</span>
-                            <span className={`px-2 py-0.5 rounded ${getJobTypeColor(job.type)}`}>
-                              {getJobTypeLabel(job.type)}
+                            <span className="text-gray-400">{formatDateTime(job.updated_at)}</span>
+                            <span className={`px-2 py-0.5 rounded ${getJobTypeColor(job.task_type)}`}>
+                              {job.task_type}
                             </span>
                           </div>
                           <button
                             type="button"
-                            className="w-full py-1.5 px-3 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded text-red-400 text-xs transition-colors flex items-center justify-center gap-1.5"
+                            disabled
+                            className="w-full py-1.5 px-3 bg-red-500/20 border border-red-500/30 rounded text-red-400 text-xs transition-colors flex items-center justify-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             <RefreshCw className="w-3 h-3" />
                             재시도
@@ -669,22 +810,26 @@ export function AdminJobPage({ onLogout }: AdminJobPageProps) {
                 <div className="bg-[#111116] border border-white/10 rounded-xl p-6">
                   <h3 className="text-white font-semibold text-lg mb-4">큐 상태</h3>
                   <div className="space-y-3">
-                    {queueStats.map((queue) => (
-                      <div key={queue.name} className="p-3 bg-white/5 rounded-lg">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-white text-sm font-medium">{queue.name}</span>
-                          <span className={`text-${queue.color}-400 text-sm font-bold`}>
-                            {queue.count}
-                          </span>
+                    {queueStats.map((queue) => {
+                      const classNames = queueColorClassNames[queue.type];
+
+                      return (
+                        <div key={queue.name} className="p-3 bg-white/5 rounded-lg">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-white text-sm font-medium">{queue.name}</span>
+                            <span className={`${classNames.text} text-sm font-bold`}>
+                              {queue.count}
+                            </span>
+                          </div>
+                          <div className="w-full bg-white/5 rounded-full h-1.5">
+                            <div
+                              className={`${classNames.bg} h-1.5 rounded-full transition-all`}
+                              style={{ width: `${Math.min(100, (queue.count / PAGE_LIMIT) * 100)}%` }}
+                            />
+                          </div>
                         </div>
-                        <div className="w-full bg-white/5 rounded-full h-1.5">
-                          <div
-                            className={`bg-${queue.color}-500 h-1.5 rounded-full transition-all`}
-                            style={{ width: `${(queue.count / 20) * 100}%` }}
-                          />
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -695,9 +840,11 @@ export function AdminJobPage({ onLogout }: AdminJobPageProps) {
                     실시간 활동
                   </h3>
                   <div className="space-y-3">
-                    {activityLog.map((log, idx) => (
+                    {activityLog.length === 0 ? (
+                      <p className="rounded-lg bg-white/5 p-3 text-sm text-gray-500">최근 작업 활동이 없습니다.</p>
+                    ) : activityLog.map((log) => (
                       <div
-                        key={idx}
+                        key={log.id}
                         className="flex items-start gap-3 p-3 bg-white/5 rounded-lg"
                       >
                         <div className="mt-0.5">
