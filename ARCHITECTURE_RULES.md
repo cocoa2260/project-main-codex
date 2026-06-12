@@ -96,39 +96,30 @@ The agent must not alter this workflow without explicit approval.
 Directory Responsibilities
 
 src/api
-
 * API communication only
 
 src/types
-
 * Type definitions only
 
 src/utils
-
 * Pure utility functions only
 
 src/hooks
-
 * Reusable React hooks only
 
 src/components
-
 * Reusable UI components only
 
 src/pages
-
 * Page composition only
 
 src/layouts
-
 * Layout components only
 
 src/routes
-
 * Routing and guards only
 
 Rules
-
 * No API calls directly inside reusable components.
 * No business logic inside UI components.
 * Avoid duplicated JSX.
@@ -140,39 +131,30 @@ Rules
 # 4. Backend Rules
 
 routers
-
 * API endpoints
 
 services
-
 * Business logic
 
 schemas
-
 * Request / Response DTO
 
 models
-
 * Database entities
 
 tasks
-
 * Celery tasks
 
 db
-
 * Database configuration
 
 core
-
 * Configuration, Security, Logging
 
 utils
-
 * Pure helper functions
 
 Rules
-
 * Routers must stay thin.
 * Business logic belongs to services.
 * Long-running jobs belong to Celery.
@@ -180,12 +162,29 @@ Rules
 
 ---
 
-# 5. Status Rules
+# 5. Alembic Rules
 
+If model/schema changes are required:
+- create Alembic migration
+- run alembic heads
+- stop on multiple heads
+- do not resolve multiple heads automatically
+- run alembic upgrade head
+- restart backend
+- verify startup
+- include migration in PR
+- report Alembic revision id in task output
+
+If no model/schema changes:
+- do not create migration
+
+Never:
+- modify existing migration files
+- delete migration files
+
+# 6. Status Rules
 Only use predefined values.
-
 DocumentStatus
-
 * PENDING
 * PROCESSING
 * REVIEW_REQUIRED
@@ -193,33 +192,26 @@ DocumentStatus
 * FAILED
 
 TaskStatus
-
 * PENDING
 * PROCESSING
 * COMPLETED
 * FAILED
 
 TaskType
-
 * OCR
 * SUMMARY
 * EMBEDDING
 * RAG_INDEXING
 
 TaskStage
-
 Use values defined in document.ts and backend constants.
-
 Never introduce ad-hoc status strings.
 
 ---
 
-# 6. CommonCode Rules
-
+# 7. CommonCode Rules
 CommonCode is the single source of truth.
-
 The agent must not:
-
 * Duplicate code lists
 * Duplicate labels
 * Duplicate status names
@@ -228,19 +220,15 @@ If a value is configurable, use CommonCode.
 
 ---
 
-# 7. Database Rules
-
+# 8. Database Rules
 Never:
-
 * Delete migrations
 * Rewrite existing migrations
 * Change PK/FK structure
 * Rename tables
 
 without approval.
-
 New schema changes require:
-
 1. Model update
 2. Schema update
 3. Migration
@@ -248,23 +236,19 @@ New schema changes require:
 
 ---
 
-# 8. Celery Rules
-
+# 9. Celery Rules
 OCR
 Summary
 Embedding
 RAG Indexing
 
 must run asynchronously.
-
 Do not move them into synchronous APIs.
 
 ---
 
-# 9. Security Rules
-
+# 10. Security Rules
 Never:
-
 * Commit secrets
 * Commit API keys
 * Hardcode passwords
@@ -274,10 +258,8 @@ Always use environment variables.
 
 ---
 
-# 10. Forbidden Actions
-
+# 11. Forbidden Actions
 The agent must not:
-
 * Redesign architecture
 * Rename major directories
 * Replace frameworks
@@ -287,12 +269,30 @@ The agent must not:
 
 ---
 
-# 11. Required Output
-
+# 12. Required Output
 Every task must include:
-
 * Summary
 * Changed files
 * Testing method
 * Risks
 * Follow-up suggestions
+
+## Pull Request Rule
+Every completed task must provide:
+
+1. PR Title
+2. PR Body
+3. Next Recommended Branch
+
+Use plain text format.
+
+Example:
+PR Title
+feat(admin): add admin tasks api
+PR Body
+
+## Summary
+...
+
+Next Branch
+feature/fe-016-admin-task-monitoring-api-integration
