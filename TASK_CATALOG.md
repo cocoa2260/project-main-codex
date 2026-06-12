@@ -41,9 +41,10 @@
 
 | ID | Task | Priority | Status |
 |------|------|------|------|
-| FE-011 | Admin Route Investigation | High | TODO |
-| FE-012 | Admin Page Investigation | High | TODO |
-| FE-013 | Admin API Investigation | High | TODO |
+| FE-011 | Admin Route Audit | High | DONE |
+| AUTH-001 | Align login response role with frontend auth state | High | TODO |
+| FE-012 | Admin Page Mock Audit | High | TODO |
+| FE-013 | Admin API Spec | High | TODO |
 
 ---
 

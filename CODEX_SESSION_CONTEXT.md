@@ -77,6 +77,22 @@ Summary:
 - Preserved existing API contracts and UI layout
 - Build passed
 
+### FE-011
+Admin Route Audit
+Status: DONE
+Summary:
+- Admin frontend routes already exist
+- Admin pages already exist but are mostly mock/static
+- Role model exists with USER / ADMIN
+- JWT includes role
+- Backend require_admin exists
+- No admin-only backend APIs exist
+- Login response and frontend role storage are mismatched
+- /api/auth/me is expected by frontend but missing in backend
+
+Next:
+- AUTH-001 should be handled before Admin API work
+
 Merged:
 * develop
 
