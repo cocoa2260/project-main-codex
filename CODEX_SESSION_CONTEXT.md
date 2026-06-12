@@ -66,6 +66,17 @@ Summary:
 - Renamed “나중에 하기” to “요약 보류”
 - Build passed
 
+### FE-009
+Summary API Validation
+Status: DONE
+Summary:
+- Added keywords support to DocumentSummaryResponse
+- Added safe keywords handling in SummaryPage
+- Added status guidance banners for FAILED, PROCESSING and REVIEW_REQUIRED documents
+- Restricted summary/chat actions to COMPLETED documents only
+- Preserved existing API contracts and UI layout
+- Build passed
+
 Merged:
 * develop
 
