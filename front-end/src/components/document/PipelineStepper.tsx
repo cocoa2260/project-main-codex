@@ -4,6 +4,7 @@ import {
   Circle,
   FileText,
   Loader2,
+  Upload,
   Search,
   Sparkles,
   X,
@@ -13,6 +14,7 @@ import type {
   DocumentProcessingStatus,
   DocumentStatus,
   PipelineStep,
+  PipelineStepId,
   PipelineStepState,
   TaskStage,
 } from "@/types/document";
@@ -21,15 +23,18 @@ import { getPipelineSteps } from "@/utils/documentStatus";
 interface PipelineStepperProps {
   status: DocumentProcessingStatus | DocumentStatus | string | null | undefined;
   stage?: TaskStage | string | null;
+  progress?: number;
   className?: string;
 }
 
 const stageIconMap = {
+  upload: Upload,
+  extraction: FileText,
   OCR: FileText,
   SUMMARY: Brain,
   EMBEDDING: Sparkles,
   RAG_INDEXING: Search,
-} satisfies Record<TaskStage, LucideIcon>;
+} satisfies Record<PipelineStepId, LucideIcon>;
 
 const stateClassNames: Record<
   PipelineStepState,
@@ -83,8 +88,9 @@ function getStepAriaLabel(step: PipelineStep) {
   return `${step.label}: ${stateLabel[step.state]}`;
 }
 
-export function PipelineStepper({ status, stage, className }: PipelineStepperProps) {
+export function PipelineStepper({ status, stage, progress, className }: PipelineStepperProps) {
   const steps = getPipelineSteps(status, stage);
+  const normalizedProgress = Math.max(0, Math.min(100, progress ?? 0));
 
   return (
     <ol
@@ -120,10 +126,27 @@ export function PipelineStepper({ status, stage, className }: PipelineStepperPro
                   <span className={joinClassNames("text-sm font-medium", classNames.label)}>
                     {step.label}
                   </span>
+                  {step.state === "processing" && (
+                    <span className="flex items-center gap-1.5 text-sm text-blue-400">
+                      <Circle className="h-3.5 w-3.5 fill-current animate-pulse" />
+                      진행 중
+                    </span>
+                  )}
                   <span className="text-xs text-zinc-500">
                     {index + 1}/{steps.length}
                   </span>
                 </div>
+
+                {step.state === "processing" && progress !== undefined && (
+                  <div className="mt-3">
+                    <div className="h-1.5 w-full rounded-full bg-white/5">
+                      <div
+                        className="h-1.5 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-500"
+                        style={{ width: `${normalizedProgress}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 

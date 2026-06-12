@@ -3,7 +3,6 @@ import { useNavigate, useParams } from 'react-router-dom';
 import {
   Home,
   FileText,
-  Upload,
   MessageSquare,
   Clock,
   Settings,
@@ -19,8 +18,6 @@ import {
   XCircle,
   Eye,
   Download,
-  Brain,
-  Sparkles,
   Database,
   Zap,
   Calendar,
@@ -33,16 +30,7 @@ import {
 } from 'lucide-react';
 import { useDocumentStatus } from '../../hooks/useDocumentStatus';
 import { Sidebar } from '../../components/common/Sidebar';
-
-interface ProcessingStep {
-  id: string;
-  label: string;
-  status: 'completed' | 'processing' | 'pending' | 'failed';
-  icon: any;
-  startTime?: string;
-  endTime?: string;
-  duration?: string;
-}
+import { PipelineStepper } from '../../components/document/PipelineStepper';
 
 interface ActivityLog {
   id: string;
@@ -83,72 +71,6 @@ export function DocumentStatusPage({ onBack, onLogout, onOpenSummary, onOpenChat
     navigate(`/documents/${documentId}/review`);
   }, [documentId, navigate, normalizedStatus]);
 
-  const buildSteps = (): ProcessingStep[] => {
-    const stage = status?.stage?.toUpperCase() ?? 'OCR';
-
-    const baseSteps: ProcessingStep[] = [
-      { id: 'upload', label: '업로드 완료', status: 'completed', icon: Upload },
-      { id: 'extraction', label: '텍스트 추출', status: 'completed', icon: FileText },
-      { id: 'ocr', label: 'OCR 처리', status: 'pending', icon: Loader2 },
-      { id: 'summary', label: 'AI 요약', status: 'pending', icon: Brain },
-      { id: 'embedding', label: '벡터 임베딩', status: 'pending', icon: Sparkles },
-      { id: 'ready', label: 'RAG 준비 완료', status: 'pending', icon: CheckCircle2 },
-    ];
-
-    if (normalizedStatus === 'REVIEW_REQUIRED') {
-      return baseSteps.map((step) => {
-        if (['upload', 'extraction', 'ocr'].includes(step.id)) return { ...step, status: 'completed' };
-        if (step.id === 'summary') return { ...step, status: 'pending' };
-        return step;
-      });
-    }
-
-    if (normalizedStatus === 'COMPLETED') {
-      return baseSteps.map((step) => ({ ...step, status: 'completed' }));
-    }
-
-    if (normalizedStatus === 'FAILED') {
-      return baseSteps.map((step) => {
-        if (stage === 'OCR' && step.id === 'ocr') return { ...step, status: 'failed' };
-        if (stage === 'SUMMARY' && step.id === 'summary') return { ...step, status: 'failed' };
-        if (stage === 'EMBEDDING' && step.id === 'embedding') return { ...step, status: 'failed' };
-        return step;
-      });
-    }
-
-    if (stage === 'SUMMARY') {
-      return baseSteps.map((step) => {
-        if (['upload', 'extraction', 'ocr'].includes(step.id)) return { ...step, status: 'completed' };
-        if (step.id === 'summary') return { ...step, status: 'processing' };
-        return step;
-      });
-    }
-
-    if (stage === 'EMBEDDING') {
-      return baseSteps.map((step) => {
-        if (['upload', 'extraction', 'ocr', 'summary'].includes(step.id)) return { ...step, status: 'completed' };
-        if (step.id === 'embedding') return { ...step, status: 'processing' };
-        return step;
-      });
-    }
-
-    if (stage === 'RAG') {
-      return baseSteps.map((step) => {
-        if (['upload', 'extraction', 'ocr', 'summary', 'embedding'].includes(step.id)) return { ...step, status: 'completed' };
-        if (step.id === 'ready') return { ...step, status: 'processing' };
-        return step;
-      });
-    }
-
-    return baseSteps.map((step) => {
-      if (['upload', 'extraction'].includes(step.id)) return { ...step, status: 'completed' };
-      if (step.id === 'ocr') return { ...step, status: normalizedStatus === 'PENDING' ? 'pending' : 'processing' };
-      return step;
-    });
-  };
-
-  const steps = buildSteps();
-
   const documentInfo = {
     name: status?.document_id ? `문서 ${status.document_id.slice(0, 8)}` : '업로드 문서',
     uploadDate: '처리 상태 조회 중',
@@ -173,19 +95,6 @@ export function DocumentStatusPage({ onBack, onLogout, onOpenSummary, onOpenChat
   const handleMenuClick = (menuId: string) => {
     const route = userMenuRoutes[menuId];
     if (route) navigate(route);
-  };
-
-  const getStepColor = (status: ProcessingStep['status']) => {
-    switch (status) {
-      case 'completed':
-        return 'text-green-400 bg-green-500/10 border-green-500/20';
-      case 'processing':
-        return 'text-blue-400 bg-blue-500/10 border-blue-500/20';
-      case 'failed':
-        return 'text-red-400 bg-red-500/10 border-red-500/20';
-      default:
-        return 'text-zinc-400 bg-white/5 border-white/10';
-    }
   };
 
   const getActivityIcon = (type: ActivityLog['type']) => {
@@ -378,68 +287,11 @@ export function DocumentStatusPage({ onBack, onLogout, onOpenSummary, onOpenChat
                 {/* Processing pipeline */}
                 <div className="bg-[#15151c] border border-white/10 rounded-xl p-6">
                   <h3 className="text-white font-semibold text-lg mb-6">처리 단계</h3>
-                  <div className="space-y-4">
-                    {steps.map((step, index) => {
-                      const StepIcon = step.icon;
-                      const isLast = index === steps.length - 1;
-
-                      return (
-                        <div key={step.id}>
-                          <div className="flex items-start gap-4">
-                            {/* Icon */}
-                            <div className={`p-3 rounded-xl border ${getStepColor(step.status)} flex-shrink-0`}>
-                              <StepIcon
-                                className={`w-5 h-5 ${
-                                  step.status === 'processing' ? 'animate-spin' : ''
-                                }`}
-                              />
-                            </div>
-
-                            {/* Content */}
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center justify-between mb-1">
-                                <h4 className="text-white font-medium">{step.label}</h4>
-                                {step.status === 'completed' && (
-                                  <span className="text-green-400 text-sm">{step.duration}</span>
-                                )}
-                                {step.status === 'processing' && (
-                                  <span className="text-blue-400 text-sm flex items-center gap-1.5">
-                                    <Activity className="w-3.5 h-3.5 animate-pulse" />
-                                    진행 중
-                                  </span>
-                                )}
-                              </div>
-
-                              {step.startTime && (
-                                <p className="text-zinc-400 text-sm">
-                                  {step.startTime}
-                                  {step.endTime && ` - ${step.endTime}`}
-                                </p>
-                              )}
-
-                              {step.status === 'processing' && (
-                                <div className="mt-3">
-                                  <div className="w-full bg-white/5 rounded-full h-1.5">
-                                    <div
-                                      className="bg-gradient-to-r from-blue-500 to-purple-500 h-1.5 rounded-full transition-all duration-500"
-                                      style={{ width: `${progress}%` }}
-                                    />
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Connector line */}
-                          {!isLast && (
-                            <div className={`ml-9 h-8 w-0.5 ${
-                              step.status === 'completed' ? 'bg-green-500/20' : 'bg-white/10'
-                            }`} />
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
+                  <PipelineStepper
+                    status={status?.status ?? normalizedStatus}
+                    stage={status?.stage}
+                    progress={progress}
+                  />
                 </div>
 
                 {/* Actions */}

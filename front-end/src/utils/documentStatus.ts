@@ -3,6 +3,7 @@ import type {
   DocumentDisplayStatus,
   DocumentProcessingStatus,
   PipelineStep,
+  PipelineStepId,
   TaskStage,
 } from "@/types/document";
 
@@ -26,13 +27,16 @@ export interface DocumentStatusPresentation {
 }
 
 const DEFAULT_STATUS: DocumentStatus = "PENDING";
-const PIPELINE_STEP_ORDER: TaskStage[] = ["OCR", "SUMMARY", "EMBEDDING", "RAG_INDEXING"];
+const TASK_STAGE_ORDER: TaskStage[] = ["OCR", "SUMMARY", "EMBEDDING", "RAG_INDEXING"];
+const PIPELINE_STEP_ORDER: PipelineStepId[] = ["upload", "extraction", "OCR", "SUMMARY", "EMBEDDING", "RAG_INDEXING"];
 
-const taskStageLabels: Record<TaskStage, string> = {
+const pipelineStepLabels: Record<PipelineStepId, string> = {
+  upload: "업로드 완료",
+  extraction: "텍스트 추출",
   OCR: "OCR 처리",
   SUMMARY: "AI 요약",
   EMBEDDING: "벡터 임베딩",
-  RAG_INDEXING: "RAG 인덱싱",
+  RAG_INDEXING: "RAG 준비 완료",
 };
 
 export function normalizeDocumentStatus(
@@ -85,11 +89,11 @@ export function normalizeTaskStage(stage?: TaskStage | string | null): TaskStage
 
 export function getTaskStageLabel(stage?: TaskStage | string | null): string {
   const normalizedStage = normalizeTaskStage(stage);
-  return normalizedStage ? taskStageLabels[normalizedStage] : "문서 처리";
+  return normalizedStage ? pipelineStepLabels[normalizedStage] : "문서 처리";
 }
 
 export function getPipelineStepOrder(): TaskStage[] {
-  return [...PIPELINE_STEP_ORDER];
+  return [...TASK_STAGE_ORDER];
 }
 
 export function getPipelineSteps(
@@ -104,19 +108,21 @@ export function getPipelineSteps(
   return PIPELINE_STEP_ORDER.map((stepStage, index) => {
     let state: PipelineStep["state"] = "pending";
 
-    if (normalizedStatus === "COMPLETED") {
+    if (stepStage === "upload" || stepStage === "extraction") {
+      state = "completed";
+    } else if (normalizedStatus === "COMPLETED") {
       state = "completed";
     } else if (normalizedStatus === "REVIEW_REQUIRED") {
       state = stepStage === "OCR" ? "completed" : "pending";
     } else if (normalizedStatus === "FAILED") {
-      state = index < currentStageIndex ? "completed" : stepStage === currentStage ? "failed" : "pending";
+      state = stepStage === currentStage ? "failed" : "pending";
     } else if (normalizedStatus === "PROCESSING") {
       state = index < currentStageIndex ? "completed" : stepStage === currentStage ? "processing" : "pending";
     }
 
     return {
       id: stepStage,
-      label: taskStageLabels[stepStage],
+      label: pipelineStepLabels[stepStage],
       state,
     };
   });
