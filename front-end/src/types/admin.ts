@@ -50,6 +50,62 @@ export interface AdminPaginationResponse {
   total_pages: number;
 }
 
+export type AdminDocumentOwner = AdminOwnerResponse;
+export type AdminPagination = AdminPaginationResponse;
+
+export interface AdminLatestTask {
+  id: string;
+  task_type: TaskType | string;
+  status: TaskStatus | string;
+  stage: TaskStage | string | null;
+  progress: number;
+  message: string | null;
+  error_message: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AdminDocumentItem {
+  id: string;
+  file_name: string;
+  status: DocumentStatus | string;
+  category: string | null;
+  file_size: number;
+  page_count: number | null;
+  selected_embedding_model: string | null;
+  upload_at: string;
+  process_at: string | null;
+  created_at: string;
+  updated_at: string;
+  owner: AdminDocumentOwner;
+  latest_task: AdminLatestTask | null;
+}
+
+export interface AdminDocumentListResponse {
+  items: AdminDocumentItem[];
+  pagination: AdminPagination;
+}
+
+export interface AdminDocumentDetailResponse extends AdminDocumentItem {
+  summary: string | null;
+  chunk_count: number;
+  keywords: string[];
+}
+
+export interface AdminDocumentListParams {
+  page?: number;
+  limit?: number;
+  status?: DocumentStatus;
+  owner_id?: string;
+  search?: string;
+  uploaded_from?: string;
+  uploaded_to?: string;
+  sort_by?: 'upload_at' | 'updated_at' | 'file_name' | 'file_size' | 'page_count' | 'status';
+  sort_order?: 'asc' | 'desc';
+}
+
 export interface AdminTaskDocumentResponse {
   id: string;
   file_name: string;

@@ -116,6 +116,19 @@ Summary:
 - Preserved the existing dashboard layout, cards, and page sections
 - Build passed
 
+### FE-015
+Admin Document Management API Integration
+Status: DONE
+Summary:
+- Added admin document API client for GET /api/admin/documents and GET /api/admin/documents/{document_id}
+- Added admin document DTO types reusing DocumentStatus, TaskStatus, and TaskType from document.ts
+- Replaced AdminDocumentPage document mock data with admin document API data
+- Added loading, error, empty, pagination, manual refresh, detail lookup, search, status filter, and sorting states
+- Displayed API owner, status, latest task, progress, page count, file size, category, upload_at, and process_at data
+- Reused StatusBadge and documentStatus.ts status presentation utilities
+- Preserved existing page layout, table actions, right panels, and disabled future action buttons where backend APIs do not exist
+- Build passed
+
 ---
 
 ### FE-011
