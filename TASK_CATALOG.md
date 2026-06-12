@@ -21,7 +21,7 @@
 |------|------|------|------|
 | FE-006 | DocumentList API Integration | High | DONE |
 | FE-007 | Upload API Validation | High | TODO |
-| FE-008 | Review API Integration | High | TODO |
+| FE-008 | Review API Integration | High | DONE |
 | FE-009 | Summary API Validation | High | TODO |
 | FE-010 | Workspace API Integration | High | TODO |
 

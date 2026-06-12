@@ -54,6 +54,18 @@ Summary:
 - Fixed statusParam filter issue
 - Build passed
 
+### FE-008
+Review API Integration
+Status: DONE
+Summary:
+- Added review action for REVIEW_REQUIRED documents
+- Supported review navigation in grid/list views
+- Updated cancel-summary success navigation to /documents?status=REVIEW_REQUIRED
+- Added guidance message for non-REVIEW_REQUIRED documents
+- Removed duplicated document ID display
+- Renamed “나중에 하기” to “요약 보류”
+- Build passed
+
 Merged:
 * develop
 
