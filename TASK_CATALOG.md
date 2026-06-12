@@ -90,7 +90,7 @@
 | ID | Task | Priority | Status |
 |------|------|------|------|
 | BE-ADMIN-001 | Admin Dashboard Summary API | High | DONE |
-| BE-ADMIN-002 | Admin Document List API | High | TODO |
+| BE-ADMIN-002 | Admin Document List API | High | DONE |
 | BE-ADMIN-003 | Admin Task List API | High | TODO |
 | FE-014 | Admin Dashboard API Integration | High | TODO |
 | FE-015 | Admin Document Management API Integration | High | TODO |
@@ -156,12 +156,13 @@ Review API
 - Ad-hoc Stage 문자열 제거 여부 검토
 - Frontend/Backend 계약 정리
 
-# TODO
+# DONE
 
 - BE-ADMIN-002 Admin Documents API
 - Admin 전체 문서 조회 API
 - Admin 문서 상세 조회 API
+- Pagination / Filters / Sorting 지원
 - Owner / Latest Task 정보 포함
 
 Priority: High
-Status: TODO
+Status: DONE
