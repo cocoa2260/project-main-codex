@@ -20,6 +20,18 @@ export type TaskType =
 
 export type TaskStage = TaskType;
 
+export type PipelineStepState =
+  | "pending"
+  | "processing"
+  | "completed"
+  | "failed";
+
+export interface PipelineStep {
+  id: TaskStage;
+  label: string;
+  state: PipelineStepState;
+}
+
 
 export interface Document {
   id: string;
@@ -90,7 +102,7 @@ export interface DocumentStatusResponse {
   message: string | null;
 }
 
-export interface DocumentStatusEvent extends DocumentStatusResponse {}
+export type DocumentStatusEvent = DocumentStatusResponse;
 
 export interface DocumentApiError {
   detail?: string;
