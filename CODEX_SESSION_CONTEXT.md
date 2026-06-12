@@ -107,8 +107,21 @@ Summary:
 - Login response and frontend role storage are mismatched
 - Frontend expects /api/auth/me but backend does not provide it
 
-Next:
-- AUTH-001 should be handled before Admin API work
+### FE-012
+Admin Page Mock Audit
+Status: DONE
+Summary:
+- Admin routes and pages already exist
+- Admin pages are mostly mock/static
+- AdminRoute and Sidebar admin variant already exist
+- Backend UserRole and require_admin exist
+- No Admin-only backend APIs exist yet
+- Admin Dashboard, Document Management, and Task Monitoring are realistic MVP targets
+- User Management, Settings, and Logs should be excluded from MVP for now
+
+Recommended Next:
+- FE-013 Admin API Spec
+- Then implement Admin backend read-only APIs
 
 ---
 
