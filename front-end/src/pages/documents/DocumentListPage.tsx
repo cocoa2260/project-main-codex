@@ -468,6 +468,17 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                       )}
 
                       {/* Actions */}
+                      {doc.status === 'REVIEW_REQUIRED' && (
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/documents/${doc.id}/review`)}
+                          className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 rounded-lg transition-colors text-sm text-purple-300"
+                        >
+                          <Eye className="w-4 h-4" />
+                          검토하기
+                        </button>
+                      )}
+
                       {doc.status === 'COMPLETED' && (
                         <div className="flex items-center gap-2 pt-4 border-t border-white/10">
                           <button
@@ -594,6 +605,17 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                                       <Download className="w-4 h-4 text-zinc-300" />
                                     </button>
                                   </>
+                                )}
+                                {doc.status === 'REVIEW_REQUIRED' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => navigate(`/documents/${doc.id}/review`)}
+                                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 rounded-lg transition-colors text-xs text-purple-300"
+                                    title="검토하기"
+                                  >
+                                    <Eye className="w-4 h-4" />
+                                    검토하기
+                                  </button>
                                 )}
                                 {doc.status === 'FAILED' && (
                                   <button
