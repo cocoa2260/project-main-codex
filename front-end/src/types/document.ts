@@ -126,6 +126,7 @@ export interface DocumentSummaryResponse {
   file_name: string;
   status: DocumentProcessingStatus | string;
   summary: string | null;
+  keywords?: string[];
   page_count: number | null;
   file_size: number;
   upload_at: string;
