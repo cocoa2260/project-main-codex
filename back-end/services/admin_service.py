@@ -24,6 +24,10 @@ from schemas.admin import AdminDashboardSummaryResponse
 from schemas.admin import AdminDocumentDetailResponse
 from schemas.admin import AdminDocumentListItemResponse
 from schemas.admin import AdminDocumentListResponse
+from schemas.admin import AdminTaskDetailResponse
+from schemas.admin import AdminTaskDocumentResponse
+from schemas.admin import AdminTaskListItemResponse
+from schemas.admin import AdminTaskListResponse
 from schemas.admin import AdminLatestTaskResponse
 from schemas.admin import AdminOwnerResponse
 from schemas.admin import AdminPaginationResponse
@@ -151,6 +155,40 @@ def _document_list_item_response(row) -> AdminDocumentListItemResponse:
     )
 
 
+def _task_document_response(row) -> AdminTaskDocumentResponse:
+    return AdminTaskDocumentResponse(
+        id=row.document_id,
+        file_name=row.file_name,
+        status=row.document_status,
+        category=row.category,
+        upload_at=row.upload_at,
+        updated_at=row.document_updated_at,
+    )
+
+
+def _task_list_item_response(row) -> AdminTaskListItemResponse:
+    return AdminTaskListItemResponse(
+        id=row.task_id,
+        task_type=row.task_type,
+        status=row.task_status,
+        stage=row.task_stage,
+        progress=row.task_progress,
+        message=row.task_message,
+        error_message=row.task_error_message,
+        started_at=row.task_started_at,
+        completed_at=row.task_completed_at,
+        created_at=row.task_created_at,
+        updated_at=row.task_updated_at,
+        document=_task_document_response(row),
+        owner=AdminOwnerResponse(
+            id=row.owner_id,
+            email=row.owner_email,
+            name=row.owner_name,
+            role=row.owner_role,
+        ),
+    )
+
+
 def _apply_document_filters(
     query,
     status: str | None,
@@ -185,6 +223,53 @@ def _apply_document_filters(
     return query
 
 
+def _apply_task_filters(
+    query,
+    status: str | None,
+    task_type: str | None,
+    stage: str | None,
+    document_id: UUID | None,
+    owner_id: UUID | None,
+    search: str | None,
+    created_from: date | None,
+    created_to: date | None,
+):
+    if status:
+        query = query.filter(TaskTracker.status == status)
+
+    if task_type:
+        query = query.filter(TaskTracker.task_type == task_type)
+
+    if stage:
+        query = query.filter(TaskTracker.stage == stage)
+
+    if document_id:
+        query = query.filter(TaskTracker.document_id == document_id)
+
+    if owner_id:
+        query = query.filter(Document.user_id == owner_id)
+
+    if search:
+        keyword = f"%{search.strip()}%"
+        query = query.filter(
+            or_(
+                Document.file_name.ilike(keyword),
+                User.name.ilike(keyword),
+                User.email.ilike(keyword),
+                TaskTracker.message.ilike(keyword),
+                TaskTracker.error_message.ilike(keyword),
+            )
+        )
+
+    if created_from:
+        query = query.filter(TaskTracker.created_at >= _date_start(created_from))
+
+    if created_to:
+        query = query.filter(TaskTracker.created_at <= _date_end(created_to))
+
+    return query
+
+
 def _sort_expression(sort_by: str, sort_order: str):
     sort_columns = {
         "upload_at": Document.upload_at,
@@ -195,6 +280,24 @@ def _sort_expression(sort_by: str, sort_order: str):
         "status": Document.status,
     }
     column = sort_columns.get(sort_by, Document.updated_at)
+
+    if sort_order.lower() == "asc":
+        return column.asc()
+
+    return column.desc()
+
+
+def _task_sort_expression(sort_by: str, sort_order: str):
+    sort_columns = {
+        "created_at": TaskTracker.created_at,
+        "updated_at": TaskTracker.updated_at,
+        "started_at": TaskTracker.started_at,
+        "completed_at": TaskTracker.completed_at,
+        "progress": TaskTracker.progress,
+        "status": TaskTracker.status,
+        "task_type": TaskTracker.task_type,
+    }
+    column = sort_columns.get(sort_by, TaskTracker.updated_at)
 
     if sort_order.lower() == "asc":
         return column.asc()
@@ -500,3 +603,116 @@ def get_admin_document_detail(
         chunk_count=chunk_count,
         keywords=keywords,
     )
+
+
+def _base_task_query(db: Session):
+    return (
+        db.query(
+            TaskTracker.id.label("task_id"),
+            TaskTracker.task_type.label("task_type"),
+            TaskTracker.status.label("task_status"),
+            TaskTracker.stage.label("task_stage"),
+            TaskTracker.progress.label("task_progress"),
+            TaskTracker.message.label("task_message"),
+            TaskTracker.error_message.label("task_error_message"),
+            TaskTracker.started_at.label("task_started_at"),
+            TaskTracker.completed_at.label("task_completed_at"),
+            TaskTracker.created_at.label("task_created_at"),
+            TaskTracker.updated_at.label("task_updated_at"),
+            Document.id.label("document_id"),
+            Document.file_name.label("file_name"),
+            Document.status.label("document_status"),
+            Document.category.label("category"),
+            Document.upload_at.label("upload_at"),
+            Document.updated_at.label("document_updated_at"),
+            User.id.label("owner_id"),
+            User.email.label("owner_email"),
+            User.name.label("owner_name"),
+            User.role.label("owner_role"),
+        )
+        .join(Document, TaskTracker.document_id == Document.id)
+        .join(User, Document.user_id == User.id)
+    )
+
+
+def list_admin_tasks(
+    db: Session,
+    page: int = 1,
+    limit: int = 20,
+    status: str | None = None,
+    task_type: str | None = None,
+    stage: str | None = None,
+    document_id: UUID | None = None,
+    owner_id: UUID | None = None,
+    search: str | None = None,
+    created_from: date | None = None,
+    created_to: date | None = None,
+    sort_by: str = "updated_at",
+    sort_order: str = "desc",
+) -> AdminTaskListResponse:
+    page = max(page, 1)
+    limit = min(max(limit, 1), 100)
+
+    count_query = (
+        db.query(func.count(TaskTracker.id))
+        .join(Document, TaskTracker.document_id == Document.id)
+        .join(User, Document.user_id == User.id)
+    )
+    count_query = _apply_task_filters(
+        count_query,
+        status=status,
+        task_type=task_type,
+        stage=stage,
+        document_id=document_id,
+        owner_id=owner_id,
+        search=search,
+        created_from=created_from,
+        created_to=created_to,
+    )
+    total = count_query.scalar() or 0
+
+    query = _base_task_query(db)
+    query = _apply_task_filters(
+        query,
+        status=status,
+        task_type=task_type,
+        stage=stage,
+        document_id=document_id,
+        owner_id=owner_id,
+        search=search,
+        created_from=created_from,
+        created_to=created_to,
+    )
+    rows = (
+        query.order_by(_task_sort_expression(sort_by, sort_order), TaskTracker.id.desc())
+        .offset((page - 1) * limit)
+        .limit(limit)
+        .all()
+    )
+
+    return AdminTaskListResponse(
+        items=[_task_list_item_response(row) for row in rows],
+        pagination=AdminPaginationResponse(
+            page=page,
+            limit=limit,
+            total=total,
+            total_pages=ceil(total / limit) if total else 0,
+        ),
+    )
+
+
+def get_admin_task_detail(
+    db: Session,
+    task_id: UUID,
+) -> AdminTaskDetailResponse | None:
+    row = (
+        _base_task_query(db)
+        .filter(TaskTracker.id == task_id)
+        .first()
+    )
+
+    if row is None:
+        return None
+
+    item = _task_list_item_response(row)
+    return AdminTaskDetailResponse(**item.dict())
