@@ -1,82 +1,99 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  Bell,
+  AlertCircle,
   Bot,
-  CheckCircle2,
-  ChevronLeft,
   FileText,
-  Home,
   Layers,
-  Menu,
-  Search,
+  Loader2,
   Send,
-  Settings,
-  Shield,
   Sparkles,
-  Upload,
-  User,
-  X,
 } from 'lucide-react';
 import { VIEW_TEXT } from '../../constants/text';
 import { Sidebar } from '../../components/common/Sidebar';
+import { StatusBadge } from '../../components/common/StatusBadge';
+import { getDocumentSummary } from '../../api/document';
+import type { DocumentSummaryResponse } from '../../types/document';
 
 interface DocumentWorkspacePageProps {
   onLogout?: () => void;
 }
 
-const summaryText = `# 프로젝트 개요
+function formatBytes(bytes?: number | null) {
+  if (!bytes) return '-';
 
-이 문서는 생성형 AI 문서 자동화 플랫폼 구축을 위한 제안서입니다. PDF 업로드, OCR 텍스트 추출, AI 요약, 벡터 임베딩, RAG 기반 질의응답 흐름을 하나의 웹 서비스로 제공하는 것을 목표로 합니다.
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / 1024 ** index;
 
-## 핵심 기능
+  return `${value.toFixed(value >= 10 || index === 0 ? 0 : 1)} ${units[index]}`;
+}
 
-- PDF 문서 업로드 및 처리 상태 추적
-- OCR 결과를 Markdown으로 변환하고 사용자 검수
-- LLM 기반 문서 요약 생성
-- 문서별 RAG 채팅 제공
-- 관리자 작업 모니터링 및 실패 작업 관리
+function formatDate(value?: string | null) {
+  if (!value) return '-';
 
-## 기대 효과
+  return new Intl.DateTimeFormat('ko-KR', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(new Date(value));
+}
 
-문서 검토 시간을 줄이고, 업로드된 문서를 기반으로 빠르게 질문하고 답변을 확인할 수 있습니다.`;
+function getErrorMessage(error: unknown) {
+  if (typeof error === 'object' && error !== null && 'response' in error) {
+    const response = (error as { response?: { data?: { detail?: string; message?: string } } }).response;
+    return response?.data?.detail ?? response?.data?.message ?? '문서 정보를 불러오지 못했습니다.';
+  }
 
-const suggestedQuestions = [
-  '이 문서의 핵심 목적은 뭐야?',
-  '기술 스택을 표로 정리해줘',
-  '프로젝트 리스크를 알려줘',
-  '발표용으로 3줄 요약해줘',
-];
+  if (error instanceof Error) return error.message;
+
+  return '문서 정보를 불러오지 못했습니다.';
+}
 
 export function DocumentWorkspacePage({ onLogout }: DocumentWorkspacePageProps) {
   const navigate = useNavigate();
-  const { documentId = 'demo' } = useParams();
+  const { documentId } = useParams();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [message, setMessage] = useState('');
+  const [summaryData, setSummaryData] = useState<DocumentSummaryResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(Boolean(documentId));
+  const [error, setError] = useState<string | null>(documentId ? null : '문서 ID가 없습니다.');
 
-  const menuItems = [
-    { id: 'dashboard', label: '대시보드', icon: Home },
-    { id: 'documents', label: '문서 관리', icon: FileText },
-    { id: 'settings', label: '설정', icon: Settings },
-    { id: 'admin', label: '관리자', icon: Shield, badge: 'Pro' },
-  ];
+  useEffect(() => {
+    if (!documentId) {
+      setError('문서 ID가 없습니다.');
+      setIsLoading(false);
+      return;
+    }
 
-  const userMenuRoutes: Record<string, string> = {
-    dashboard: '/dashboard',
-    documents: '/documents',
-    settings: '/dashboard',
-    admin: '/admin',
-  };
+    const loadSummary = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+        const data = await getDocumentSummary(documentId);
+        setSummaryData(data);
+      } catch (loadError) {
+        setError(getErrorMessage(loadError));
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-  const handleMenuClick = (menuId: string) => {
-    const route = userMenuRoutes[menuId];
-    if (route) navigate(route);
-  };
+    void loadSummary();
+  }, [documentId]);
 
   const handleSend = () => {
     if (!message.trim()) return;
     setMessage('');
   };
+
+  const keywords = summaryData?.keywords ?? [];
+  const summaryText = summaryData?.summary?.trim() || '저장된 요약이 없습니다.';
+  const pageCount = summaryData?.page_count ?? null;
+  const canOpenSummary = Boolean(documentId);
 
   return (
     <div className="min-h-screen w-full bg-[#0f0f17] flex">
@@ -95,30 +112,32 @@ export function DocumentWorkspacePage({ onLogout }: DocumentWorkspacePageProps) 
                       <FileText className="w-5 h-5 text-primary" />
                     </div>
                     <div>
-                      <h1 className="text-xl font-bold text-white">프로젝트_제안서_2024.pdf</h1>
-                      <p className="text-sm text-zinc-400">15 페이지 · 2.4 MB · Gemma 2B 요약</p>
+                      <h1 className="text-xl font-bold text-white">{summaryData?.file_name ?? '문서 정보'}</h1>
+                      <p className="text-sm text-zinc-400">
+                        {pageCount ? `${pageCount} 페이지` : '페이지 정보 없음'} · {formatBytes(summaryData?.file_size)} · {summaryData?.llm_model ?? '요약 모델 정보 없음'}
+                      </p>
                     </div>
                   </div>
-                  <div className="flex flex-wrap gap-2 mt-3">
-                    {['AI 문서 자동화', 'OCR', 'RAG', 'FastAPI', 'Ollama'].map((keyword) => (
-                      <span key={keyword} className="px-3 py-1 rounded-lg bg-blue-500/20 border border-blue-300/40 text-blue-100 text-xs font-medium">
-                        {keyword}
-                      </span>
-                    ))}
-                  </div>
+                  {keywords.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-3">
+                      {keywords.map((keyword) => (
+                        <span key={keyword} className="px-3 py-1 rounded-lg bg-blue-500/20 border border-blue-300/40 text-blue-100 text-xs font-medium">
+                          {keyword}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <button
                     type="button"
-                    onClick={() => navigate(`/documents/${documentId}/summary`)}
+                    onClick={() => documentId && navigate(`/documents/${documentId}/summary`)}
+                    disabled={!canOpenSummary}
                     className="px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm font-medium hover:bg-white/15 transition-colors"
                   >
                     {VIEW_TEXT.SIMPLE_VIEW}
                   </button>
-                  <div className="px-3 py-1.5 bg-green-500/10 border border-green-500/20 rounded-lg flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-green-400" />
-                    <span className="text-green-400 text-sm font-medium">처리 완료</span>
-                  </div>
+                  <StatusBadge status={summaryData?.status} />
                 </div>
               </div>
 
@@ -128,22 +147,38 @@ export function DocumentWorkspacePage({ onLogout }: DocumentWorkspacePageProps) 
                     <Sparkles className="w-5 h-5 text-primary" />
                     <h2 className="text-xl font-bold text-white">상세 분석</h2>
                   </div>
-                  <article className="prose prose-invert max-w-none text-zinc-200 whitespace-pre-wrap leading-relaxed">
-                    {summaryText}
-                  </article>
+                  {isLoading && (
+                    <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 p-4 text-zinc-300">
+                      <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                      문서 정보를 불러오는 중입니다.
+                    </div>
+                  )}
+
+                  {error && (
+                    <div className="flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-red-200">
+                      <AlertCircle className="w-4 h-4" />
+                      {error}
+                    </div>
+                  )}
+
+                  {!isLoading && !error && (
+                    <article className="prose prose-invert max-w-none text-zinc-200 whitespace-pre-wrap leading-relaxed">
+                      {summaryText}
+                    </article>
+                  )}
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-4">
                     <div className="p-4 bg-white/5 border border-white/10 rounded-xl">
-                      <p className="text-zinc-400 text-sm mb-1">주요 페이지</p>
-                      <p className="text-white font-semibold">1, 3-5, 8, 12</p>
+                      <p className="text-zinc-400 text-sm mb-1">페이지 수</p>
+                      <p className="text-white font-semibold">{pageCount ?? '-'}</p>
                     </div>
                     <div className="p-4 bg-white/5 border border-white/10 rounded-xl">
-                      <p className="text-zinc-400 text-sm mb-1">텍스트 추출률</p>
-                      <p className="text-green-400 font-semibold">98%</p>
+                      <p className="text-zinc-400 text-sm mb-1">업로드일</p>
+                      <p className="text-white font-semibold">{formatDate(summaryData?.upload_at)}</p>
                     </div>
                     <div className="p-4 bg-white/5 border border-white/10 rounded-xl">
                       <p className="text-zinc-400 text-sm mb-1">임베딩 모델</p>
-                      <p className="text-white font-semibold">nomic-embed-text</p>
+                      <p className="text-white font-semibold">{summaryData?.embedding_model ?? '-'}</p>
                     </div>
                   </div>
                 </div>
@@ -158,7 +193,7 @@ export function DocumentWorkspacePage({ onLogout }: DocumentWorkspacePageProps) 
                   </div>
                   <div>
                     <h2 className="text-white font-bold">문서 기반 질문</h2>
-                    <p className="text-sm text-zinc-400">요약을 보면서 바로 질문하세요</p>
+                    <p className="text-sm text-zinc-400">채팅 API 연동 준비 중</p>
                   </div>
                 </div>
               </div>
@@ -166,28 +201,15 @@ export function DocumentWorkspacePage({ onLogout }: DocumentWorkspacePageProps) 
               <div className="flex-1 min-h-0 overflow-auto p-5 space-y-4">
                 <div className="p-4 bg-white/5 border border-white/10 rounded-2xl">
                   <p className="text-zinc-200 text-sm leading-relaxed">
-                    이 문서에 대해 궁금한 내용을 질문해 주세요. 답변에는 관련 페이지와 근거를 함께 표시할 수 있습니다.
+                    문서 기반 질문 기능은 백엔드 API가 준비되면 연결할 예정입니다.
                   </p>
-                </div>
-
-                <div className="grid grid-cols-1 gap-2">
-                  {suggestedQuestions.map((question) => (
-                    <button
-                      key={question}
-                      type="button"
-                      onClick={() => setMessage(question)}
-                      className="text-left p-3 rounded-xl bg-white/5 border border-white/10 text-zinc-200 text-sm hover:bg-white/10 transition-colors"
-                    >
-                      {question}
-                    </button>
-                  ))}
                 </div>
 
                 <div className="p-4 bg-primary/10 border border-primary/20 rounded-2xl">
                   <p className="text-white text-sm font-medium mb-2">참조 가능 정보</p>
                   <div className="flex items-center gap-2 text-sm text-zinc-300">
                     <Layers className="w-4 h-4 text-primary" />
-                    Page 1-15 · 32 chunks · RAG 준비 완료
+                    {pageCount ? `Page 1-${pageCount}` : '페이지 정보 없음'} · RAG 상태 정보 없음
                   </div>
                 </div>
               </div>
@@ -197,15 +219,16 @@ export function DocumentWorkspacePage({ onLogout }: DocumentWorkspacePageProps) 
                   <textarea
                     value={message}
                     onChange={(event) => setMessage(event.target.value)}
-                    placeholder="이 문서에 대해 질문하세요..."
+                    placeholder="문서 기반 질문 기능 준비 중"
                     rows={2}
+                    disabled
                     className="flex-1 resize-none bg-transparent text-white placeholder-zinc-400 text-sm focus:outline-none"
                   />
                   <button
                     type="button"
                     onClick={handleSend}
                     className="p-2.5 rounded-xl bg-gradient-to-r from-primary to-blue-500 text-white hover:opacity-90 transition-opacity disabled:opacity-40"
-                    disabled={!message.trim()}
+                    disabled
                   >
                     <Send className="w-4 h-4" />
                   </button>
