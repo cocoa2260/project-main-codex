@@ -11,9 +11,19 @@ from schemas.auth import *
 from services.auth_service import *
 
 from core.security import create_access_token
+from routers.deps import get_current_user
 
 
 router=APIRouter()
+
+
+def to_user_response(user):
+    return UserResponse(
+        id=str(user.id),
+        email=user.email,
+        name=user.name,
+        role=user.role,
+    )
 
 @router.post("/signup")
 def signup(req:SignupRequest, db:Session=Depends(get_db)):
@@ -45,4 +55,12 @@ def login(req:LoginRequest, db:Session=Depends(get_db)):
         }
     )
 
-    return TokenResponse(access_token=token)
+    return TokenResponse(
+        access_token=token,
+        user=to_user_response(user)
+    )
+
+
+@router.get("/me", response_model=UserResponse)
+def me(current_user=Depends(get_current_user)):
+    return to_user_response(current_user)
