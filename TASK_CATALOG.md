@@ -91,7 +91,7 @@
 |------|------|------|------|
 | BE-ADMIN-001 | Admin Dashboard Summary API | High | DONE |
 | BE-ADMIN-002 | Admin Document List API | High | DONE |
-| BE-ADMIN-003 | Admin Task List API | High | TODO |
+| BE-ADMIN-003 | Admin Task List API | High | DONE |
 | FE-014 | Admin Dashboard API Integration | High | TODO |
 | FE-015 | Admin Document Management API Integration | High | TODO |
 | FE-016 | Admin Task Monitoring API Integration | High | TODO |
@@ -163,6 +163,17 @@ Review API
 - Admin 문서 상세 조회 API
 - Pagination / Filters / Sorting 지원
 - Owner / Latest Task 정보 포함
+
+Priority: High
+Status: DONE
+
+### BE-ADMIN-003 Admin Tasks API
+
+- Admin 전체 작업 조회 API
+- Admin 작업 상세 조회 API
+- Pagination / Filters / Sorting 지원
+- Document / Owner 정보 포함
+- celery_task_id 및 내부 경로 미노출
 
 Priority: High
 Status: DONE

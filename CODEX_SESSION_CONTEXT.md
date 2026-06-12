@@ -143,6 +143,41 @@ Endpoint
 사용 예정
 - FE-015 Admin Document Management API Integration
 
+### BE-ADMIN-003 완료
+
+Endpoint
+- GET /api/admin/tasks
+- GET /api/admin/tasks/{task_id}
+
+구현 내용
+- Admin 전용 전체 작업 목록 조회
+- Admin 작업 상세 조회
+- Pagination(page, limit, total, total_pages)
+- Filters(status, task_type, stage, document_id, owner_id, search, created_from, created_to)
+- Sorting(created_at, updated_at, started_at, completed_at, progress, status, task_type)
+- Document / Owner 정보 포함
+- celery_task_id 및 내부 경로 미노출
+- OCR / Embedding / LLM / LangGraph / Celery task 로직 변경 없음
+- DB migration 생성 없음
+
+검증 결과
+- python -m py_compile: 로컬 shell에 python 명령이 없어 실행 불가
+- env PYTHONPYCACHEPREFIX=/tmp/codex-pycache python3 -m py_compile main.py routers/admin.py services/admin_service.py schemas/admin.py 통과
+- backend Docker service startup/reload 확인
+- GET /api/admin/tasks with ADMIN token: 200
+- GET /api/admin/tasks with filters/sorting: 200
+- GET /api/admin/tasks/{task_id} with ADMIN token: 200
+- unauthenticated GET /api/admin/tasks: 401
+- unauthenticated GET /api/admin/tasks/{task_id}: 401
+- GET /api/admin/tasks with USER token: 403
+- GET /api/admin/tasks/{task_id} with USER token: 403
+
+사용 예정
+- FE-016 Admin Task Monitoring API Integration
+
+Next Recommended Task
+- FE-016 Admin Task Monitoring API Integration
+
 ---
 
 ## Current Backlog

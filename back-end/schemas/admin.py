@@ -93,3 +93,37 @@ class AdminDocumentDetailResponse(AdminDocumentListItemResponse):
     summary: str | None = None
     chunk_count: int
     keywords: list[str]
+
+
+class AdminTaskDocumentResponse(BaseModel):
+    id: UUID
+    file_name: str
+    status: str
+    category: str | None = None
+    upload_at: datetime
+    updated_at: datetime
+
+
+class AdminTaskListItemResponse(BaseModel):
+    id: UUID
+    task_type: str
+    status: str
+    stage: str | None = None
+    progress: int
+    message: str | None = None
+    error_message: str | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+    document: AdminTaskDocumentResponse
+    owner: AdminOwnerResponse
+
+
+class AdminTaskListResponse(BaseModel):
+    items: list[AdminTaskListItemResponse]
+    pagination: AdminPaginationResponse
+
+
+class AdminTaskDetailResponse(AdminTaskListItemResponse):
+    pass
