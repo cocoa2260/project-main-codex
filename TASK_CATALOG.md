@@ -43,7 +43,7 @@
 |------|------|------|------|
 | FE-010-A | Workspace Summary API Integration | High | DONE |
 | FE-011 | Admin Route Audit | High | DONE |
-| AUTH-001 | Align login response role with frontend auth state | High | TODO |
+| AUTH-001 | Align login response role with frontend auth state | High | DONE |
 | FE-012 | Admin Page Mock Audit | High | TODO |
 | FE-013 | Admin API Spec | High | TODO |
 
