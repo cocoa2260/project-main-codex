@@ -194,3 +194,48 @@ Implementation policy:
 2. State-changing Admin actions later
 3. Infrastructure/control actions last
 4. Sensitive settings/logs require explicit security review
+
+## Admin Roadmap
+
+Admin 기능은 이미 설계 완료 상태이다.
+
+현재 존재:
+
+- Admin Dashboard
+- Admin Users
+- Admin Documents
+- Admin Jobs
+- Admin Settings
+- Admin Logs
+
+현재 상태:
+
+- UI 구현 완료
+- 대부분 Mock 데이터
+
+향후 계획:
+
+Phase 1
+- Dashboard
+- Documents
+- Tasks
+
+Phase 2
+- Users
+- Settings
+- Logs
+- Health
+- Queue
+- Worker
+
+Phase 3
+- Retry
+- Cancel
+- Role Update
+- User Status
+- Settings Save
+
+주의:
+
+위 기능들은 모두 최종 제품 범위에 포함된다.
+삭제 대상이 아니다.

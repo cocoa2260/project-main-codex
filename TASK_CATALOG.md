@@ -1,5 +1,43 @@
 # TASK_CATALOG
 
+# Product Scope Policy
+
+현재 UI에 존재하는 기능은
+최종 제품 범위(Product Scope)에 포함된 기능이다.
+
+"MVP 제외"는 기능 삭제를 의미하지 않는다.
+
+의미:
+- 구현 순서 조정
+- 후순위 배치
+- API 준비 후 구현
+
+의미하지 않는 것:
+- Route 제거
+- Page 제거
+- UI 제거
+- 기능 삭제
+- Task 제거
+
+현재 범위에 포함되는 기능:
+- Dashboard
+- Document Management
+- Review Flow
+- Summary
+- Workspace
+- Chat/RAG
+- Admin Dashboard
+- Admin User Management
+- Admin Document Management
+- Admin Task Monitoring
+- Admin Settings
+- Admin Logs
+- Queue Monitoring
+- Worker Monitoring
+- System Health
+- Retry / Cancel
+- Role Based Access Control
+
 ## PHASE 1 - Frontend Stabilization
 
 | ID | Task | Priority | Status |

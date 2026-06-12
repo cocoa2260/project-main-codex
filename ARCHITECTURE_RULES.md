@@ -21,6 +21,25 @@ Main Stack:
 
 ---
 
+## Product Scope Preservation Rule
+
+현재 Repository에 존재하는
+Page / Route / UI 기능은
+최종 제품 범위에 포함된 것으로 간주한다.
+
+AI는 MVP 기준으로 기능 제거를 제안해서는 안 된다.
+
+허용:
+- 구현 순서 변경
+- 단계별 출시
+- Read Only → Action API 확장
+
+금지:
+- 기능 삭제 제안
+- Route 제거 제안
+- Page 제거 제안
+- 기능 범위 축소 제안
+
 # 1. Core Principles
 
 The AI Coding Agent must preserve the existing architecture.
