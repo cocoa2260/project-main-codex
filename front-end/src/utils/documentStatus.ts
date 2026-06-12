@@ -2,6 +2,7 @@ import type {
   DocumentStatus,
   DocumentDisplayStatus,
   DocumentProcessingStatus,
+  PipelineStep,
   TaskStage,
 } from "@/types/document";
 
@@ -25,6 +26,14 @@ export interface DocumentStatusPresentation {
 }
 
 const DEFAULT_STATUS: DocumentStatus = "PENDING";
+const PIPELINE_STEP_ORDER: TaskStage[] = ["OCR", "SUMMARY", "EMBEDDING", "RAG_INDEXING"];
+
+const taskStageLabels: Record<TaskStage, string> = {
+  OCR: "OCR 처리",
+  SUMMARY: "AI 요약",
+  EMBEDDING: "벡터 임베딩",
+  RAG_INDEXING: "RAG 인덱싱",
+};
 
 export function normalizeDocumentStatus(
   status?: DocumentProcessingStatus | DocumentStatus | string | null
@@ -54,10 +63,16 @@ export function normalizeTaskStage(stage?: TaskStage | string | null): TaskStage
   const upperStage = stage?.toUpperCase();
 
   switch (upperStage) {
+    case "READY":
+    case "PDF_ANALYSIS":
+    case "MARKDOWN_REVIEW":
     case "OCR":
       return "OCR";
+    case "SUMMARY_PENDING":
+    case "CHUNKING":
     case "SUMMARY":
       return "SUMMARY";
+    case "EMBEDDING_COMPLETED":
     case "EMBEDDING":
       return "EMBEDDING";
     case "RAG":
@@ -66,6 +81,45 @@ export function normalizeTaskStage(stage?: TaskStage | string | null): TaskStage
     default:
       return null;
   }
+}
+
+export function getTaskStageLabel(stage?: TaskStage | string | null): string {
+  const normalizedStage = normalizeTaskStage(stage);
+  return normalizedStage ? taskStageLabels[normalizedStage] : "문서 처리";
+}
+
+export function getPipelineStepOrder(): TaskStage[] {
+  return [...PIPELINE_STEP_ORDER];
+}
+
+export function getPipelineSteps(
+  status: DocumentProcessingStatus | DocumentStatus | string | null | undefined,
+  stage?: TaskStage | string | null
+): PipelineStep[] {
+  const normalizedStatus = normalizeDocumentStatus(status);
+  const normalizedStage = normalizeTaskStage(stage);
+  const currentStage = normalizedStage ?? "OCR";
+  const currentStageIndex = PIPELINE_STEP_ORDER.indexOf(currentStage);
+
+  return PIPELINE_STEP_ORDER.map((stepStage, index) => {
+    let state: PipelineStep["state"] = "pending";
+
+    if (normalizedStatus === "COMPLETED") {
+      state = "completed";
+    } else if (normalizedStatus === "REVIEW_REQUIRED") {
+      state = stepStage === "OCR" ? "completed" : "pending";
+    } else if (normalizedStatus === "FAILED") {
+      state = index < currentStageIndex ? "completed" : stepStage === currentStage ? "failed" : "pending";
+    } else if (normalizedStatus === "PROCESSING") {
+      state = index < currentStageIndex ? "completed" : stepStage === currentStage ? "processing" : "pending";
+    }
+
+    return {
+      id: stepStage,
+      label: taskStageLabels[stepStage],
+      state,
+    };
+  });
 }
 
 export function toDocumentDisplayStatus(
