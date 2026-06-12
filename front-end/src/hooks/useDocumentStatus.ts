@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { getDocumentStatus, getDocumentStatusWebSocketUrl } from '../api/document';
 import type { DocumentStatusResponse } from '../types/document';
+import { getCurrentTaskStageLabel, normalizeDocumentStatus } from '../utils/documentStatus';
 
 export interface DocumentActivityLog {
   id: string;
@@ -23,37 +24,7 @@ interface UseDocumentStatusResult {
 const FINAL_STATUSES = new Set(['COMPLETED', 'SUCCESS', 'FAILED', 'FAILURE', 'REVIEW_REQUIRED']);
 
 function normalizeStatus(status?: string | null): UseDocumentStatusResult['normalizedStatus'] {
-  const upper = status?.toUpperCase();
-
-  if (upper === 'REVIEW_REQUIRED') return 'REVIEW_REQUIRED';
-  if (upper === 'COMPLETED' || upper === 'SUCCESS') return 'COMPLETED';
-  if (upper === 'FAILED' || upper === 'FAILURE') return 'FAILED';
-  if (upper === 'PROCESSING') return 'PROCESSING';
-
-  return 'PENDING';
-}
-
-function toStageLabel(stage?: string | null, status?: string | null): string {
-  const normalized = normalizeStatus(status);
-  const upperStage = stage?.toUpperCase();
-
-  if (normalized === 'REVIEW_REQUIRED') return 'Markdown 검토 대기 중';
-  if (normalized === 'COMPLETED') return '처리 완료';
-  if (normalized === 'FAILED') return '처리 실패';
-  if (normalized === 'PENDING') return '작업 대기 중';
-
-  switch (upperStage) {
-    case 'OCR':
-      return 'OCR 처리 중';
-    case 'SUMMARY':
-      return 'AI 요약 중';
-    case 'EMBEDDING':
-      return '벡터 임베딩 중';
-    case 'RAG':
-      return 'RAG 준비 중';
-    default:
-      return '문서 처리 중';
-  }
+  return normalizeDocumentStatus(status);
 }
 
 function toActivityType(status?: string | null): DocumentActivityLog['type'] {
@@ -94,7 +65,7 @@ export function useDocumentStatus(documentId?: string): UseDocumentStatusResult 
     let socket: WebSocket | undefined;
 
     const appendLog = (nextStatus: DocumentStatusResponse) => {
-      const message = nextStatus.message ?? toStageLabel(nextStatus.stage, nextStatus.status);
+      const message = nextStatus.message ?? getCurrentTaskStageLabel(nextStatus.stage, nextStatus.status);
       const logKey = `${nextStatus.status}-${nextStatus.stage}-${nextStatus.progress}-${message}`;
 
       if (lastMessageRef.current === logKey) return;
@@ -185,7 +156,7 @@ export function useDocumentStatus(documentId?: string): UseDocumentStatusResult 
 
   const normalizedStatus = useMemo(() => normalizeStatus(status?.status), [status?.status]);
   const progress = Math.max(0, Math.min(100, status?.progress ?? 0));
-  const currentStageLabel = toStageLabel(status?.stage, status?.status);
+  const currentStageLabel = getCurrentTaskStageLabel(status?.stage, status?.status);
 
   return {
     status,
