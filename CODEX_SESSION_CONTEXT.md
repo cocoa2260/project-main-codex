@@ -22,6 +22,29 @@ Summary:
 * Applied StatusBadge to DocumentCard
 * Applied StatusBadge to ProcessingStatus
 
+
+
+### FE-002-A
+
+PipelineStepper Component
+
+Status: DONE
+
+### FE-002-B
+
+DocumentStatusPage Integration
+
+Status: DONE
+
+Summary:
+
+- Replaced duplicated stepper rendering logic
+- Integrated reusable PipelineStepper
+- Preserved review redirect behavior
+- Preserved circular progress display
+- Preserved activity log and right panel
+- Preserved 6-step visual pipeline
+
 Merged:
 
 * develop

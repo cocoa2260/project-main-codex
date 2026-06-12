@@ -1,175 +1,41 @@
-# TASK_CATALOG
+TASK_CATALOG
 
-## PHASE 1 - Frontend Stabilization
+PHASE 1 - Frontend Stabilization
 
-### FE-001
+ID	Task	Priority	Status
+FE-001	StatusBadge 통합	High	DONE
+FE-002-A	PipelineStepper Component	High	DONE
+FE-002-B	DocumentStatusPage Integration	High	DONE
+BUG-001	EmbeddingModelOption Build Fix	High	DONE
+FE-003	API Response Type 정리	High	TODO
+FE-004	Sidebar 구조 정리	Medium	TODO
+FE-005	Topbar 공통화	Medium	TODO
 
-StatusBadge 통합
+⸻
 
-Status 색상 및 텍스트 관리 단일화
+PHASE 2 - User Pages
 
-Priority: High
+ID	Task	Priority	Status
+FE-006	DocumentList API 연결	High	TODO
+FE-007	Document Upload API 연결	High	TODO
+FE-008	Review Page API 연결	High	TODO
+FE-009	Summary Page API 연결	High	TODO
+FE-010	Workspace API 연결	High	TODO
 
-Status: TODO
+⸻
 
----
+PHASE 3 - Admin Investigation
 
-### FE-002
+ID	Task	Priority	Status
+FE-011	Admin Route 존재 여부 확인	High	TODO
+FE-012	Admin Page 존재 여부 확인	High	TODO
+FE-013	Admin API 존재 여부 확인	High	TODO
 
-PipelineStepper 통합
+⸻
 
-TaskStage 기반 UI 표시
+PHASE 4 - Admin MVP
 
-Priority: High
-
-Status: TODO
-
----
-
-### FE-003
-
-API Response Type 정리
-
-any 제거
-
-Priority: High
-
-Status: TODO
-
----
-
-### FE-004
-
-Sidebar 구조 정리
-
-공통 메뉴 구조 통합
-
-Priority: Medium
-
-Status: TODO
-
----
-
-### FE-005
-
-Topbar 공통화
-
-Priority: Medium
-
-Status: TODO
-
----
-
-## PHASE 2 - User Pages
-
-### FE-006
-
-DocumentList API 연결
-
-Priority: High
-
-Status: TODO
-
----
-
-### FE-007
-
-Document Upload API 연결
-
-Priority: High
-
-Status: TODO
-
----
-
-### FE-008
-
-Review Page API 연결
-
-Priority: High
-
-Status: TODO
-
----
-
-### FE-009
-
-Summary Page API 연결
-
-Priority: High
-
-Status: TODO
-
----
-
-### FE-010
-
-Workspace API 연결
-
-Priority: High
-
-Status: TODO
-
----
-
-## PHASE 3 - Admin Investigation
-
-### FE-011
-
-Admin Route 존재 여부 확인
-
-Priority: High
-
-Status: TODO
-
----
-
-### FE-012
-
-Admin Page 존재 여부 확인
-
-Priority: High
-
-Status: TODO
-
----
-
-### FE-013
-
-Admin API 존재 여부 확인
-
-Priority: High
-
-Status: TODO
-
----
-
-## PHASE 4 - Admin MVP
-
-### FE-014
-
-Admin Dashboard 생성
-
-Priority: Medium
-
-Status: TODO
-
----
-
-### FE-015
-
-Admin Document Management 생성
-
-Priority: Medium
-
-Status: TODO
-
----
-
-### FE-016
-
-Admin Task Monitoring 생성
-
-Priority: Medium
-
-Status: TODO
+ID	Task	Priority	Status
+FE-014	Admin Dashboard 생성	Medium	TODO
+FE-015	Admin Document Management 생성	Medium	TODO
+FE-016	Admin Task Monitoring 생성	Medium	TODO
