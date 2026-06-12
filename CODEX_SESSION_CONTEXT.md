@@ -110,6 +110,20 @@ Summary:
 Next:
 - AUTH-001 should be handled before Admin API work
 
+### BE-ADMIN-001 완료
+
+Endpoint
+- GET /api/admin/dashboard/summary
+
+구현 내용
+- User Statistics
+- Document Statistics
+- Task Statistics
+- Recent Events (TaskTracker 기반)
+
+사용 예정
+- FE-014 Admin Dashboard API Integration
+
 ---
 
 ## Current Backlog

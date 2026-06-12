@@ -58,10 +58,10 @@
 | ID | Task | Priority | Status |
 |------|------|------|------|
 | FE-006 | DocumentList API Integration | High | DONE |
-| FE-007 | Upload API Validation | High | TODO |
+| FE-007 | Upload API Validation | High | DONE |
 | FE-008 | Review API Integration | High | DONE |
 | FE-009 | Summary API Validation | High | DONE |
-| FE-010 | Workspace API Integration | High | TODO |
+| FE-010 | Workspace API Integration | High | DONE |
 
 ---
 
@@ -81,7 +81,7 @@
 |------|------|------|------|
 | FE-011 | Admin Route Audit | High | DONE |
 | FE-012 | Admin Page Mock Audit | High | DONE |
-| FE-013 | Admin API Spec | High | TODO |
+| FE-013 | Admin API Spec | High | DONE |
 
 ---
 
@@ -89,7 +89,7 @@
 
 | ID | Task | Priority | Status |
 |------|------|------|------|
-| BE-ADMIN-001 | Admin Dashboard Summary API | High | TODO |
+| BE-ADMIN-001 | Admin Dashboard Summary API | High | DONE |
 | BE-ADMIN-002 | Admin Document List API | High | TODO |
 | BE-ADMIN-003 | Admin Task List API | High | TODO |
 | FE-014 | Admin Dashboard API Integration | High | TODO |
@@ -155,3 +155,13 @@ Review API
 - Backend TaskStageCode 표준화 검토
 - Ad-hoc Stage 문자열 제거 여부 검토
 - Frontend/Backend 계약 정리
+
+# TODO
+
+- BE-ADMIN-002 Admin Documents API
+- Admin 전체 문서 조회 API
+- Admin 문서 상세 조회 API
+- Owner / Latest Task 정보 포함
+
+Priority: High
+Status: TODO
