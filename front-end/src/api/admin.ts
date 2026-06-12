@@ -7,6 +7,9 @@ import type {
   AdminTaskDetailResponse,
   AdminTaskListParams,
   AdminTaskListResponse,
+  AdminUserDetail,
+  AdminUserListParams,
+  AdminUsersResponse,
 } from '@/types/admin';
 
 export async function getAdminDashboardSummary(): Promise<AdminDashboardSummaryResponse> {
@@ -31,5 +34,15 @@ export async function getAdminTasks(params?: AdminTaskListParams): Promise<Admin
 
 export async function getAdminTaskDetail(taskId: string): Promise<AdminTaskDetailResponse> {
   const response = await apiClient.get<AdminTaskDetailResponse>(`/api/admin/tasks/${taskId}`);
+  return response.data;
+}
+
+export async function getAdminUsers(params?: AdminUserListParams): Promise<AdminUsersResponse> {
+  const response = await apiClient.get<AdminUsersResponse>('/api/admin/users', { params });
+  return response.data;
+}
+
+export async function getAdminUserDetail(userId: string): Promise<AdminUserDetail> {
+  const response = await apiClient.get<AdminUserDetail>(`/api/admin/users/${userId}`);
   return response.data;
 }

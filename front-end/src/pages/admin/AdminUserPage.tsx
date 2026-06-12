@@ -1,226 +1,259 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { getAdminUserDetail, getAdminUsers } from '../../api/admin';
 import { Sidebar } from '../../components/common/Sidebar';
+import type { AdminUserDetail, AdminUserItem, AdminUserRecentTask } from '../../types/admin';
+import type { TaskStatus } from '../../types/document';
+import type { UserRole } from '../../utils/auth';
+import { getDocumentStatusPresentation, normalizeDocumentStatus } from '../../utils/documentStatus';
 import {
-  Home,
-  FileText,
-  Upload,
-  MessageSquare,
-  Clock,
-  Settings,
-  Shield,
-  Menu,
-  X,
-  Search,
-  Bell,
-  User,
-  Users,
-  UserPlus,
-  Filter,
-  MoreVertical,
-  CheckCircle2,
-  XCircle,
-  Ban,
-  UserCheck,
-  UserX,
-  Edit,
-  Trash2,
-  Calendar,
   Activity,
-  TrendingUp,
+  AlertCircle,
+  Ban,
+  Bell,
+  Calendar,
+  CheckCircle2,
   ChevronRight,
+  Download,
+  Edit,
+  Loader2,
+  Menu,
+  MoreVertical,
   RefreshCw,
-  Download
+  Search,
+  Shield,
+  TrendingUp,
+  Upload,
+  User,
+  UserCheck,
+  UserPlus,
+  Users,
+  UserX,
+  X,
+  XCircle,
 } from 'lucide-react';
 
-interface UserData {
-  id: string;
-  name: string;
-  email: string;
-  avatar?: string;
-  role: 'USER' | 'ADMIN' | 'MANAGER';
-  status: 'active' | 'suspended' | 'inactive';
-  uploadCount: number;
-  documentCount: number;
-  lastActive: string;
-  createdDate: string;
-}
+type FilterStatus = 'all' | 'user' | 'admin' | 'active' | 'suspended';
+type UserDisplayStatus = 'active' | 'suspended' | 'inactive';
 
 interface AdminUserPageProps {
   onLogout?: () => void;
 }
 
+const PAGE_LIMIT = 20;
+
+const roleFilterMap: Partial<Record<FilterStatus, UserRole>> = {
+  user: 'USER',
+  admin: 'ADMIN',
+};
+
+function getApiErrorMessage(error: unknown): string {
+  const response = (error as { response?: { data?: { detail?: string; message?: string } } }).response;
+  return response?.data?.detail ?? response?.data?.message ?? (error instanceof Error ? error.message : '사용자 목록을 불러오지 못했습니다.');
+}
+
+function formatDateTime(value?: string | null): string {
+  if (!value) return '-';
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return new Intl.DateTimeFormat('ko-KR', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+}
+
+function getRoleColor(role: string) {
+  switch (role.toUpperCase()) {
+    case 'ADMIN':
+      return 'bg-red-500/10 text-red-400 border-red-500/20';
+    case 'MANAGER':
+      return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
+    default:
+      return 'bg-gray-500/10 text-gray-400 border-gray-500/20';
+  }
+}
+
+function getStatusColor(status: UserDisplayStatus) {
+  switch (status) {
+    case 'active':
+      return 'bg-green-500/10 text-green-400 border-green-500/20';
+    case 'suspended':
+      return 'bg-red-500/10 text-red-400 border-red-500/20';
+    default:
+      return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20';
+  }
+}
+
+function getStatusLabel(status: UserDisplayStatus) {
+  switch (status) {
+    case 'active':
+      return '활성';
+    case 'suspended':
+      return '중지됨';
+    default:
+      return '비활성';
+  }
+}
+
+function getStatusIcon(status: UserDisplayStatus) {
+  if (status === 'active') return <CheckCircle2 className="w-3 h-3" />;
+  if (status === 'suspended') return <Ban className="w-3 h-3" />;
+  return <XCircle className="w-3 h-3" />;
+}
+
+function getTaskStatusLabel(status: string) {
+  const normalized = normalizeDocumentStatus(status) as TaskStatus;
+
+  switch (normalized) {
+    case 'COMPLETED':
+      return '완료';
+    case 'FAILED':
+      return '실패';
+    case 'PROCESSING':
+      return '처리 중';
+    default:
+      return '대기 중';
+  }
+}
+
 export function AdminUserPage({ onLogout }: AdminUserPageProps) {
-  const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'admin' | 'suspended'>('all');
-  const [selectedUser, setSelectedUser] = useState<UserData | null>(null);
-  const [showUserDetail, setShowUserDetail] = useState(false);
-
-  const menuItems = [
-    { id: 'dashboard', label: 'Overview', icon: Home },
-    { id: 'users', label: 'Users', icon: Users },
-    { id: 'documents', label: 'Documents', icon: FileText },
-    { id: 'jobs', label: 'Jobs', icon: Activity },
-    { id: 'system', label: 'System', icon: Shield },
-    { id: 'settings', label: 'Settings', icon: Settings }
-  ];
-
-
-
-  const adminMenuRoutes: Record<string, string> = {
-    dashboard: '/admin',
-    users: '/admin/users',
-    documents: '/admin/documents',
-    jobs: '/admin/jobs',
-    system: '/admin/logs',
-    settings: '/admin/settings',
-  };
-
-  const handleMenuClick = (menuId: string) => {
-    const route = adminMenuRoutes[menuId];
-    if (route) navigate(route);
-  };
-  const stats = [
-    { label: '전체 사용자', value: '1,234', change: '+5.2%', icon: Users, color: 'primary' },
-    { label: '활성 사용자', value: '1,156', change: '+3.1%', icon: UserCheck, color: 'green' },
-    { label: '관리자', value: '12', change: '+1', icon: Shield, color: 'red' },
-    { label: '오늘 신규', value: '23', change: '+8', icon: UserPlus, color: 'blue' },
-    { label: '중지된 계정', value: '8', change: '-2', icon: UserX, color: 'yellow' },
-    { label: '업로드 활동', value: '892', change: '+15%', icon: Upload, color: 'purple' }
-  ];
-
-  const users: UserData[] = [
-    {
-      id: '1',
-      name: '김철수',
-      email: 'kim@example.com',
-      role: 'ADMIN',
-      status: 'active',
-      uploadCount: 45,
-      documentCount: 156,
-      lastActive: '5분 전',
-      createdDate: '2024-01-15'
-    },
-    {
-      id: '2',
-      name: '이영희',
-      email: 'lee@example.com',
-      role: 'USER',
-      status: 'active',
-      uploadCount: 32,
-      documentCount: 98,
-      lastActive: '1시간 전',
-      createdDate: '2024-02-20'
-    },
-    {
-      id: '3',
-      name: '박민수',
-      email: 'park@example.com',
-      role: 'MANAGER',
-      status: 'active',
-      uploadCount: 28,
-      documentCount: 87,
-      lastActive: '2시간 전',
-      createdDate: '2024-03-10'
-    },
-    {
-      id: '4',
-      name: '정수진',
-      email: 'jung@example.com',
-      role: 'USER',
-      status: 'suspended',
-      uploadCount: 12,
-      documentCount: 45,
-      lastActive: '2일 전',
-      createdDate: '2024-04-05'
-    },
-    {
-      id: '5',
-      name: '최민지',
-      email: 'choi@example.com',
-      role: 'USER',
-      status: 'active',
-      uploadCount: 18,
-      documentCount: 62,
-      lastActive: '방금',
-      createdDate: '2024-05-01'
-    },
-    {
-      id: '6',
-      name: '홍길동',
-      email: 'hong@example.com',
-      role: 'USER',
-      status: 'inactive',
-      uploadCount: 5,
-      documentCount: 12,
-      lastActive: '1주일 전',
-      createdDate: '2024-05-20'
-    }
-  ];
-
-  const filteredUsers = users.filter(user => {
-    const matchesSearch = user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         user.email.toLowerCase().includes(searchQuery.toLowerCase());
-
-    const matchesFilter =
-      filterStatus === 'all' ? true :
-      filterStatus === 'active' ? user.status === 'active' :
-      filterStatus === 'admin' ? user.role === 'ADMIN' :
-      filterStatus === 'suspended' ? user.status === 'suspended' : true;
-
-    return matchesSearch && matchesFilter;
+  const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
+  const [users, setUsers] = useState<AdminUserItem[]>([]);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: PAGE_LIMIT,
+    total: 0,
+    total_pages: 0,
   });
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [selectedUser, setSelectedUser] = useState<AdminUserItem | null>(null);
+  const [selectedUserDetail, setSelectedUserDetail] = useState<AdminUserDetail | null>(null);
+  const [showUserDetail, setShowUserDetail] = useState(false);
+  const [detailErrorMessage, setDetailErrorMessage] = useState<string | null>(null);
+  const [isDetailLoading, setIsDetailLoading] = useState(false);
 
-  const getRoleColor = (role: UserData['role']) => {
-    switch (role) {
-      case 'ADMIN':
-        return 'bg-red-500/10 text-red-400 border-red-500/20';
-      case 'MANAGER':
-        return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
-      default:
-        return 'bg-gray-500/10 text-gray-400 border-gray-500/20';
+  const fetchUsers = useCallback(async (page: number, showLoading = false) => {
+    if (showLoading) {
+      setIsLoading(true);
+    } else {
+      setIsRefreshing(true);
+    }
+
+    setErrorMessage(null);
+
+    try {
+      const response = await getAdminUsers({
+        page,
+        limit: PAGE_LIMIT,
+        q: searchQuery.trim() || undefined,
+        role: roleFilterMap[filterStatus],
+        sort_by: 'created_at',
+        sort_order: 'desc',
+      });
+
+      setUsers(response.items);
+      setPagination(response.pagination);
+    } catch (error) {
+      setErrorMessage(getApiErrorMessage(error));
+      setUsers([]);
+      setPagination((current) => ({ ...current, page, total: 0, total_pages: 0 }));
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, [filterStatus, searchQuery]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      void fetchUsers(1, true);
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [fetchUsers]);
+
+  const handleRefresh = () => {
+    void fetchUsers(pagination.page, false);
+  };
+
+  const handlePageChange = (nextPage: number) => {
+    if (nextPage < 1 || (pagination.total_pages > 0 && nextPage > pagination.total_pages)) return;
+    void fetchUsers(nextPage, true);
+  };
+
+  const handleUserDetail = async (user: AdminUserItem) => {
+    setSelectedUser(user);
+    setSelectedUserDetail(null);
+    setShowUserDetail(true);
+    setIsDetailLoading(true);
+    setDetailErrorMessage(null);
+
+    try {
+      const detail = await getAdminUserDetail(user.id);
+      setSelectedUserDetail(detail);
+    } catch (error) {
+      setDetailErrorMessage(getApiErrorMessage(error));
+    } finally {
+      setIsDetailLoading(false);
     }
   };
 
-  const getStatusColor = (status: UserData['status']) => {
-    switch (status) {
-      case 'active':
-        return 'bg-green-500/10 text-green-400 border-green-500/20';
-      case 'suspended':
-        return 'bg-red-500/10 text-red-400 border-red-500/20';
-      default:
-        return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20';
-    }
-  };
+  const stats = useMemo(() => {
+    const adminCount = users.filter((user) => user.role === 'ADMIN').length;
+    const totalUploads = users.reduce((sum, user) => sum + user.upload_count, 0);
+    const totalDocuments = users.reduce((sum, user) => sum + user.document_count, 0);
+    const today = new Date().toDateString();
+    const todayUsers = users.filter((user) => {
+      const createdAt = new Date(user.created_at);
+      return !Number.isNaN(createdAt.getTime()) && createdAt.toDateString() === today;
+    }).length;
 
-  const getStatusLabel = (status: UserData['status']) => {
-    switch (status) {
-      case 'active':
-        return '활성';
-      case 'suspended':
-        return '중지됨';
-      default:
-        return '비활성';
-    }
-  };
+    return [
+      { label: '전체 사용자', value: pagination.total.toLocaleString(), change: `page ${pagination.page}`, icon: Users, color: 'primary' },
+      { label: '활성 사용자', value: '-', change: 'API 준비중', icon: UserCheck, color: 'green' },
+      { label: '관리자', value: adminCount.toLocaleString(), change: '현재 페이지', icon: Shield, color: 'red' },
+      { label: '오늘 신규', value: todayUsers.toLocaleString(), change: '현재 페이지', icon: UserPlus, color: 'blue' },
+      { label: '중지된 계정', value: '-', change: 'API 준비중', icon: UserX, color: 'yellow' },
+      { label: '업로드 활동', value: totalUploads.toLocaleString(), change: `${totalDocuments.toLocaleString()} 문서`, icon: Upload, color: 'purple' },
+    ];
+  }, [pagination.page, pagination.total, users]);
 
-  const recentUsers = users.slice(0, 3);
-  const topUsers = [...users].sort((a, b) => b.uploadCount - a.uploadCount).slice(0, 3);
+  const recentUsers = useMemo(() => users.slice(0, 3), [users]);
+  const topUsers = useMemo(() => [...users].sort((a, b) => b.upload_count - a.upload_count).slice(0, 3), [users]);
+  const detailUser = selectedUserDetail ?? selectedUser;
+
+  const renderFilterButton = (filter: FilterStatus, label: string, disabled = false) => (
+    <button
+      type="button"
+      onClick={() => !disabled && setFilterStatus(filter)}
+      disabled={disabled}
+      title={disabled ? '계정 상태 API 준비중' : undefined}
+      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+        filterStatus === filter
+          ? 'bg-primary text-white'
+          : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
+      } ${disabled ? 'opacity-50 cursor-not-allowed hover:bg-white/5 hover:text-gray-400' : ''}`}
+    >
+      {label}
+    </button>
+  );
 
   return (
     <div className="min-h-screen w-full bg-[#0a0a0f] flex">
-      {/* Sidebar */}
       <Sidebar
         variant="admin"
         sidebarOpen={sidebarOpen}
         onLogout={onLogout}
       />
 
-      {/* Main content */}
       <div className="flex-1 flex flex-col min-h-screen lg:ml-0">
-        {/* Top navigation */}
         <header className="h-16 bg-[#111116]/80 backdrop-blur-xl border-b border-white/5 flex items-center justify-between px-6 sticky top-0 z-20">
           <div className="flex items-center gap-4">
             <button
@@ -235,9 +268,9 @@ export function AdminUserPage({ onLogout }: AdminUserPageProps) {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
               <input
                 type="search"
-                placeholder="사용자 검색..."
+                placeholder="사용자 이름 또는 이메일 검색..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(event) => setSearchQuery(event.target.value)}
                 className="w-64 lg:w-96 pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
               />
             </div>
@@ -247,6 +280,7 @@ export function AdminUserPage({ onLogout }: AdminUserPageProps) {
             <button
               type="button"
               className="p-2 hover:bg-white/5 rounded-lg transition-colors relative"
+              title="알림"
             >
               <Bell className="w-5 h-5 text-gray-400" />
               <span className="absolute top-1 right-1 w-2 h-2 bg-red-400 rounded-full" />
@@ -262,30 +296,29 @@ export function AdminUserPage({ onLogout }: AdminUserPageProps) {
           </div>
         </header>
 
-        {/* Content */}
         <main className="flex-1 p-6 overflow-auto">
           <div className="max-w-[1800px] mx-auto space-y-6">
-            {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div>
                 <h2 className="text-2xl font-bold text-white mb-1">사용자 관리</h2>
-                <p className="text-gray-400">총 {users.length}명의 사용자</p>
+                <p className="text-gray-400">총 {pagination.total.toLocaleString()}명의 사용자</p>
               </div>
               <button
                 type="button"
-                className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-primary to-blue-500 text-white rounded-lg hover:opacity-90 transition-opacity"
+                disabled
+                title="사용자 생성 API 준비중"
+                className="flex items-center gap-2 px-4 py-2.5 bg-white/5 border border-white/10 text-gray-500 rounded-lg cursor-not-allowed"
               >
                 <UserPlus className="w-4 h-4" />
                 <span className="font-medium">새 사용자 추가</span>
               </button>
             </div>
 
-            {/* Stats */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-              {stats.map((stat, idx) => {
+              {stats.map((stat) => {
                 const Icon = stat.icon;
                 return (
-                  <div key={idx} className="relative group">
+                  <div key={stat.label} className="relative group">
                     <div className="absolute -inset-0.5 bg-gradient-to-r from-primary to-blue-500 rounded-xl opacity-0 group-hover:opacity-20 blur transition-opacity" />
                     <div className="relative bg-[#111116] border border-white/10 rounded-xl p-5 hover:border-white/20 transition-colors">
                       <div className="flex items-center justify-between mb-3">
@@ -317,212 +350,187 @@ export function AdminUserPage({ onLogout }: AdminUserPageProps) {
             </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
-              {/* User table */}
               <div className="xl:col-span-3 space-y-4">
-                {/* Filters */}
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setFilterStatus('all')}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                      filterStatus === 'all'
-                        ? 'bg-primary text-white'
-                        : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
-                    }`}
-                  >
-                    전체
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFilterStatus('active')}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                      filterStatus === 'active'
-                        ? 'bg-primary text-white'
-                        : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
-                    }`}
-                  >
-                    활성
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFilterStatus('admin')}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                      filterStatus === 'admin'
-                        ? 'bg-primary text-white'
-                        : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
-                    }`}
-                  >
-                    관리자
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFilterStatus('suspended')}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                      filterStatus === 'suspended'
-                        ? 'bg-primary text-white'
-                        : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
-                    }`}
-                  >
-                    중지됨
-                  </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  {renderFilterButton('all', '전체')}
+                  {renderFilterButton('user', '일반 사용자')}
+                  {renderFilterButton('admin', '관리자')}
+                  {renderFilterButton('active', '활성', true)}
+                  {renderFilterButton('suspended', '중지됨', true)}
 
                   <div className="flex-1" />
 
                   <button
                     type="button"
-                    className="p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg transition-colors"
+                    disabled
+                    title="내보내기 API 준비중"
+                    className="p-2 bg-white/5 border border-white/10 rounded-lg opacity-50 cursor-not-allowed"
                   >
                     <Download className="w-4 h-4 text-gray-400" />
                   </button>
                   <button
                     type="button"
-                    className="p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg transition-colors"
+                    onClick={handleRefresh}
+                    disabled={isRefreshing}
+                    className="p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg transition-colors disabled:opacity-60"
+                    title="새로고침"
                   >
-                    <RefreshCw className="w-4 h-4 text-gray-400" />
+                    <RefreshCw className={`w-4 h-4 text-gray-400 ${isRefreshing ? 'animate-spin' : ''}`} />
                   </button>
                 </div>
 
-                {/* Table */}
+                {errorMessage && (
+                  <div className="flex items-center gap-2 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-300 text-sm">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                    <span>{errorMessage}</span>
+                  </div>
+                )}
+
                 <div className="bg-[#111116] border border-white/10 rounded-xl overflow-hidden">
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead className="bg-white/5 border-b border-white/10">
                         <tr>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                            사용자
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                            역할
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                            상태
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                            업로드
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                            문서
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                            마지막 활동
-                          </th>
-                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
-                            액션
-                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">사용자</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">역할</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">상태</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">업로드</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">문서</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">가입일</th>
+                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">액션</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-white/5">
-                        {filteredUsers.map((user) => (
-                          <tr
-                            key={user.id}
-                            className="hover:bg-white/5 transition-colors cursor-pointer"
-                            onClick={() => {
-                              setSelectedUser(user);
-                              setShowUserDetail(true);
-                            }}
-                          >
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-gradient-to-br from-primary to-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
-                                  <User className="w-5 h-5 text-white" />
-                                </div>
-                                <div>
-                                  <p className="text-white font-medium text-sm">{user.name}</p>
-                                  <p className="text-gray-400 text-xs">{user.email}</p>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 border rounded-lg text-xs font-medium ${getRoleColor(user.role)}`}>
-                                {user.role === 'ADMIN' && <Shield className="w-3 h-3" />}
-                                {user.role}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 border rounded-lg text-xs font-medium ${getStatusColor(user.status)}`}>
-                                {user.status === 'active' ? (
-                                  <CheckCircle2 className="w-3 h-3" />
-                                ) : user.status === 'suspended' ? (
-                                  <Ban className="w-3 h-3" />
-                                ) : (
-                                  <XCircle className="w-3 h-3" />
-                                )}
-                                {getStatusLabel(user.status)}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                              {user.uploadCount}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                              {user.documentCount}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
-                              {user.lastActive}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-right">
-                              <div className="flex items-center justify-end gap-2">
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                  }}
-                                  className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-                                  title="수정"
-                                >
-                                  <Edit className="w-4 h-4 text-gray-400" />
-                                </button>
-                                {user.status === 'active' ? (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                    }}
-                                    className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-                                    title="중지"
-                                  >
-                                    <Ban className="w-4 h-4 text-yellow-400" />
-                                  </button>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                    }}
-                                    className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-                                    title="활성화"
-                                  >
-                                    <CheckCircle2 className="w-4 h-4 text-green-400" />
-                                  </button>
-                                )}
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                  }}
-                                  className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-                                >
-                                  <MoreVertical className="w-4 h-4 text-gray-400" />
-                                </button>
+                        {isLoading && (
+                          <tr>
+                            <td colSpan={7} className="px-6 py-12 text-center text-gray-400">
+                              <div className="flex items-center justify-center gap-2">
+                                <Loader2 className="w-5 h-5 animate-spin" />
+                                <span>사용자를 불러오는 중입니다.</span>
                               </div>
                             </td>
                           </tr>
-                        ))}
+                        )}
+
+                        {!isLoading && users.length === 0 && (
+                          <tr>
+                            <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
+                              조회된 사용자가 없습니다.
+                            </td>
+                          </tr>
+                        )}
+
+                        {!isLoading && users.map((user) => {
+                          const displayStatus: UserDisplayStatus = 'inactive';
+
+                          return (
+                            <tr
+                              key={user.id}
+                              className="hover:bg-white/5 transition-colors cursor-pointer"
+                              onClick={() => void handleUserDetail(user)}
+                            >
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-10 h-10 bg-gradient-to-br from-primary to-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
+                                    <User className="w-5 h-5 text-white" />
+                                  </div>
+                                  <div>
+                                    <p className="text-white font-medium text-sm">{user.name}</p>
+                                    <p className="text-gray-400 text-xs">{user.email}</p>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 border rounded-lg text-xs font-medium ${getRoleColor(user.role)}`}>
+                                  {user.role === 'ADMIN' && <Shield className="w-3 h-3" />}
+                                  {user.role}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 border rounded-lg text-xs font-medium ${getStatusColor(displayStatus)}`}>
+                                  {getStatusIcon(displayStatus)}
+                                  {getStatusLabel(displayStatus)}
+                                  <span className="text-[10px] opacity-70">(준비중)</span>
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{user.upload_count}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{user.document_count}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">{formatDateTime(user.created_at)}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-right">
+                                <div className="flex items-center justify-end gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={(event) => event.stopPropagation()}
+                                    disabled
+                                    className="p-2 rounded-lg opacity-50 cursor-not-allowed"
+                                    title="수정 API 준비중"
+                                  >
+                                    <Edit className="w-4 h-4 text-gray-400" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(event) => event.stopPropagation()}
+                                    disabled
+                                    className="p-2 rounded-lg opacity-50 cursor-not-allowed"
+                                    title="계정 상태 API 준비중"
+                                  >
+                                    <Ban className="w-4 h-4 text-yellow-400" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(event) => event.stopPropagation()}
+                                    disabled
+                                    className="p-2 rounded-lg opacity-50 cursor-not-allowed"
+                                    title="추가 액션 API 준비중"
+                                  >
+                                    <MoreVertical className="w-4 h-4 text-gray-400" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
                 </div>
+
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between text-sm text-gray-400">
+                  <span>
+                    page {pagination.page} / {Math.max(pagination.total_pages, 1)} · limit {pagination.limit} · total {pagination.total.toLocaleString()}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handlePageChange(pagination.page - 1)}
+                      disabled={pagination.page <= 1 || isLoading}
+                      className="px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      이전
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handlePageChange(pagination.page + 1)}
+                      disabled={pagination.total_pages === 0 || pagination.page >= pagination.total_pages || isLoading}
+                      className="px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      다음
+                    </button>
+                  </div>
+                </div>
               </div>
 
-              {/* Right panel */}
               <div className="space-y-6">
-                {/* Recent registrations */}
                 <div className="bg-[#111116] border border-white/10 rounded-xl p-6">
                   <h3 className="text-white font-semibold text-lg mb-4">최근 가입</h3>
                   <div className="space-y-3">
+                    {recentUsers.length === 0 && <p className="text-gray-500 text-sm">최근 가입 사용자가 없습니다.</p>}
                     {recentUsers.map((user) => (
-                      <div
+                      <button
                         key={user.id}
-                        className="flex items-center gap-3 p-3 bg-white/5 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+                        type="button"
+                        onClick={() => void handleUserDetail(user)}
+                        className="w-full flex items-center gap-3 p-3 bg-white/5 rounded-lg hover:bg-white/10 transition-colors text-left"
                       >
                         <div className="w-10 h-10 bg-gradient-to-br from-primary to-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
                           <User className="w-5 h-5 text-white" />
@@ -532,55 +540,51 @@ export function AdminUserPage({ onLogout }: AdminUserPageProps) {
                           <p className="text-gray-400 text-xs truncate">{user.email}</p>
                         </div>
                         <ChevronRight className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                      </div>
+                      </button>
                     ))}
                   </div>
                 </div>
 
-                {/* Top users */}
                 <div className="bg-[#111116] border border-white/10 rounded-xl p-6">
                   <h3 className="text-white font-semibold text-lg mb-4 flex items-center gap-2">
                     <TrendingUp className="w-5 h-5 text-primary" />
                     활발한 사용자
                   </h3>
                   <div className="space-y-3">
-                    {topUsers.map((user, idx) => (
-                      <div
-                        key={user.id}
-                        className="flex items-center gap-3 p-3 bg-white/5 rounded-lg"
-                      >
+                    {topUsers.length === 0 && <p className="text-gray-500 text-sm">활동 집계가 없습니다.</p>}
+                    {topUsers.map((user, index) => (
+                      <div key={user.id} className="flex items-center gap-3 p-3 bg-white/5 rounded-lg">
                         <div className="flex items-center justify-center w-6 h-6 bg-primary/20 rounded-full text-primary text-xs font-bold flex-shrink-0">
-                          {idx + 1}
+                          {index + 1}
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-white text-sm font-medium truncate">{user.name}</p>
-                          <p className="text-gray-400 text-xs">{user.uploadCount} 업로드</p>
+                          <p className="text-gray-400 text-xs">{user.upload_count} 업로드</p>
                         </div>
                       </div>
                     ))}
                   </div>
                 </div>
 
-                {/* User growth */}
                 <div className="bg-[#111116] border border-white/10 rounded-xl p-6">
                   <h3 className="text-white font-semibold text-lg mb-4">사용자 증가</h3>
                   <div className="space-y-4">
                     <div>
                       <div className="flex justify-between mb-2">
                         <span className="text-gray-400 text-sm">이번 주</span>
-                        <span className="text-green-400 text-sm font-medium">+15%</span>
+                        <span className="text-gray-500 text-sm font-medium">API 준비중</span>
                       </div>
                       <div className="w-full bg-white/5 rounded-full h-2">
-                        <div className="bg-green-500 h-2 rounded-full" style={{ width: '75%' }} />
+                        <div className="bg-green-500 h-2 rounded-full" style={{ width: '0%' }} />
                       </div>
                     </div>
                     <div>
                       <div className="flex justify-between mb-2">
                         <span className="text-gray-400 text-sm">이번 달</span>
-                        <span className="text-blue-400 text-sm font-medium">+42%</span>
+                        <span className="text-gray-500 text-sm font-medium">API 준비중</span>
                       </div>
                       <div className="w-full bg-white/5 rounded-full h-2">
-                        <div className="bg-blue-500 h-2 rounded-full" style={{ width: '88%' }} />
+                        <div className="bg-blue-500 h-2 rounded-full" style={{ width: '0%' }} />
                       </div>
                     </div>
                   </div>
@@ -591,14 +595,13 @@ export function AdminUserPage({ onLogout }: AdminUserPageProps) {
         </main>
       </div>
 
-      {/* User detail drawer */}
-      {showUserDetail && selectedUser && (
+      {showUserDetail && detailUser && (
         <div className="fixed inset-0 z-50 flex items-end justify-end">
           <div
             className="absolute inset-0 bg-black/50 backdrop-blur-sm"
             onClick={() => setShowUserDetail(false)}
           />
-          <div className="relative w-full md:w-[480px] h-full bg-[#111116] border-l border-white/10 overflow-auto">
+          <div className="relative w-full md:w-[520px] h-full bg-[#111116] border-l border-white/10 overflow-auto">
             <div className="sticky top-0 bg-[#111116]/80 backdrop-blur-xl border-b border-white/10 p-6 z-10">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-white font-semibold text-xl">사용자 정보</h3>
@@ -616,35 +619,49 @@ export function AdminUserPage({ onLogout }: AdminUserPageProps) {
                   <User className="w-8 h-8 text-white" />
                 </div>
                 <div>
-                  <h4 className="text-white font-semibold text-lg">{selectedUser.name}</h4>
-                  <p className="text-gray-400">{selectedUser.email}</p>
+                  <h4 className="text-white font-semibold text-lg">{detailUser.name}</h4>
+                  <p className="text-gray-400">{detailUser.email}</p>
                 </div>
               </div>
             </div>
 
             <div className="p-6 space-y-6">
+              {isDetailLoading && (
+                <div className="flex items-center gap-2 p-4 bg-white/5 border border-white/10 rounded-xl text-gray-400 text-sm">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>상세 정보를 불러오는 중입니다.</span>
+                </div>
+              )}
+
+              {detailErrorMessage && (
+                <div className="flex items-center gap-2 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-300 text-sm">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  <span>{detailErrorMessage}</span>
+                </div>
+              )}
+
               <div>
                 <h4 className="text-white font-medium mb-3">기본 정보</h4>
                 <div className="space-y-3">
                   <div className="flex items-center justify-between py-2 border-b border-white/5">
                     <span className="text-gray-400 text-sm">역할</span>
-                    <span className={`px-2.5 py-1 border rounded-lg text-xs font-medium ${getRoleColor(selectedUser.role)}`}>
-                      {selectedUser.role}
+                    <span className={`px-2.5 py-1 border rounded-lg text-xs font-medium ${getRoleColor(detailUser.role)}`}>
+                      {detailUser.role}
                     </span>
                   </div>
                   <div className="flex items-center justify-between py-2 border-b border-white/5">
                     <span className="text-gray-400 text-sm">상태</span>
-                    <span className={`px-2.5 py-1 border rounded-lg text-xs font-medium ${getStatusColor(selectedUser.status)}`}>
-                      {getStatusLabel(selectedUser.status)}
+                    <span className={`px-2.5 py-1 border rounded-lg text-xs font-medium ${getStatusColor('inactive')}`}>
+                      {getStatusLabel('inactive')} · API 준비중
                     </span>
                   </div>
                   <div className="flex items-center justify-between py-2 border-b border-white/5">
                     <span className="text-gray-400 text-sm">가입일</span>
-                    <span className="text-white text-sm">{selectedUser.createdDate}</span>
+                    <span className="text-white text-sm">{formatDateTime(detailUser.created_at)}</span>
                   </div>
                   <div className="flex items-center justify-between py-2">
                     <span className="text-gray-400 text-sm">마지막 활동</span>
-                    <span className="text-white text-sm">{selectedUser.lastActive}</span>
+                    <span className="text-gray-500 text-sm">API 준비중</span>
                   </div>
                 </div>
               </div>
@@ -654,50 +671,83 @@ export function AdminUserPage({ onLogout }: AdminUserPageProps) {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="p-4 bg-white/5 border border-white/10 rounded-lg">
                     <p className="text-gray-400 text-sm mb-1">총 업로드</p>
-                    <p className="text-white text-2xl font-bold">{selectedUser.uploadCount}</p>
+                    <p className="text-white text-2xl font-bold">{detailUser.upload_count}</p>
                   </div>
                   <div className="p-4 bg-white/5 border border-white/10 rounded-lg">
                     <p className="text-gray-400 text-sm mb-1">총 문서</p>
-                    <p className="text-white text-2xl font-bold">{selectedUser.documentCount}</p>
+                    <p className="text-white text-2xl font-bold">{detailUser.document_count}</p>
                   </div>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="text-white font-medium mb-3">문서</h4>
+                <div className="space-y-2">
+                  {!selectedUserDetail?.documents?.length && (
+                    <p className="text-gray-500 text-sm p-3 bg-white/5 rounded-lg">표시할 문서가 없습니다.</p>
+                  )}
+                  {selectedUserDetail?.documents.map((document) => {
+                    const status = getDocumentStatusPresentation(document.status);
+
+                    return (
+                      <div key={document.id} className="p-3 bg-white/5 border border-white/10 rounded-lg">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-white text-sm font-medium truncate">{document.file_name}</p>
+                            <p className="text-gray-500 text-xs flex items-center gap-1 mt-1">
+                              <Calendar className="w-3 h-3" />
+                              {formatDateTime(document.upload_at)}
+                            </p>
+                          </div>
+                          <span className={`px-2 py-1 border rounded-md text-xs ${status.bgColor} ${status.color} ${status.borderColor}`}>
+                            {status.label}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <h4 className="text-white font-medium mb-3">최근 작업</h4>
+                <div className="space-y-2">
+                  {!selectedUserDetail?.recent_tasks?.length && (
+                    <p className="text-gray-500 text-sm p-3 bg-white/5 rounded-lg">최근 작업이 없습니다.</p>
+                  )}
+                  {selectedUserDetail?.recent_tasks.map((task: AdminUserRecentTask) => (
+                    <div key={task.id} className="p-3 bg-white/5 border border-white/10 rounded-lg">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-white text-sm font-medium truncate">{task.document.file_name}</p>
+                          <p className="text-gray-500 text-xs flex items-center gap-1 mt-1">
+                            <Activity className="w-3 h-3" />
+                            {task.task_type} · {formatDateTime(task.updated_at)}
+                          </p>
+                        </div>
+                        <span className="px-2 py-1 border rounded-md text-xs bg-white/5 text-gray-300 border-white/10">
+                          {getTaskStatusLabel(task.status)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
 
               <div>
                 <h4 className="text-white font-medium mb-3">액션</h4>
                 <div className="space-y-2">
-                  <button
-                    type="button"
-                    className="w-full py-3 px-4 bg-primary/10 hover:bg-primary/20 border border-primary/20 text-primary rounded-lg transition-colors font-medium"
-                  >
-                    역할 변경
+                  <button type="button" disabled className="w-full py-3 px-4 bg-primary/10 border border-primary/20 text-primary/60 rounded-lg cursor-not-allowed font-medium">
+                    역할 변경 · API 준비중
                   </button>
-                  {selectedUser.status === 'active' ? (
-                    <button
-                      type="button"
-                      className="w-full py-3 px-4 bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-500/20 text-yellow-400 rounded-lg transition-colors font-medium"
-                    >
-                      계정 중지
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      className="w-full py-3 px-4 bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 text-green-400 rounded-lg transition-colors font-medium"
-                    >
-                      계정 활성화
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className="w-full py-3 px-4 bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-lg transition-colors font-medium"
-                  >
-                    비밀번호 재설정
+                  <button type="button" disabled className="w-full py-3 px-4 bg-yellow-500/10 border border-yellow-500/20 text-yellow-400/60 rounded-lg cursor-not-allowed font-medium">
+                    계정 중지 · API 준비중
                   </button>
-                  <button
-                    type="button"
-                    className="w-full py-3 px-4 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 rounded-lg transition-colors font-medium"
-                  >
-                    계정 삭제
+                  <button type="button" disabled className="w-full py-3 px-4 bg-white/5 border border-white/10 text-gray-500 rounded-lg cursor-not-allowed font-medium">
+                    비밀번호 재설정 · API 준비중
+                  </button>
+                  <button type="button" disabled className="w-full py-3 px-4 bg-red-500/10 border border-red-500/20 text-red-400/60 rounded-lg cursor-not-allowed font-medium">
+                    계정 삭제 · API 준비중
                   </button>
                 </div>
               </div>

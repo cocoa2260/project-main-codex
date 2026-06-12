@@ -1,3 +1,4 @@
+import type { UserRole } from '../utils/auth';
 import type { DocumentStatus, TaskStage, TaskStatus, TaskType } from './document';
 
 export interface AdminUserStats {
@@ -150,5 +151,44 @@ export interface AdminTaskListParams {
   created_from?: string;
   created_to?: string;
   sort_by?: 'created_at' | 'updated_at' | 'started_at' | 'completed_at' | 'progress' | 'status' | 'task_type';
+  sort_order?: 'asc' | 'desc';
+}
+
+export interface AdminUserItem {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole | string;
+  document_count: number;
+  upload_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AdminUserDocument {
+  id: string;
+  file_name: string;
+  status: DocumentStatus | string;
+  upload_at: string;
+}
+
+export type AdminUserRecentTask = AdminTaskListItemResponse;
+
+export interface AdminUsersResponse {
+  items: AdminUserItem[];
+  pagination: AdminPaginationResponse;
+}
+
+export interface AdminUserDetail extends AdminUserItem {
+  documents: AdminUserDocument[];
+  recent_tasks: AdminUserRecentTask[];
+}
+
+export interface AdminUserListParams {
+  page?: number;
+  limit?: number;
+  q?: string;
+  role?: UserRole;
+  sort_by?: 'created_at' | 'updated_at' | 'name' | 'email' | 'role' | 'document_count' | 'upload_count';
   sort_order?: 'asc' | 'desc';
 }

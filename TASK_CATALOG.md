@@ -103,7 +103,7 @@
 | ID | Task | Priority | Status |
 |------|------|------|------|
 | BE-ADMIN-004 | Admin User List API | Medium | DONE |
-| FE-017 | Admin User Management API Integration | Medium | TODO |
+| FE-017 | Admin User Management API Integration | Medium | DONE |
 | BE-ADMIN-005 | Admin System Health API | Medium | TODO |
 | FE-018 | Admin System Health Integration | Medium | TODO |
 | BE-ADMIN-006 | Admin Log List API | Medium | TODO |
@@ -227,6 +227,19 @@ Status: DONE
 - 사용자 상세에 문서 목록 및 최근 TaskTracker 10개 포함
 - 모든 endpoint require_admin 보호
 - DB model 변경 및 migration 없음
+
+Priority: Medium
+Status: DONE
+
+### FE-017 Admin User Management API Integration
+
+- AdminUserPage 사용자 mock data 제거
+- GET /api/admin/users 목록 연동
+- GET /api/admin/users/{user_id} 상세 조회 연동
+- Pagination / Search(q) / USER, ADMIN Role Filter / Refresh 상태 추가
+- 사용자 name / email / role / document_count / upload_count / created_at 표시
+- 상세 drawer에 user info / documents / recent tasks 표시
+- 백엔드에 없는 ACTIVE / SUSPENDED / INACTIVE 상태와 action UI는 삭제하지 않고 준비 중/비활성 처리
 
 Priority: Medium
 Status: DONE

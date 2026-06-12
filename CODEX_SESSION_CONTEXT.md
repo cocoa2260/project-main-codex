@@ -144,6 +144,18 @@ Summary:
 - No DB migration or model changes
 - py_compile and API auth checks passed
 
+### FE-017
+Admin User Management API Integration
+Status: DONE
+Summary:
+- Added admin user API client for GET /api/admin/users and GET /api/admin/users/{user_id}
+- Added admin user DTO types reusing UserRole, DocumentStatus, TaskStatus, and TaskType where applicable
+- Replaced AdminUserPage user mock data with admin users API data
+- Added loading, error, empty, pagination, manual refresh, detail lookup, search(q), and USER/ADMIN role filter states
+- Displayed API name, email, role, document_count, upload_count, created_at, detail documents, and recent tasks
+- Preserved existing user management layout, status/action UI, right panels, and disabled future account actions where backend APIs do not exist
+- Build passed
+
 ---
 
 ### FE-011
