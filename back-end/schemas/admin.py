@@ -40,6 +40,18 @@ class AdminDashboardSummaryResponse(BaseModel):
     recent_events: list[RecentEventResponse]
 
 
+class AdminSystemHealthServiceResponse(BaseModel):
+    key: str
+    name: str
+    status: str
+    details: str | None = None
+    checked_at: datetime
+
+
+class AdminSystemHealthResponse(BaseModel):
+    services: list[AdminSystemHealthServiceResponse]
+
+
 class AdminOwnerResponse(BaseModel):
     id: UUID
     email: str

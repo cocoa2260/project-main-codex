@@ -18,6 +18,7 @@ from routers.deps import require_admin
 from schemas.admin import AdminDashboardSummaryResponse
 from schemas.admin import AdminDocumentDetailResponse
 from schemas.admin import AdminDocumentListResponse
+from schemas.admin import AdminSystemHealthResponse
 from schemas.admin import AdminTaskDetailResponse
 from schemas.admin import AdminTaskListResponse
 from schemas.admin import AdminUserDetailResponse
@@ -26,6 +27,7 @@ from services.admin_service import get_admin_document_detail
 from services.admin_service import get_admin_task_detail
 from services.admin_service import get_admin_user_detail
 from services.admin_service import get_dashboard_summary
+from services.admin_service import get_system_health
 from services.admin_service import list_admin_documents
 from services.admin_service import list_admin_tasks
 from services.admin_service import list_admin_users
@@ -110,6 +112,17 @@ def dashboard_summary(
     current_user: User = Depends(require_admin),
 ):
     return get_dashboard_summary(db)
+
+
+@router.get(
+    "/system/health",
+    response_model=AdminSystemHealthResponse,
+)
+def system_health(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    return get_system_health(db)
 
 
 @router.get(

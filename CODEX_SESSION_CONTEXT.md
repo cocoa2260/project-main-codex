@@ -144,6 +144,21 @@ Summary:
 - No DB migration or model changes
 - py_compile and API auth checks passed
 
+### BE-ADMIN-005
+Admin System Health API
+Status: DONE
+Summary:
+- Added admin system health API at GET /api/admin/system/health
+- Added AdminSystemHealthResponse and AdminSystemHealthServiceResponse DTOs
+- Added read-only health checks for API, PostgreSQL, Redis, Ollama, Storage, and Celery
+- PostgreSQL health uses SELECT 1
+- Redis health uses ping against REDIS_URL or Celery Redis broker/result backend
+- Ollama health uses OLLAMA_URL and does not call LLM generation
+- Storage health checks directory existence and read access
+- Celery inspect failures and missing worker responses are reported as WARNING instead of failing the whole API
+- Protected endpoint with require_admin
+- No DB migration or model changes
+
 ### FE-017
 Admin User Management API Integration
 Status: DONE

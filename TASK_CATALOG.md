@@ -104,7 +104,7 @@
 |------|------|------|------|
 | BE-ADMIN-004 | Admin User List API | Medium | DONE |
 | FE-017 | Admin User Management API Integration | Medium | DONE |
-| BE-ADMIN-005 | Admin System Health API | Medium | TODO |
+| BE-ADMIN-005 | Admin System Health API | Medium | DONE |
 | FE-018 | Admin System Health Integration | Medium | TODO |
 | BE-ADMIN-006 | Admin Log List API | Medium | TODO |
 | FE-019 | Admin Log Page API Integration | Medium | TODO |
@@ -225,6 +225,22 @@ Status: DONE
 - Pagination / Search(q) / Role Filter / Sorting 지원
 - User별 document_count / upload_count 집계 추가
 - 사용자 상세에 문서 목록 및 최근 TaskTracker 10개 포함
+- 모든 endpoint require_admin 보호
+- DB model 변경 및 migration 없음
+
+Priority: Medium
+Status: DONE
+
+### BE-ADMIN-005 Admin System Health API
+
+- Admin 전용 시스템 헬스 조회 API 추가
+- GET /api/admin/system/health
+- API / PostgreSQL / Redis / Ollama / Storage / Celery 상태 반환
+- PostgreSQL SELECT 1 확인
+- Redis ping 확인
+- Ollama는 OLLAMA_URL 기반 health 수준 확인만 수행하고 LLM 생성 호출 없음
+- Storage 디렉토리 존재 여부 및 읽기 가능 여부 확인
+- Celery inspect 실패 또는 worker 미응답은 WARNING 처리
 - 모든 endpoint require_admin 보호
 - DB model 변경 및 migration 없음
 
