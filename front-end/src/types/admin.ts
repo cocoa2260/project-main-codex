@@ -15,6 +15,48 @@ export interface AdminSystemHealthResponse {
   services: AdminHealthService[];
 }
 
+export type AdminWorkerStatus = 'ACTIVE' | 'IDLE' | 'OFFLINE' | 'WARNING';
+
+export interface AdminQueueItem {
+  name: string;
+  pending_count: number;
+  active_count?: number | null;
+  scheduled_count?: number | null;
+  reserved_count?: number | null;
+  failed_count?: number | null;
+  oldest_task_age_seconds?: number | null;
+  status?: string | null;
+  details?: string | null;
+  checked_at?: string | null;
+}
+
+export interface AdminQueueListResponse {
+  queues: AdminQueueItem[];
+  checked_at: string;
+  status?: string | null;
+  details?: string | null;
+}
+
+export interface AdminWorkerItem {
+  id: string;
+  name: string;
+  status: AdminWorkerStatus;
+  active_task_count?: number | null;
+  reserved_task_count?: number | null;
+  scheduled_task_count?: number | null;
+  processed_count?: number | null;
+  current_queues?: string[] | null;
+  checked_at: string;
+  details?: string | null;
+}
+
+export interface AdminWorkerListResponse {
+  workers: AdminWorkerItem[];
+  checked_at: string;
+  status?: string | null;
+  details?: string | null;
+}
+
 export interface AdminUserStats {
   total_users: number;
   admin_users: number;

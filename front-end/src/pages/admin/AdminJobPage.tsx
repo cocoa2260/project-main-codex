@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { getAdminTaskDetail, getAdminTasks } from '../../api/admin';
+import { getAdminQueues, getAdminTaskDetail, getAdminTasks, getAdminWorkers } from '../../api/admin';
 import { Sidebar } from '../../components/common/Sidebar';
-import type { AdminTaskDetailResponse, AdminTaskListItemResponse } from '../../types/admin';
+import type {
+  AdminQueueItem,
+  AdminTaskDetailResponse,
+  AdminTaskListItemResponse,
+  AdminWorkerItem,
+  AdminWorkerStatus,
+} from '../../types/admin';
 import type { TaskStatus, TaskType } from '../../types/document';
 import { getDocumentStatusPresentation, normalizeDocumentStatus, normalizeTaskStage } from '../../utils/documentStatus';
 import {
@@ -22,15 +28,6 @@ import {
 } from 'lucide-react';
 
 type FilterStatus = 'all' | 'running' | 'waiting' | 'completed' | 'failed';
-
-interface Worker {
-  id: string;
-  name: string;
-  status: 'active' | 'idle' | 'offline';
-  currentQueue?: string;
-  load: number;
-  jobsProcessed: number;
-}
 
 interface AdminJobPageProps {
   onLogout?: () => void;
@@ -55,16 +52,16 @@ const taskTypeColorClassNames: Record<TaskType, string> = {
   RAG_INDEXING: 'bg-green-500/10 text-green-400 border-green-500/20',
 };
 
-const queueColorClassNames: Record<TaskType, { text: string; bg: string }> = {
-  OCR: { text: 'text-blue-400', bg: 'bg-blue-500' },
-  SUMMARY: { text: 'text-purple-400', bg: 'bg-purple-500' },
-  EMBEDDING: { text: 'text-yellow-400', bg: 'bg-yellow-500' },
-  RAG_INDEXING: { text: 'text-green-400', bg: 'bg-green-500' },
-};
+const queueColorClassNames = [
+  { text: 'text-blue-400', bg: 'bg-blue-500' },
+  { text: 'text-purple-400', bg: 'bg-purple-500' },
+  { text: 'text-yellow-400', bg: 'bg-yellow-500' },
+  { text: 'text-green-400', bg: 'bg-green-500' },
+];
 
-function getApiErrorMessage(error: unknown): string {
+function getApiErrorMessage(error: unknown, fallbackMessage = '작업 목록을 불러오지 못했습니다.'): string {
   const response = (error as { response?: { data?: { detail?: string; message?: string } } }).response;
-  return response?.data?.detail ?? response?.data?.message ?? (error instanceof Error ? error.message : '작업 목록을 불러오지 못했습니다.');
+  return response?.data?.detail ?? response?.data?.message ?? (error instanceof Error ? error.message : fallbackMessage);
 }
 
 function normalizeTaskStatus(status: string): TaskStatus {
@@ -105,6 +102,24 @@ function formatDuration(startedAt?: string | null, completedAt?: string | null):
   return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
 }
 
+function formatCount(value?: number | null): string {
+  return typeof value === 'number' ? value.toLocaleString() : '-';
+}
+
+function getQueueTotal(queue: AdminQueueItem): number {
+  return (
+    (queue.pending_count ?? 0) +
+    (queue.active_count ?? 0) +
+    (queue.scheduled_count ?? 0) +
+    (queue.reserved_count ?? 0)
+  );
+}
+
+function getQueueColorClassNames(name: string): { text: string; bg: string } {
+  const index = Math.abs([...name].reduce((sum, char) => sum + char.charCodeAt(0), 0)) % queueColorClassNames.length;
+  return queueColorClassNames[index];
+}
+
 function getActivityType(status: string): 'success' | 'error' | 'warning' | 'info' {
   const normalizedStatus = normalizeTaskStatus(status);
 
@@ -132,6 +147,13 @@ export function AdminJobPage({ onLogout }: AdminJobPageProps) {
   const [selectedTask, setSelectedTask] = useState<AdminTaskDetailResponse | null>(null);
   const [detailErrorMessage, setDetailErrorMessage] = useState<string | null>(null);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
+  const [queues, setQueues] = useState<AdminQueueItem[]>([]);
+  const [queuesCheckedAt, setQueuesCheckedAt] = useState<string | null>(null);
+  const [isQueuesLoading, setIsQueuesLoading] = useState(true);
+  const [queuesErrorMessage, setQueuesErrorMessage] = useState<string | null>(null);
+  const [workers, setWorkers] = useState<AdminWorkerItem[]>([]);
+  const [isWorkersLoading, setIsWorkersLoading] = useState(true);
+  const [workersErrorMessage, setWorkersErrorMessage] = useState<string | null>(null);
 
   const fetchTasks = useCallback(async (page: number, showLoading = false) => {
     if (showLoading) {
@@ -164,6 +186,44 @@ export function AdminJobPage({ onLogout }: AdminJobPageProps) {
     }
   }, [filterStatus, searchQuery]);
 
+  const fetchQueues = useCallback(async (showLoading = false) => {
+    if (showLoading) {
+      setIsQueuesLoading(true);
+    }
+
+    setQueuesErrorMessage(null);
+
+    try {
+      const response = await getAdminQueues();
+      setQueues(response.queues);
+      setQueuesCheckedAt(response.checked_at);
+    } catch (error) {
+      setQueuesErrorMessage(getApiErrorMessage(error, '큐 상태를 불러오지 못했습니다.'));
+      setQueues([]);
+      setQueuesCheckedAt(null);
+    } finally {
+      setIsQueuesLoading(false);
+    }
+  }, []);
+
+  const fetchWorkers = useCallback(async (showLoading = false) => {
+    if (showLoading) {
+      setIsWorkersLoading(true);
+    }
+
+    setWorkersErrorMessage(null);
+
+    try {
+      const response = await getAdminWorkers();
+      setWorkers(response.workers);
+    } catch (error) {
+      setWorkersErrorMessage(getApiErrorMessage(error, 'Worker 상태를 불러오지 못했습니다.'));
+      setWorkers([]);
+    } finally {
+      setIsWorkersLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       void fetchTasks(1, true);
@@ -173,17 +233,30 @@ export function AdminJobPage({ onLogout }: AdminJobPageProps) {
   }, [fetchTasks]);
 
   useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      void fetchQueues(true);
+      void fetchWorkers(true);
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [fetchQueues, fetchWorkers]);
+
+  useEffect(() => {
     if (!autoRefresh) return;
 
     const intervalId = window.setInterval(() => {
       void fetchTasks(pagination.page, false);
+      void fetchQueues(false);
+      void fetchWorkers(false);
     }, AUTO_REFRESH_INTERVAL_MS);
 
     return () => window.clearInterval(intervalId);
-  }, [autoRefresh, fetchTasks, pagination.page]);
+  }, [autoRefresh, fetchQueues, fetchTasks, fetchWorkers, pagination.page]);
 
   const handleRefresh = () => {
     void fetchTasks(pagination.page, false);
+    void fetchQueues(false);
+    void fetchWorkers(false);
   };
 
   const handlePageChange = (nextPage: number) => {
@@ -212,9 +285,8 @@ export function AdminJobPage({ onLogout }: AdminJobPageProps) {
       return counts;
     }, { PENDING: 0, PROCESSING: 0, COMPLETED: 0, FAILED: 0 });
 
-    const activeProgressTasks = tasks.filter((task) => normalizeTaskStatus(task.status) === 'PROCESSING');
-    const workerUsage = activeProgressTasks.length
-      ? Math.round(activeProgressTasks.reduce((sum, task) => sum + task.progress, 0) / activeProgressTasks.length)
+    const workerUsage = workers.length
+      ? Math.round((workers.filter((worker) => worker.status === 'ACTIVE').length / workers.length) * 100)
       : 0;
 
     return [
@@ -223,41 +295,14 @@ export function AdminJobPage({ onLogout }: AdminJobPageProps) {
       { label: '완료', value: countByStatus.COMPLETED.toLocaleString(), change: '현재 페이지', icon: CheckCircle2, color: 'green' },
       { label: '실패', value: countByStatus.FAILED.toLocaleString(), change: '현재 페이지', icon: XCircle, color: 'red' },
       { label: '대기 중', value: countByStatus.PENDING.toLocaleString(), change: '현재 페이지', icon: Clock, color: 'yellow' },
-      { label: 'Worker 사용률', value: `${workerUsage}%`, change: '진행률 평균', icon: Cpu, color: 'purple' }
+      { label: 'Worker 사용률', value: `${workerUsage}%`, change: 'ACTIVE 비율', icon: Cpu, color: 'purple' }
     ];
-  }, [pagination.page, pagination.total, tasks]);
-
-  const workers: Worker[] = useMemo(() => (
-    taskTypes.map((taskType) => {
-      const typeTasks = tasks.filter((task) => normalizeTaskType(task.task_type) === taskType);
-      const activeTasks = typeTasks.filter((task) => normalizeTaskStatus(task.status) === 'PROCESSING');
-      const waitingTasks = typeTasks.filter((task) => normalizeTaskStatus(task.status) === 'PENDING');
-
-      return {
-        id: taskType,
-        name: `${taskType} Worker`,
-        status: activeTasks.length > 0 ? 'active' : waitingTasks.length > 0 ? 'idle' : 'offline',
-        currentQueue: activeTasks.length > 0 || waitingTasks.length > 0 ? `${taskType.toLowerCase()}-queue` : undefined,
-        load: activeTasks.length > 0
-          ? Math.round(activeTasks.reduce((sum, task) => sum + task.progress, 0) / activeTasks.length)
-          : 0,
-        jobsProcessed: typeTasks.filter((task) => normalizeTaskStatus(task.status) === 'COMPLETED').length,
-      };
-    })
-  ), [tasks]);
+  }, [pagination.page, pagination.total, tasks, workers]);
 
   const failedJobs = useMemo(
     () => tasks.filter((task) => normalizeTaskStatus(task.status) === 'FAILED'),
     [tasks],
   );
-
-  const queueStats = useMemo(() => (
-    taskTypes.map((taskType) => ({
-      type: taskType,
-      name: `${taskType} Queue`,
-      count: tasks.filter((task) => normalizeTaskType(task.task_type) === taskType && normalizeTaskStatus(task.status) === 'PENDING').length,
-    }))
-  ), [tasks]);
 
   const activityLog = useMemo(() => (
     tasks.slice(0, 5).map((task) => ({
@@ -282,12 +327,37 @@ export function AdminJobPage({ onLogout }: AdminJobPageProps) {
     getDocumentStatusPresentation(status, stage).label
   );
 
-  const getWorkerStatusColor = (status: Worker['status']) => {
+  const getWorkerStatusColor = (status: AdminWorkerStatus) => {
     switch (status) {
-      case 'active': return 'bg-green-500/10 text-green-400 border-green-500/20';
-      case 'idle': return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20';
-      case 'offline': return 'bg-red-500/10 text-red-400 border-red-500/20';
+      case 'ACTIVE': return 'bg-green-500/10 text-green-400 border-green-500/20';
+      case 'IDLE': return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20';
+      case 'WARNING': return 'bg-orange-500/10 text-orange-400 border-orange-500/20';
+      case 'OFFLINE': return 'bg-red-500/10 text-red-400 border-red-500/20';
     }
+  };
+
+  const getWorkerStatusLabel = (status: AdminWorkerStatus) => {
+    switch (status) {
+      case 'ACTIVE': return '정상';
+      case 'IDLE': return '대기';
+      case 'WARNING': return '경고';
+      case 'OFFLINE': return '오프라인';
+    }
+  };
+
+  const getWorkerStatusDotClassName = (status: AdminWorkerStatus) => {
+    switch (status) {
+      case 'ACTIVE': return 'bg-green-400 animate-pulse';
+      case 'IDLE': return 'bg-yellow-400';
+      case 'WARNING': return 'bg-orange-400';
+      case 'OFFLINE': return 'bg-red-400';
+    }
+  };
+
+  const getWorkerLoad = (worker: AdminWorkerItem) => {
+    const activeCount = worker.active_task_count ?? 0;
+    const totalCount = activeCount + (worker.reserved_task_count ?? 0) + (worker.scheduled_task_count ?? 0);
+    return totalCount > 0 ? Math.round((activeCount / totalCount) * 100) : 0;
   };
 
   const getActivityIcon = (type: 'success' | 'error' | 'warning' | 'info') => {
@@ -728,44 +798,76 @@ export function AdminJobPage({ onLogout }: AdminJobPageProps) {
                     <Cpu className="w-5 h-5 text-primary" />
                     Worker 상태
                   </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    {workers.map((worker) => (
-                      <div
-                        key={worker.id}
-                        className={`p-4 border rounded-lg ${getWorkerStatusColor(worker.status)}`}
-                      >
-                        <div className="flex items-center justify-between mb-3">
-                          <h4 className="font-medium text-sm">{worker.name}</h4>
-                          <div className={`w-2 h-2 rounded-full ${
-                            worker.status === 'active' ? 'bg-green-400 animate-pulse' :
-                            worker.status === 'idle' ? 'bg-yellow-400' :
-                            'bg-red-400'
-                          }`} />
-                        </div>
-                        {worker.currentQueue && (
-                          <p className="text-xs opacity-80 mb-2">{worker.currentQueue}</p>
-                        )}
-                        <div className="space-y-2">
-                          <div>
-                            <div className="flex justify-between text-xs mb-1">
-                              <span className="opacity-80">부하</span>
-                              <span className="font-medium">{worker.load}%</span>
+                  {workersErrorMessage && (
+                    <div className="mb-4 flex items-start gap-3 rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-red-300">
+                      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                      <p className="text-sm">{workersErrorMessage}</p>
+                    </div>
+                  )}
+                  {isWorkersLoading ? (
+                    <div className="rounded-lg bg-white/5 p-6 text-center">
+                      <Loader2 className="mx-auto mb-3 h-5 w-5 animate-spin text-primary" />
+                      <p className="text-sm text-gray-400">Worker 상태를 불러오는 중입니다.</p>
+                    </div>
+                  ) : workers.length === 0 && !workersErrorMessage ? (
+                    <div className="rounded-lg bg-white/5 p-6 text-center">
+                      <Cpu className="mx-auto mb-3 h-5 w-5 text-gray-500" />
+                      <p className="text-sm font-medium text-white">표시할 Worker가 없습니다.</p>
+                      <p className="mt-1 text-sm text-gray-500">Celery Worker 응답을 기다리거나 새로고침해 주세요.</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                      {workers.map((worker) => {
+                        const workerLoad = getWorkerLoad(worker);
+                        const currentQueues = worker.current_queues?.length ? worker.current_queues.join(', ') : '-';
+
+                        return (
+                          <div
+                            key={worker.id}
+                            className={`p-4 border rounded-lg ${getWorkerStatusColor(worker.status)}`}
+                          >
+                            <div className="flex items-center justify-between gap-3 mb-3">
+                              <div className="min-w-0">
+                                <h4 className="font-medium text-sm truncate">{worker.name}</h4>
+                                <p className="mt-1 text-xs opacity-80">{getWorkerStatusLabel(worker.status)}</p>
+                              </div>
+                              <div className={`w-2 h-2 shrink-0 rounded-full ${getWorkerStatusDotClassName(worker.status)}`} />
                             </div>
-                            <div className="w-full bg-black/20 rounded-full h-1.5">
-                              <div
-                                className="h-1.5 rounded-full"
-                                style={{
-                                  width: `${worker.load}%`,
-                                  backgroundColor: worker.status === 'active' ? 'rgb(74 222 128)' : 'rgb(250 204 21)'
-                                }}
-                              />
+                            <p className="text-xs opacity-80 mb-2 truncate" title={currentQueues}>
+                              {currentQueues}
+                            </p>
+                            <div className="space-y-2">
+                              <div>
+                                <div className="flex justify-between text-xs mb-1">
+                                  <span className="opacity-80">활성 비율</span>
+                                  <span className="font-medium">{workerLoad}%</span>
+                                </div>
+                                <div className="w-full bg-black/20 rounded-full h-1.5">
+                                  <div
+                                    className="h-1.5 rounded-full"
+                                    style={{
+                                      width: `${workerLoad}%`,
+                                      backgroundColor: worker.status === 'ACTIVE' ? 'rgb(74 222 128)' : 'rgb(250 204 21)'
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-3 gap-2 text-xs opacity-80">
+                                <span>active {formatCount(worker.active_task_count)}</span>
+                                <span>reserved {formatCount(worker.reserved_task_count)}</span>
+                                <span>scheduled {formatCount(worker.scheduled_task_count)}</span>
+                              </div>
+                              <p className="text-xs opacity-60">처리: {formatCount(worker.processed_count)}</p>
+                              <p className="text-xs opacity-60">확인: {formatDateTime(worker.checked_at)}</p>
+                              {worker.details && (
+                                <p className="line-clamp-2 text-xs opacity-70">{worker.details}</p>
+                              )}
                             </div>
                           </div>
-                          <p className="text-xs opacity-60">처리: {worker.jobsProcessed}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -809,28 +911,65 @@ export function AdminJobPage({ onLogout }: AdminJobPageProps) {
                 {/* Queue monitoring */}
                 <div className="bg-[#111116] border border-white/10 rounded-xl p-6">
                   <h3 className="text-white font-semibold text-lg mb-4">큐 상태</h3>
-                  <div className="space-y-3">
-                    {queueStats.map((queue) => {
-                      const classNames = queueColorClassNames[queue.type];
+                  {queuesErrorMessage && (
+                    <div className="mb-4 flex items-start gap-3 rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-red-300">
+                      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                      <p className="text-sm">{queuesErrorMessage}</p>
+                    </div>
+                  )}
+                  {isQueuesLoading ? (
+                    <div className="rounded-lg bg-white/5 p-6 text-center">
+                      <Loader2 className="mx-auto mb-3 h-5 w-5 animate-spin text-primary" />
+                      <p className="text-sm text-gray-400">큐 상태를 불러오는 중입니다.</p>
+                    </div>
+                  ) : queues.length === 0 && !queuesErrorMessage ? (
+                    <div className="rounded-lg bg-white/5 p-6 text-center">
+                      <Activity className="mx-auto mb-3 h-5 w-5 text-gray-500" />
+                      <p className="text-sm font-medium text-white">표시할 큐가 없습니다.</p>
+                      <p className="mt-1 text-sm text-gray-500">Queue 응답을 기다리거나 새로고침해 주세요.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {queues.map((queue) => {
+                        const classNames = getQueueColorClassNames(queue.name);
+                        const totalCount = getQueueTotal(queue);
+                        const checkedAt = queue.checked_at ?? queuesCheckedAt;
 
-                      return (
-                        <div key={queue.name} className="p-3 bg-white/5 rounded-lg">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-white text-sm font-medium">{queue.name}</span>
-                            <span className={`${classNames.text} text-sm font-bold`}>
-                              {queue.count}
-                            </span>
+                        return (
+                          <div key={queue.name} className="p-3 bg-white/5 rounded-lg">
+                            <div className="flex items-center justify-between gap-3 mb-2">
+                              <span className="min-w-0 truncate text-white text-sm font-medium">{queue.name}</span>
+                              <span className={`${classNames.text} text-sm font-bold`}>
+                                {formatCount(queue.pending_count)}
+                              </span>
+                            </div>
+                            <div className="w-full bg-white/5 rounded-full h-1.5">
+                              <div
+                                className={`${classNames.bg} h-1.5 rounded-full transition-all`}
+                                style={{ width: `${Math.min(100, (totalCount / PAGE_LIMIT) * 100)}%` }}
+                              />
+                            </div>
+                            <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-gray-400">
+                              <span>pending {formatCount(queue.pending_count)}</span>
+                              <span>active {formatCount(queue.active_count)}</span>
+                              <span>scheduled {formatCount(queue.scheduled_count)}</span>
+                              <span>reserved {formatCount(queue.reserved_count)}</span>
+                            </div>
+                            {typeof queue.failed_count === 'number' && (
+                              <p className="mt-2 text-xs text-red-300">failed {formatCount(queue.failed_count)}</p>
+                            )}
+                            {typeof queue.oldest_task_age_seconds === 'number' && (
+                              <p className="mt-2 text-xs text-gray-500">oldest {queue.oldest_task_age_seconds}s</p>
+                            )}
+                            <p className="mt-2 text-xs text-gray-500">확인: {formatDateTime(checkedAt)}</p>
+                            {queue.details && (
+                              <p className="mt-2 line-clamp-2 text-xs text-yellow-300/80">{queue.details}</p>
+                            )}
                           </div>
-                          <div className="w-full bg-white/5 rounded-full h-1.5">
-                            <div
-                              className={`${classNames.bg} h-1.5 rounded-full transition-all`}
-                              style={{ width: `${Math.min(100, (queue.count / PAGE_LIMIT) * 100)}%` }}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 {/* Live activity */}
