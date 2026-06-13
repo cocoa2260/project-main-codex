@@ -1,17 +1,24 @@
-from datetime import datetime
 from datetime import date
+from datetime import datetime
 from datetime import time
 from datetime import timezone
 from math import ceil
+import os
+from pathlib import Path
 from uuid import UUID
 
+import httpx
+import redis
 from sqlalchemy import and_
 from sqlalchemy import func
 from sqlalchemy import inspect
+from sqlalchemy import text
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from sqlalchemy.orm import joinedload
 
+from app.celery_app import celery_app
+from core.config import settings
 from models.document import Document
 from models.document import DocumentStatus
 from models.document_chunk import DocumentChunk
@@ -24,6 +31,8 @@ from schemas.admin import AdminDashboardSummaryResponse
 from schemas.admin import AdminDocumentDetailResponse
 from schemas.admin import AdminDocumentListItemResponse
 from schemas.admin import AdminDocumentListResponse
+from schemas.admin import AdminSystemHealthResponse
+from schemas.admin import AdminSystemHealthServiceResponse
 from schemas.admin import AdminTaskDetailResponse
 from schemas.admin import AdminTaskDocumentResponse
 from schemas.admin import AdminTaskListItemResponse
@@ -41,11 +50,198 @@ from schemas.admin import TaskStatsResponse
 from schemas.admin import UserStatsResponse
 
 
+HEALTHY = "HEALTHY"
+WARNING = "WARNING"
+ERROR = "ERROR"
+STORAGE_DIR = "/storage/uploads"
+
+
 def _today_bounds() -> tuple[datetime, datetime]:
     today = datetime.now(timezone.utc).date()
     start = datetime.combine(today, time.min, tzinfo=timezone.utc)
     end = datetime.combine(today, time.max, tzinfo=timezone.utc)
     return start, end
+
+
+def _checked_at() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _health_service(
+    key: str,
+    name: str,
+    status: str,
+    details: str | None = None,
+) -> AdminSystemHealthServiceResponse:
+    return AdminSystemHealthServiceResponse(
+        key=key,
+        name=name,
+        status=status,
+        details=details,
+        checked_at=_checked_at(),
+    )
+
+
+def _exception_details(error: Exception) -> str:
+    return f"{error.__class__.__name__}: {error}"
+
+
+def _check_api_health() -> AdminSystemHealthServiceResponse:
+    return _health_service(
+        key="api",
+        name="API Server",
+        status=HEALTHY,
+    )
+
+
+def _check_postgres_health(db: Session) -> AdminSystemHealthServiceResponse:
+    try:
+        db.execute(text("SELECT 1")).scalar()
+        return _health_service(
+            key="postgresql",
+            name="PostgreSQL",
+            status=HEALTHY,
+        )
+    except Exception as error:
+        return _health_service(
+            key="postgresql",
+            name="PostgreSQL",
+            status=ERROR,
+            details=_exception_details(error),
+        )
+
+
+def _redis_url() -> str | None:
+    candidates = [
+        os.getenv("REDIS_URL"),
+        os.getenv("CELERY_BROKER_URL"),
+        os.getenv("CELERY_RESULT_BACKEND"),
+    ]
+    return next(
+        (
+            candidate
+            for candidate in candidates
+            if candidate and candidate.startswith(("redis://", "rediss://"))
+        ),
+        None,
+    )
+
+
+def _check_redis_health() -> AdminSystemHealthServiceResponse:
+    redis_url = _redis_url()
+
+    if redis_url is None:
+        return _health_service(
+            key="redis",
+            name="Redis",
+            status=ERROR,
+            details="Redis URL is not configured.",
+        )
+
+    client = redis.Redis.from_url(
+        redis_url,
+        socket_connect_timeout=1,
+        socket_timeout=1,
+    )
+
+    try:
+        client.ping()
+        return _health_service(
+            key="redis",
+            name="Redis",
+            status=HEALTHY,
+        )
+    except Exception as error:
+        return _health_service(
+            key="redis",
+            name="Redis",
+            status=ERROR,
+            details=_exception_details(error),
+        )
+    finally:
+        client.close()
+
+
+def _check_ollama_health() -> AdminSystemHealthServiceResponse:
+    ollama_url = settings.OLLAMA_URL.rstrip("/")
+
+    try:
+        response = httpx.get(f"{ollama_url}/api/tags", timeout=2)
+        response.raise_for_status()
+        return _health_service(
+            key="ollama",
+            name="Ollama",
+            status=HEALTHY,
+        )
+    except Exception as error:
+        return _health_service(
+            key="ollama",
+            name="Ollama",
+            status=ERROR,
+            details=_exception_details(error),
+        )
+
+
+def _check_storage_health() -> AdminSystemHealthServiceResponse:
+    storage_dir = Path(os.getenv("STORAGE_DIR", STORAGE_DIR))
+
+    if not storage_dir.exists():
+        return _health_service(
+            key="storage",
+            name="Storage",
+            status=WARNING,
+            details=f"Storage directory does not exist: {storage_dir}",
+        )
+
+    if not storage_dir.is_dir():
+        return _health_service(
+            key="storage",
+            name="Storage",
+            status=ERROR,
+            details=f"Storage path is not a directory: {storage_dir}",
+        )
+
+    if not os.access(storage_dir, os.R_OK):
+        return _health_service(
+            key="storage",
+            name="Storage",
+            status=ERROR,
+            details=f"Storage directory is not readable: {storage_dir}",
+        )
+
+    return _health_service(
+        key="storage",
+        name="Storage",
+        status=HEALTHY,
+    )
+
+
+def _check_celery_health() -> AdminSystemHealthServiceResponse:
+    try:
+        inspect_control = celery_app.control.inspect(timeout=1)
+        workers = inspect_control.ping()
+    except Exception as error:
+        return _health_service(
+            key="celery",
+            name="Celery",
+            status=WARNING,
+            details=f"Worker inspect unavailable. {_exception_details(error)}",
+        )
+
+    if not workers:
+        return _health_service(
+            key="celery",
+            name="Celery",
+            status=WARNING,
+            details="No Celery workers responded to inspect.",
+        )
+
+    return _health_service(
+        key="celery",
+        name="Celery",
+        status=HEALTHY,
+        details=f"{len(workers)} worker(s) responded.",
+    )
 
 
 def _count_by(db: Session, model, column) -> dict[str, int]:
@@ -505,6 +701,19 @@ def get_dashboard_summary(db: Session) -> AdminDashboardSummaryResponse:
         documents=get_document_stats(db),
         tasks=get_task_stats(db),
         recent_events=get_recent_events(db),
+    )
+
+
+def get_system_health(db: Session) -> AdminSystemHealthResponse:
+    return AdminSystemHealthResponse(
+        services=[
+            _check_api_health(),
+            _check_postgres_health(db),
+            _check_redis_health(),
+            _check_ollama_health(),
+            _check_storage_health(),
+            _check_celery_health(),
+        ]
     )
 
 
