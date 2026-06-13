@@ -105,7 +105,7 @@
 | BE-ADMIN-004 | Admin User List API | Medium | DONE |
 | FE-017 | Admin User Management API Integration | Medium | DONE |
 | BE-ADMIN-005 | Admin System Health API | Medium | DONE |
-| FE-018 | Admin System Health Integration | Medium | TODO |
+| FE-018 | Admin System Health Integration | Medium | DONE |
 | BE-ADMIN-006 | Admin Log List API | Medium | TODO |
 | FE-019 | Admin Log Page API Integration | Medium | TODO |
 | BE-ADMIN-007 | Admin Settings Read API | Medium | TODO |
@@ -256,6 +256,21 @@ Status: DONE
 - 사용자 name / email / role / document_count / upload_count / created_at 표시
 - 상세 drawer에 user info / documents / recent tasks 표시
 - 백엔드에 없는 ACTIVE / SUSPENDED / INACTIVE 상태와 action UI는 삭제하지 않고 준비 중/비활성 처리
+
+Priority: Medium
+Status: DONE
+
+### FE-018 Admin System Health Integration
+
+- Admin system health mock data 제거
+- GET /api/admin/system/health API client 추가
+- AdminSystemHealthResponse / AdminHealthService DTO 추가
+- AdminDashboardPage 시스템 상태 카드 API 데이터 바인딩
+- AdminLogPage System Health 영역 API 데이터 바인딩
+- API / PostgreSQL / Redis / Ollama / Storage / Celery 상태 표시
+- Loading / Error / Refresh 상태 추가
+- 30초 Auto Refresh 및 useEffect cleanup 적용
+- 기존 Admin Dashboard / Logs UI 섹션 유지
 
 Priority: Medium
 Status: DONE

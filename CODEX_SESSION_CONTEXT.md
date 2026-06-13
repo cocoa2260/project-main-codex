@@ -171,6 +171,21 @@ Summary:
 - Preserved existing user management layout, status/action UI, right panels, and disabled future account actions where backend APIs do not exist
 - Build passed
 
+### FE-018
+Admin System Health API Integration
+Status: DONE
+Summary:
+- Added admin system health API client for GET /api/admin/system/health
+- Added AdminSystemHealthResponse, AdminHealthService, and AdminHealthServiceStatus frontend DTOs
+- Replaced AdminDashboardPage system health mock/derived service cards with API-backed health data
+- Replaced AdminLogPage System Health mock data with the same admin health API client
+- Displayed API, PostgreSQL, Redis, Ollama, Storage, and Celery statuses
+- Mapped HEALTHY, WARNING, ERROR, and OFFLINE to existing green, yellow, red, and gray admin styles
+- Added loading, error, manual refresh, and 30 second polling with useEffect cleanup
+- Preserved existing admin dashboard/log cards, tables, and sections
+- Build passed
+- Targeted frontend eslint passed
+
 ---
 
 ### FE-011

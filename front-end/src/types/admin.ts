@@ -1,6 +1,20 @@
 import type { UserRole } from '../utils/auth';
 import type { DocumentStatus, TaskStage, TaskStatus, TaskType } from './document';
 
+export type AdminHealthServiceStatus = 'HEALTHY' | 'WARNING' | 'ERROR' | 'OFFLINE';
+
+export interface AdminHealthService {
+  key: string;
+  name: string;
+  status: AdminHealthServiceStatus;
+  details: string | null;
+  checked_at: string | null;
+}
+
+export interface AdminSystemHealthResponse {
+  services: AdminHealthService[];
+}
+
 export interface AdminUserStats {
   total_users: number;
   admin_users: number;

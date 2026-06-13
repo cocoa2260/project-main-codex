@@ -1,13 +1,10 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { LucideIcon } from 'lucide-react';
+import { getAdminSystemHealth } from '../../api/admin';
 import { Sidebar } from '../../components/common/Sidebar';
+import type { AdminHealthService, AdminHealthServiceStatus } from '../../types/admin';
 import {
-  Home,
-  FileText,
-  Users,
   Activity,
-  Settings,
-  Shield,
   Menu,
   X,
   Search,
@@ -25,13 +22,11 @@ import {
   Info,
   CheckCircle2,
   XCircle,
-  Clock,
   User,
   Server,
   Database,
   Cpu,
   Zap,
-  Lock,
   Globe,
   Terminal,
   Filter,
@@ -55,38 +50,69 @@ interface AdminLogPageProps {
   onLogout?: () => void;
 }
 
+interface SystemHealthItem {
+  key: string;
+  name: string;
+  status: AdminHealthServiceStatus;
+  details: string;
+  checkedAt: string;
+  icon: LucideIcon;
+}
+
+const AUTO_REFRESH_INTERVAL_MS = 30_000;
+
+const healthServiceOrder = ['api', 'postgresql', 'redis', 'ollama', 'storage', 'celery'] as const;
+
+const healthServicePresentation: Record<typeof healthServiceOrder[number], { name: string; icon: LucideIcon }> = {
+  api: { name: 'API', icon: Globe },
+  postgresql: { name: 'PostgreSQL', icon: Database },
+  redis: { name: 'Redis', icon: Zap },
+  ollama: { name: 'Ollama', icon: Server },
+  storage: { name: 'Storage', icon: FileCode },
+  celery: { name: 'Celery', icon: Cpu },
+};
+
+function getApiErrorMessage(error: unknown): string {
+  const response = (error as { response?: { data?: { detail?: string; message?: string } } }).response;
+  return response?.data?.detail ?? response?.data?.message ?? (error instanceof Error ? error.message : '시스템 헬스 정보를 불러오지 못했습니다.');
+}
+
+function normalizeHealthServiceKey(service: Pick<AdminHealthService, 'key' | 'name'>): typeof healthServiceOrder[number] | null {
+  const value = `${service.key} ${service.name}`.toLowerCase();
+  if (value.includes('api')) return 'api';
+  if (value.includes('postgres') || value.includes('postgresql')) return 'postgresql';
+  if (value.includes('redis')) return 'redis';
+  if (value.includes('ollama')) return 'ollama';
+  if (value.includes('storage') || value.includes('store')) return 'storage';
+  if (value.includes('celery')) return 'celery';
+  return null;
+}
+
+function formatDateTime(value?: string | null): string {
+  if (!value) return '-';
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return new Intl.DateTimeFormat('ko-KR', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+}
+
 export function AdminLogPage({ onLogout }: AdminLogPageProps) {
-  const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [filterLevel, setFilterLevel] = useState<'all' | 'info' | 'warning' | 'error' | 'ocr' | 'queue' | 'api' | 'security'>('all');
   const [expandedLog, setExpandedLog] = useState<string | null>(null);
+  const [healthServices, setHealthServices] = useState<AdminHealthService[]>([]);
+  const [isHealthLoading, setIsHealthLoading] = useState(true);
+  const [isHealthRefreshing, setIsHealthRefreshing] = useState(false);
+  const [healthErrorMessage, setHealthErrorMessage] = useState<string | null>(null);
 
-  const menuItems = [
-    { id: 'dashboard', label: 'Overview', icon: Home },
-    { id: 'users', label: 'Users', icon: Users },
-    { id: 'documents', label: 'Documents', icon: FileText },
-    { id: 'jobs', label: 'Jobs', icon: Activity },
-    { id: 'system', label: 'System', icon: Shield },
-    { id: 'settings', label: 'Settings', icon: Settings }
-  ];
-
-
-
-  const adminMenuRoutes: Record<string, string> = {
-    dashboard: '/admin',
-    users: '/admin/users',
-    documents: '/admin/documents',
-    jobs: '/admin/jobs',
-    system: '/admin/logs',
-    settings: '/admin/settings',
-  };
-
-  const handleMenuClick = (menuId: string) => {
-    const route = adminMenuRoutes[menuId];
-    if (route) navigate(route);
-  };
   const stats = [
     { label: '전체 로그', value: '12,456', change: '+342', icon: Terminal, color: 'primary' },
     { label: 'Errors', value: '23', change: '+5', icon: XCircle, color: 'red' },
@@ -183,13 +209,67 @@ export function AdminLogPage({ onLogout }: AdminLogPageProps) {
     }
   ];
 
-  const systemHealth = [
-    { name: 'OCR Service', status: 'healthy' as const, uptime: '99.9%', icon: Eye },
-    { name: 'Celery Workers', status: 'healthy' as const, uptime: '100%', icon: Cpu },
-    { name: 'Redis Queue', status: 'warning' as const, uptime: '99.5%', icon: Zap },
-    { name: 'Ollama LLM', status: 'healthy' as const, uptime: '98.7%', icon: Server },
-    { name: 'PostgreSQL', status: 'healthy' as const, uptime: '100%', icon: Database }
-  ];
+  const fetchSystemHealth = useCallback(async (showLoading = false) => {
+    if (showLoading) {
+      setIsHealthLoading(true);
+    } else {
+      setIsHealthRefreshing(true);
+    }
+
+    setHealthErrorMessage(null);
+
+    try {
+      const response = await getAdminSystemHealth();
+      setHealthServices(response.services);
+    } catch (error) {
+      setHealthErrorMessage(getApiErrorMessage(error));
+    } finally {
+      setIsHealthLoading(false);
+      setIsHealthRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      void fetchSystemHealth(true);
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [fetchSystemHealth]);
+
+  useEffect(() => {
+    if (!autoRefresh) return undefined;
+
+    const intervalId = window.setInterval(() => {
+      void fetchSystemHealth(false);
+    }, AUTO_REFRESH_INTERVAL_MS);
+
+    return () => window.clearInterval(intervalId);
+  }, [autoRefresh, fetchSystemHealth]);
+
+  const systemHealth: SystemHealthItem[] = useMemo(() => {
+    const servicesByKey = new Map<typeof healthServiceOrder[number], AdminHealthService>();
+    healthServices.forEach((service) => {
+      const normalizedKey = normalizeHealthServiceKey(service);
+      if (normalizedKey) {
+        servicesByKey.set(normalizedKey, service);
+      }
+    });
+
+    return healthServiceOrder.map((key) => {
+      const service = servicesByKey.get(key);
+      const presentation = healthServicePresentation[key];
+
+      return {
+        key,
+        name: presentation.name,
+        status: service?.status ?? 'OFFLINE',
+        details: service?.details ?? (healthErrorMessage ? '상태를 불러오지 못했습니다.' : '상태 확인 대기 중'),
+        checkedAt: formatDateTime(service?.checked_at),
+        icon: presentation.icon,
+      };
+    });
+  }, [healthErrorMessage, healthServices]);
 
   const recentErrors = [
     { time: '14:40:32', message: 'OCR timeout after 180s', service: 'OCR' },
@@ -242,11 +322,12 @@ export function AdminLogPage({ onLogout }: AdminLogPageProps) {
     }
   };
 
-  const getStatusColor = (status: 'healthy' | 'warning' | 'error') => {
+  const getStatusColor = (status: AdminHealthServiceStatus) => {
     switch (status) {
-      case 'healthy': return 'bg-green-500/10 text-green-400 border-green-500/20';
-      case 'warning': return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20';
-      case 'error': return 'bg-red-500/10 text-red-400 border-red-500/20';
+      case 'HEALTHY': return 'bg-green-500/10 text-green-400 border-green-500/20';
+      case 'WARNING': return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20';
+      case 'ERROR': return 'bg-red-500/10 text-red-400 border-red-500/20';
+      case 'OFFLINE': return 'bg-gray-500/10 text-gray-400 border-gray-500/20';
     }
   };
 
@@ -602,28 +683,58 @@ export function AdminLogPage({ onLogout }: AdminLogPageProps) {
               <div className="space-y-6">
                 {/* System Health */}
                 <div className="bg-[#111116] border border-white/10 rounded-xl p-6">
-                  <h3 className="text-white font-semibold text-lg mb-4 flex items-center gap-2">
-                    <Activity className="w-5 h-5 text-primary" />
-                    System Health
-                  </h3>
+                  <div className="flex items-center justify-between gap-3 mb-4">
+                    <h3 className="text-white font-semibold text-lg flex items-center gap-2">
+                      <Activity className="w-5 h-5 text-primary" />
+                      System Health
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => fetchSystemHealth(false)}
+                      disabled={isHealthLoading || isHealthRefreshing}
+                      className="p-2 hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
+                    >
+                      <RefreshCw className={`w-4 h-4 text-gray-400 ${isHealthRefreshing ? 'animate-spin' : ''}`} />
+                    </button>
+                  </div>
+
+                  {healthErrorMessage && (
+                    <div className="mb-3 p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+                      <div className="flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 text-red-400 mt-0.5" />
+                        <div>
+                          <p className="text-red-400 text-sm font-medium">시스템 헬스 정보를 불러오지 못했습니다.</p>
+                          <p className="text-red-400/80 text-xs mt-1">{healthErrorMessage}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="space-y-3">
-                    {systemHealth.map((service, idx) => (
-                      <div key={idx} className={`p-3 border rounded-lg ${getStatusColor(service.status)}`}>
+                    {systemHealth.map((service) => (
+                      <div key={service.key} className={`p-3 border rounded-lg ${getStatusColor(service.status)}`}>
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-2">
                             <service.icon className="w-4 h-4" />
                             <span className="font-medium text-sm">{service.name}</span>
                           </div>
-                          <div className={`w-2 h-2 rounded-full ${
-                            service.status === 'healthy' ? 'bg-green-400 animate-pulse' :
-                            service.status === 'warning' ? 'bg-yellow-400' :
-                            'bg-red-400'
-                          }`} />
+                          {isHealthLoading ? (
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <div className={`w-2 h-2 rounded-full ${
+                              service.status === 'HEALTHY' ? 'bg-green-400 animate-pulse' :
+                              service.status === 'WARNING' ? 'bg-yellow-400' :
+                              service.status === 'ERROR' ? 'bg-red-400' :
+                              'bg-gray-400'
+                            }`} />
+                          )}
                         </div>
                         <div className="flex items-center justify-between text-xs">
-                          <span className="opacity-80">Uptime</span>
-                          <span className="font-medium">{service.uptime}</span>
+                          <span className="opacity-80">Status</span>
+                          <span className="font-medium">{service.status}</span>
                         </div>
+                        <p className="text-xs opacity-80 mt-2">{service.details}</p>
+                        <p className="text-xs opacity-60 mt-1">Checked: {service.checkedAt}</p>
                       </div>
                     ))}
                   </div>
