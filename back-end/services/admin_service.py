@@ -6,6 +6,8 @@ from math import ceil
 import os
 from pathlib import Path
 import re
+from urllib.parse import urlsplit
+from urllib.parse import urlunsplit
 from uuid import UUID
 
 import httpx
@@ -20,6 +22,8 @@ from sqlalchemy.orm import joinedload
 
 from app.celery_app import celery_app
 from core.config import settings
+from core.security import ACCESS_TOKEN_EXPIRE_MINUTES
+from core.security import ALGORITHM
 from models.document import Document
 from models.document import DocumentStatus
 from models.document_chunk import DocumentChunk
@@ -52,6 +56,9 @@ from schemas.admin import AdminLogListResponse
 from schemas.admin import AdminLogSummaryResponse
 from schemas.admin import AdminOwnerResponse
 from schemas.admin import AdminPaginationResponse
+from schemas.admin import AdminSettingItemResponse
+from schemas.admin import AdminSettingsCategoryResponse
+from schemas.admin import AdminSettingsResponse
 from schemas.admin import DocumentStatsResponse
 from schemas.admin import RecentEventResponse
 from schemas.admin import TaskStatsResponse
@@ -64,6 +71,8 @@ ERROR = "ERROR"
 ACTIVE = "ACTIVE"
 IDLE = "IDLE"
 STORAGE_DIR = "/storage/uploads"
+MAX_UPLOAD_SIZE = 30 * 1024 * 1024
+SUPPORTED_EXTENSIONS = [".pdf"]
 LOG_LEVEL_INFO = "INFO"
 LOG_LEVEL_WARNING = "WARNING"
 LOG_LEVEL_ERROR = "ERROR"
@@ -138,6 +147,41 @@ def _mask_details(details: dict[str, str | int | None]) -> dict[str, str | int |
         key: _mask_sensitive(value) if isinstance(value, str) else value
         for key, value in details.items()
     }
+
+
+def _mask_url_credentials(value: str) -> str:
+    parsed = urlsplit(value)
+    if not parsed.hostname or not parsed.username:
+        return value
+
+    hostname = parsed.hostname
+    if parsed.port:
+        hostname = f"{hostname}:{parsed.port}"
+
+    return urlunsplit(
+        (
+            parsed.scheme,
+            f"***:***@{hostname}",
+            parsed.path,
+            parsed.query,
+            parsed.fragment,
+        )
+    )
+
+
+def _setting(
+    key: str,
+    label: str,
+    value,
+    sensitive: bool = False,
+) -> AdminSettingItemResponse:
+    return AdminSettingItemResponse(
+        key=key,
+        label=label,
+        value=value,
+        editable=False,
+        sensitive=sensitive,
+    )
 
 
 def _task_log_level(task_status: str | None) -> str:
@@ -564,6 +608,106 @@ def get_admin_workers() -> AdminWorkerListResponse:
         checked_at=checked_at,
         status=WARNING if details else HEALTHY,
         details=_join_details(details),
+    )
+
+
+def get_admin_settings() -> AdminSettingsResponse:
+    celery_enabled = bool(
+        os.getenv("CELERY_BROKER_URL")
+        or os.getenv("CELERY_RESULT_BACKEND")
+        or celery_app.conf.broker_url
+        or celery_app.conf.result_backend
+    )
+
+    return AdminSettingsResponse(
+        categories=[
+            AdminSettingsCategoryResponse(
+                id="ocr",
+                name="OCR",
+                settings=[
+                    _setting(
+                        key="max_file_size",
+                        label="Max File Size",
+                        value=MAX_UPLOAD_SIZE,
+                    ),
+                    _setting(
+                        key="supported_extensions",
+                        label="Supported Extensions",
+                        value=SUPPORTED_EXTENSIONS,
+                    ),
+                ],
+            ),
+            AdminSettingsCategoryResponse(
+                id="llm",
+                name="LLM",
+                settings=[
+                    _setting(
+                        key="ollama_url",
+                        label="Ollama URL",
+                        value=_mask_url_credentials(settings.OLLAMA_URL),
+                    ),
+                    _setting(
+                        key="default_model",
+                        label="Default Model",
+                        value=settings.DEFAULT_LLM_MODEL,
+                    ),
+                ],
+            ),
+            AdminSettingsCategoryResponse(
+                id="embedding",
+                name="Embedding",
+                settings=[
+                    _setting(
+                        key="default_embedding_model",
+                        label="Default Embedding Model",
+                        value=settings.EMBEDDING_MODEL,
+                    ),
+                ],
+            ),
+            AdminSettingsCategoryResponse(
+                id="worker",
+                name="Worker",
+                settings=[
+                    _setting(
+                        key="celery_enabled",
+                        label="Celery Enabled",
+                        value=celery_enabled,
+                    ),
+                    _setting(
+                        key="redis_enabled",
+                        label="Redis Enabled",
+                        value=_redis_url() is not None,
+                    ),
+                ],
+            ),
+            AdminSettingsCategoryResponse(
+                id="storage",
+                name="Storage",
+                settings=[
+                    _setting(
+                        key="storage_path",
+                        label="Storage Path",
+                        value=os.getenv("STORAGE_DIR", STORAGE_DIR),
+                    ),
+                ],
+            ),
+            AdminSettingsCategoryResponse(
+                id="security",
+                name="Security",
+                settings=[
+                    _setting(
+                        key="jwt_algorithm",
+                        label="JWT Algorithm",
+                        value=ALGORITHM,
+                    ),
+                    _setting(
+                        key="access_token_expire_minutes",
+                        label="Access Token Expire Minutes",
+                        value=ACCESS_TOKEN_EXPIRE_MINUTES,
+                    ),
+                ],
+            ),
+        ],
     )
 
 
