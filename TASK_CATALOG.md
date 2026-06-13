@@ -106,7 +106,7 @@
 | FE-017 | Admin User Management API Integration | Medium | DONE |
 | BE-ADMIN-005 | Admin System Health API | Medium | DONE |
 | FE-018 | Admin System Health Integration | Medium | DONE |
-| BE-ADMIN-006 | Admin Log List API | Medium | TODO |
+| BE-ADMIN-006 | Admin Queue / Worker Monitoring API | Medium | DONE |
 | FE-019 | Admin Log Page API Integration | Medium | TODO |
 | BE-ADMIN-007 | Admin Settings Read API | Medium | TODO |
 | FE-020 | Admin Settings Page API Integration | Medium | TODO |
@@ -243,6 +243,24 @@ Status: DONE
 - Celery inspect 실패 또는 worker 미응답은 WARNING 처리
 - 모든 endpoint require_admin 보호
 - DB model 변경 및 migration 없음
+
+Priority: Medium
+Status: DONE
+
+### BE-ADMIN-006 Admin Queue / Worker Monitoring API
+
+- Admin 전용 Queue 조회 API 추가
+- Admin 전용 Worker 조회 API 추가
+- GET /api/admin/queues
+- GET /api/admin/workers
+- Redis pending queue count 조회
+- Celery inspect 기반 active / reserved / scheduled / worker 상태 조회
+- Celery / Redis 조회 실패 시 API 전체 500 대신 WARNING 응답 처리
+- Worker status는 ACTIVE / IDLE / WARNING 허용값으로 제한
+- 모든 endpoint require_admin 보호
+- DB model 변경 및 migration 없음
+- Docker / Celery task 로직 변경 없음
+- Read-only monitoring API only
 
 Priority: Medium
 Status: DONE

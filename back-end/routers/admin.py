@@ -18,14 +18,18 @@ from routers.deps import require_admin
 from schemas.admin import AdminDashboardSummaryResponse
 from schemas.admin import AdminDocumentDetailResponse
 from schemas.admin import AdminDocumentListResponse
+from schemas.admin import AdminQueueListResponse
 from schemas.admin import AdminSystemHealthResponse
 from schemas.admin import AdminTaskDetailResponse
 from schemas.admin import AdminTaskListResponse
 from schemas.admin import AdminUserDetailResponse
 from schemas.admin import AdminUserListResponse
+from schemas.admin import AdminWorkerListResponse
 from services.admin_service import get_admin_document_detail
+from services.admin_service import get_admin_queues
 from services.admin_service import get_admin_task_detail
 from services.admin_service import get_admin_user_detail
+from services.admin_service import get_admin_workers
 from services.admin_service import get_dashboard_summary
 from services.admin_service import get_system_health
 from services.admin_service import list_admin_documents
@@ -123,6 +127,28 @@ def system_health(
     current_user: User = Depends(require_admin),
 ):
     return get_system_health(db)
+
+
+@router.get(
+    "/queues",
+    response_model=AdminQueueListResponse,
+    response_model_exclude_none=True,
+)
+def list_queues(
+    current_user: User = Depends(require_admin),
+):
+    return get_admin_queues()
+
+
+@router.get(
+    "/workers",
+    response_model=AdminWorkerListResponse,
+    response_model_exclude_none=True,
+)
+def list_workers(
+    current_user: User = Depends(require_admin),
+):
+    return get_admin_workers()
 
 
 @router.get(

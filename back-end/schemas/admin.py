@@ -52,6 +52,45 @@ class AdminSystemHealthResponse(BaseModel):
     services: list[AdminSystemHealthServiceResponse]
 
 
+class AdminQueueResponse(BaseModel):
+    name: str
+    pending_count: int
+    active_count: int | None = None
+    scheduled_count: int | None = None
+    reserved_count: int | None = None
+    failed_count: int | None = None
+    oldest_task_age_seconds: int | None = None
+    status: str | None = None
+    details: str | None = None
+
+
+class AdminQueueListResponse(BaseModel):
+    queues: list[AdminQueueResponse]
+    checked_at: datetime
+    status: str | None = None
+    details: str | None = None
+
+
+class AdminWorkerResponse(BaseModel):
+    id: str
+    name: str
+    status: str
+    active_task_count: int | None = None
+    reserved_task_count: int | None = None
+    scheduled_task_count: int | None = None
+    processed_count: int | None = None
+    current_queues: list[str] | None = None
+    checked_at: datetime
+    details: str | None = None
+
+
+class AdminWorkerListResponse(BaseModel):
+    workers: list[AdminWorkerResponse]
+    checked_at: datetime
+    status: str | None = None
+    details: str | None = None
+
+
 class AdminOwnerResponse(BaseModel):
     id: UUID
     email: str
