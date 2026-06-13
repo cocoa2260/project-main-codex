@@ -199,6 +199,21 @@ Summary:
 - Build passed
 - Targeted frontend eslint passed
 
+### FE-019
+Queue / Worker Monitoring Integration
+Status: DONE
+Summary:
+- Added admin queue API client for GET /api/admin/queues
+- Added admin worker API client for GET /api/admin/workers
+- Added AdminQueueListResponse, AdminQueueItem, AdminWorkerListResponse, AdminWorkerItem, and AdminWorkerStatus frontend DTOs
+- Replaced AdminJobPage queue mock-derived data with queue API data
+- Replaced AdminJobPage worker mock-derived data with worker API data
+- Displayed queue name, pending_count, active_count, scheduled_count, reserved_count, optional failed_count, optional oldest_task_age_seconds, and checked_at
+- Displayed worker id/name/status, active/reserved/scheduled task counts, processed_count, current_queues, details, and checked_at
+- Added independent loading, error, and empty states for queue and worker sections
+- Included queue and worker refresh in manual refresh and 30 second polling with cleanup
+- Preserved existing task table, monitoring cards, worker/queue sections, and disabled future action buttons
+
 ---
 
 ### FE-011

@@ -107,7 +107,7 @@
 | BE-ADMIN-005 | Admin System Health API | Medium | DONE |
 | FE-018 | Admin System Health Integration | Medium | DONE |
 | BE-ADMIN-006 | Admin Queue / Worker Monitoring API | Medium | DONE |
-| FE-019 | Admin Log Page API Integration | Medium | TODO |
+| FE-019 | Queue / Worker Monitoring Integration | Medium | DONE |
 | BE-ADMIN-007 | Admin Settings Read API | Medium | TODO |
 | FE-020 | Admin Settings Page API Integration | Medium | TODO |
 
@@ -261,6 +261,22 @@ Status: DONE
 - DB model 변경 및 migration 없음
 - Docker / Celery task 로직 변경 없음
 - Read-only monitoring API only
+
+Priority: Medium
+Status: DONE
+
+### FE-019 Queue / Worker Monitoring Integration
+
+- Admin queue API client 추가
+- Admin worker API client 추가
+- Admin queue / worker DTO 타입 추가
+- AdminJobPage queue mock-derived data 제거
+- AdminJobPage worker mock-derived data 제거
+- GET /api/admin/queues 기반 Queue 상태 표시
+- GET /api/admin/workers 기반 Worker 상태 표시
+- Queue / Worker 독립 loading / error / empty 상태 추가
+- 기존 Refresh 및 30초 polling에 Queue / Worker 갱신 포함
+- Read-only monitoring UI만 구현
 
 Priority: Medium
 Status: DONE
