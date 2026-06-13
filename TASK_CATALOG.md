@@ -119,7 +119,7 @@
 
 | ID | Task | Priority | Status |
 |------|------|------|------|
-| BE-ADMIN-012 | Failed Task Retry API | Medium | TODO |
+| BE-ADMIN-012 | Failed Task Retry API | Medium | BLOCKED |
 | FE-022 | Failed Task Retry UI Integration | Medium | TODO |
 | BE-ADMIN-009 | Document Retry API | Medium | TODO |
 | FE-023 | Document Retry UI Integration | Medium | TODO |
