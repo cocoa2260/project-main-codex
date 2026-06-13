@@ -256,6 +256,20 @@ Summary:
 - Kept API-less log actions disabled/prepared and did not implement state-changing log actions
 - Backend unchanged
 
+### FE-021
+Admin Settings API Integration
+Status: DONE
+Summary:
+- Added admin settings API client for GET /api/admin/settings
+- Added AdminSettingsResponse, AdminSettingsCategory, AdminSettingItem, and AdminSettingValue frontend DTOs
+- Replaced AdminSettingsPage mock/useState settings defaults with API-backed categories
+- Rendered settings dynamically from backend categories including OCR, LLM, Embedding, Worker, Storage, and Security
+- Added loading, error, empty, and manual refresh states
+- Preserved settings category navigation, settings cards, active settings summary, save/reset UI, alerts, and change history section
+- Kept settings UI read-only by disabling save/reset actions and showing prepared/read-only guidance
+- Displayed sensitive settings only through masked API values without adding reveal controls
+- Backend unchanged
+
 ---
 
 ### FE-011

@@ -111,6 +111,7 @@
 | BE-ADMIN-007 | Admin Logs API | Medium | DONE |
 | FE-020 | Admin Logs API Integration | Medium | DONE |
 | BE-ADMIN-008 | Admin Settings Read API | Medium | DONE |
+| FE-021 | Admin Settings API Integration | Medium | DONE |
 
 ---
 
@@ -119,13 +120,13 @@
 | ID | Task | Priority | Status |
 |------|------|------|------|
 | BE-ADMIN-012 | Failed Task Retry API | Medium | TODO |
-| FE-021 | Failed Task Retry UI Integration | Medium | TODO |
+| FE-022 | Failed Task Retry UI Integration | Medium | TODO |
 | BE-ADMIN-009 | Document Retry API | Medium | TODO |
-| FE-022 | Document Retry UI Integration | Medium | TODO |
+| FE-023 | Document Retry UI Integration | Medium | TODO |
 | BE-ADMIN-010 | User Role Update API | Medium | TODO |
-| FE-023 | User Role Update UI Integration | Medium | TODO |
+| FE-024 | User Role Update UI Integration | Medium | TODO |
 | BE-ADMIN-011 | User Account Status API | Low | TODO |
-| FE-024 | User Account Status UI Integration | Low | TODO |
+| FE-025 | User Account Status UI Integration | Low | TODO |
 
 ---
 
@@ -190,6 +191,20 @@ Status: DONE
 - documentStatus.ts 상태 표시 유틸 재사용
 
 Priority: High
+Status: DONE
+
+### FE-021 Admin Settings API Integration
+
+- AdminSettingsPage 설정 mock/useState 기본값 제거
+- GET /api/admin/settings 연동
+- Admin settings DTO 및 API client 추가
+- Backend categories 기준 카테고리/설정 카드 렌더링
+- sensitive 값은 마스킹된 표시만 유지하고 원본 노출 액션 미추가
+- 저장/초기화 UI는 삭제하지 않고 read-only/준비 중/disabled 처리
+- Loading / Error / Empty / Refresh 상태 추가
+- Backend 변경 없음
+
+Priority: Medium
 Status: DONE
 
 ### FE-015 Admin Document Management API Integration
