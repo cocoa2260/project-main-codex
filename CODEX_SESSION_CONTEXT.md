@@ -172,6 +172,20 @@ Summary:
 - Celery inspect, Redis connection, and worker non-response failures return WARNING details instead of failing the whole API response
 - No DB migration, model changes, Docker changes, or Celery task logic changes
 
+### BE-ADMIN-007
+Admin Logs API
+Status: DONE
+Summary:
+- Added admin log list API at GET /api/admin/logs
+- Added admin log summary API at GET /api/admin/logs/summary
+- Protected both endpoints with require_admin
+- Used TaskTracker as the minimal event log source because no clear file-backed application log handler exists
+- Added q, level, service, from, to, page, and limit support for log listing
+- Restricted level filters to INFO, WARNING, ERROR, and SUCCESS
+- Added sensitive value and internal path masking for returned log messages/details
+- Log read failures return empty results with warning_message instead of failing the whole API
+- No DB migration, model changes, Docker changes, logging structure changes, or action APIs
+
 ### FE-017
 Admin User Management API Integration
 Status: DONE

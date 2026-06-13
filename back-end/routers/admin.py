@@ -1,4 +1,5 @@
 from datetime import date
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter
@@ -18,6 +19,8 @@ from routers.deps import require_admin
 from schemas.admin import AdminDashboardSummaryResponse
 from schemas.admin import AdminDocumentDetailResponse
 from schemas.admin import AdminDocumentListResponse
+from schemas.admin import AdminLogListResponse
+from schemas.admin import AdminLogSummaryResponse
 from schemas.admin import AdminQueueListResponse
 from schemas.admin import AdminSystemHealthResponse
 from schemas.admin import AdminTaskDetailResponse
@@ -26,6 +29,7 @@ from schemas.admin import AdminUserDetailResponse
 from schemas.admin import AdminUserListResponse
 from schemas.admin import AdminWorkerListResponse
 from services.admin_service import get_admin_document_detail
+from services.admin_service import get_admin_logs_summary
 from services.admin_service import get_admin_queues
 from services.admin_service import get_admin_task_detail
 from services.admin_service import get_admin_user_detail
@@ -33,6 +37,7 @@ from services.admin_service import get_admin_workers
 from services.admin_service import get_dashboard_summary
 from services.admin_service import get_system_health
 from services.admin_service import list_admin_documents
+from services.admin_service import list_admin_logs
 from services.admin_service import list_admin_tasks
 from services.admin_service import list_admin_users
 
@@ -104,6 +109,12 @@ USER_SORT_FIELDS = {
     "document_count",
     "upload_count",
 }
+LOG_LEVELS = {
+    "INFO",
+    "WARNING",
+    "ERROR",
+    "SUCCESS",
+}
 SORT_ORDERS = {"asc", "desc"}
 
 
@@ -149,6 +160,49 @@ def list_workers(
     current_user: User = Depends(require_admin),
 ):
     return get_admin_workers()
+
+
+@router.get(
+    "/logs/summary",
+    response_model=AdminLogSummaryResponse,
+    response_model_exclude_none=True,
+)
+def logs_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    return get_admin_logs_summary(db)
+
+
+@router.get(
+    "/logs",
+    response_model=AdminLogListResponse,
+    response_model_exclude_none=True,
+)
+def list_logs(
+    q: str | None = None,
+    level: str | None = None,
+    service: str | None = None,
+    from_datetime: datetime | None = Query(default=None, alias="from"),
+    to_datetime: datetime | None = Query(default=None, alias="to"),
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=50, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    if level and level not in LOG_LEVELS:
+        raise HTTPException(status_code=400, detail="지원하지 않는 로그 레벨입니다.")
+
+    return list_admin_logs(
+        db=db,
+        q=q,
+        level=level,
+        service=service,
+        from_datetime=from_datetime,
+        to_datetime=to_datetime,
+        page=page,
+        limit=limit,
+    )
 
 
 @router.get(

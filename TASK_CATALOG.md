@@ -108,7 +108,7 @@
 | FE-018 | Admin System Health Integration | Medium | DONE |
 | BE-ADMIN-006 | Admin Queue / Worker Monitoring API | Medium | DONE |
 | FE-019 | Queue / Worker Monitoring Integration | Medium | DONE |
-| BE-ADMIN-007 | Admin Settings Read API | Medium | TODO |
+| BE-ADMIN-007 | Admin Logs API | Medium | DONE |
 | FE-020 | Admin Settings Page API Integration | Medium | TODO |
 
 ---
@@ -261,6 +261,23 @@ Status: DONE
 - DB model 변경 및 migration 없음
 - Docker / Celery task 로직 변경 없음
 - Read-only monitoring API only
+
+Priority: Medium
+Status: DONE
+
+### BE-ADMIN-007 Admin Logs API
+
+- Admin 전용 로그 목록 조회 API 추가
+- Admin 전용 로그 요약 조회 API 추가
+- GET /api/admin/logs
+- GET /api/admin/logs/summary
+- 명확한 파일 로그 핸들러가 없어 TaskTracker 기반 이벤트 로그로 최소 구현
+- Pagination / q / level / service / from / to 필터 지원
+- level 값은 INFO / WARNING / ERROR / SUCCESS만 허용
+- 민감정보 및 내부 파일 경로 마스킹 적용
+- 모든 endpoint require_admin 보호
+- DB model 변경 및 migration 없음
+- Read-only logs API only
 
 Priority: Medium
 Status: DONE

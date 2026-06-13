@@ -5,6 +5,7 @@ from datetime import timezone
 from math import ceil
 import os
 from pathlib import Path
+import re
 from uuid import UUID
 
 import httpx
@@ -46,6 +47,9 @@ from schemas.admin import AdminUserListResponse
 from schemas.admin import AdminWorkerListResponse
 from schemas.admin import AdminWorkerResponse
 from schemas.admin import AdminLatestTaskResponse
+from schemas.admin import AdminLogItemResponse
+from schemas.admin import AdminLogListResponse
+from schemas.admin import AdminLogSummaryResponse
 from schemas.admin import AdminOwnerResponse
 from schemas.admin import AdminPaginationResponse
 from schemas.admin import DocumentStatsResponse
@@ -60,6 +64,28 @@ ERROR = "ERROR"
 ACTIVE = "ACTIVE"
 IDLE = "IDLE"
 STORAGE_DIR = "/storage/uploads"
+LOG_LEVEL_INFO = "INFO"
+LOG_LEVEL_WARNING = "WARNING"
+LOG_LEVEL_ERROR = "ERROR"
+LOG_LEVEL_SUCCESS = "SUCCESS"
+LOG_SOURCE_TASK_TRACKER = "TaskTracker"
+LOG_QUERY_WARNING = "TaskTracker 기반 이벤트 로그를 사용했습니다. 파일 로그 위치가 명확하지 않습니다."
+
+SENSITIVE_VALUE_PATTERNS = [
+    re.compile(
+        r"(?i)(authorization\s*[:=]\s*(?:bearer\s+)?)([^\s,;]+)"
+    ),
+    re.compile(
+        r"(?i)((?:access[_-]?token|refresh[_-]?token|api[_-]?key|secret|password)\s*[:=]\s*)([^\s,;&]+)"
+    ),
+    re.compile(
+        r"(?i)((?:postgresql|postgres|mysql|redis)://)([^\s]+)"
+    ),
+    re.compile(
+        r"(?i)((?:hashed\s+password)\s*[:=]\s*)([^\s,;&]+)"
+    ),
+]
+INTERNAL_PATH_PATTERN = re.compile(r"(?<!\w)(/(?:Users|private|storage|var|tmp|app|code|workspace)/[^\s,;:]+)")
 
 
 def _today_bounds() -> tuple[datetime, datetime]:
@@ -94,6 +120,66 @@ def _exception_details(error: Exception) -> str:
 
 def _join_details(details: list[str]) -> str | None:
     return " ".join(details) if details else None
+
+
+def _mask_sensitive(value: str | None) -> str | None:
+    if value is None:
+        return None
+
+    masked = str(value)
+    for pattern in SENSITIVE_VALUE_PATTERNS:
+        masked = pattern.sub(r"\1***MASKED***", masked)
+
+    return INTERNAL_PATH_PATTERN.sub("***MASKED_PATH***", masked)
+
+
+def _mask_details(details: dict[str, str | int | None]) -> dict[str, str | int | None]:
+    return {
+        key: _mask_sensitive(value) if isinstance(value, str) else value
+        for key, value in details.items()
+    }
+
+
+def _task_log_level(task_status: str | None) -> str:
+    if task_status == TaskStatus.FAILED:
+        return LOG_LEVEL_ERROR
+
+    if task_status == TaskStatus.COMPLETED:
+        return LOG_LEVEL_SUCCESS
+
+    if task_status in {TaskStatus.PENDING, TaskStatus.PROCESSING}:
+        return LOG_LEVEL_INFO
+
+    return LOG_LEVEL_WARNING
+
+
+def _task_log_message(task: TaskTracker) -> str:
+    message = task.error_message or task.message
+    if message:
+        return _mask_sensitive(message) or ""
+
+    return f"{task.task_type} task is {task.status}"
+
+
+def _task_log_item(task: TaskTracker) -> AdminLogItemResponse:
+    details = {
+        "task_type": task.task_type,
+        "status": task.status,
+        "stage": task.stage,
+        "progress": task.progress,
+    }
+
+    return AdminLogItemResponse(
+        id=task.id,
+        timestamp=task.updated_at,
+        level=_task_log_level(task.status),
+        service=task.task_type,
+        source=LOG_SOURCE_TASK_TRACKER,
+        message=_task_log_message(task),
+        details=_mask_details(details),
+        related_task_id=task.id,
+        related_document_id=task.document_id,
+    )
 
 
 def _check_api_health() -> AdminSystemHealthServiceResponse:
@@ -939,6 +1025,164 @@ def get_dashboard_summary(db: Session) -> AdminDashboardSummaryResponse:
         tasks=get_task_stats(db),
         recent_events=get_recent_events(db),
     )
+
+
+def _log_level_statuses(level: str | None) -> list[str] | None:
+    if level == LOG_LEVEL_ERROR:
+        return [TaskStatus.FAILED]
+
+    if level == LOG_LEVEL_SUCCESS:
+        return [TaskStatus.COMPLETED]
+
+    if level == LOG_LEVEL_INFO:
+        return [TaskStatus.PENDING, TaskStatus.PROCESSING]
+
+    if level == LOG_LEVEL_WARNING:
+        return []
+
+    return None
+
+
+def _apply_log_filters(
+    query,
+    q: str | None,
+    level: str | None,
+    service: str | None,
+    from_datetime: datetime | None,
+    to_datetime: datetime | None,
+):
+    statuses = _log_level_statuses(level)
+    if statuses is not None:
+        if not statuses:
+            return query.filter(False)
+        query = query.filter(TaskTracker.status.in_(statuses))
+
+    if service:
+        query = query.filter(TaskTracker.task_type == service.strip())
+
+    if q:
+        search_text = q.strip()
+        if search_text:
+            keyword = f"%{search_text}%"
+            query = query.filter(
+                or_(
+                    TaskTracker.task_type.ilike(keyword),
+                    TaskTracker.status.ilike(keyword),
+                    TaskTracker.stage.ilike(keyword),
+                    TaskTracker.message.ilike(keyword),
+                    TaskTracker.error_message.ilike(keyword),
+                )
+            )
+
+    if from_datetime:
+        query = query.filter(TaskTracker.updated_at >= from_datetime)
+
+    if to_datetime:
+        query = query.filter(TaskTracker.updated_at <= to_datetime)
+
+    return query
+
+
+def list_admin_logs(
+    db: Session,
+    q: str | None = None,
+    level: str | None = None,
+    service: str | None = None,
+    from_datetime: datetime | None = None,
+    to_datetime: datetime | None = None,
+    page: int = 1,
+    limit: int = 50,
+) -> AdminLogListResponse:
+    page = max(page, 1)
+    limit = min(max(limit, 1), 100)
+
+    try:
+        count_query = db.query(func.count(TaskTracker.id))
+        count_query = _apply_log_filters(
+            count_query,
+            q=q,
+            level=level,
+            service=service,
+            from_datetime=from_datetime,
+            to_datetime=to_datetime,
+        )
+        total = count_query.scalar() or 0
+
+        query = db.query(TaskTracker)
+        query = _apply_log_filters(
+            query,
+            q=q,
+            level=level,
+            service=service,
+            from_datetime=from_datetime,
+            to_datetime=to_datetime,
+        )
+        tasks = (
+            query.order_by(TaskTracker.updated_at.desc(), TaskTracker.id.desc())
+            .offset((page - 1) * limit)
+            .limit(limit)
+            .all()
+        )
+
+        return AdminLogListResponse(
+            items=[_task_log_item(task) for task in tasks],
+            pagination=AdminPaginationResponse(
+                page=page,
+                limit=limit,
+                total=total,
+                total_pages=ceil(total / limit) if total else 0,
+            ),
+            warning_message=LOG_QUERY_WARNING,
+        )
+    except Exception as error:
+        return AdminLogListResponse(
+            items=[],
+            pagination=AdminPaginationResponse(
+                page=page,
+                limit=limit,
+                total=0,
+                total_pages=0,
+            ),
+            warning_message=f"로그 조회에 실패했습니다. {_mask_sensitive(_exception_details(error))}",
+        )
+
+
+def get_admin_logs_summary(db: Session) -> AdminLogSummaryResponse:
+    try:
+        counts = _count_by(db, TaskTracker, TaskTracker.status)
+        info = counts.get(TaskStatus.PENDING, 0) + counts.get(TaskStatus.PROCESSING, 0)
+        error = counts.get(TaskStatus.FAILED, 0)
+        success = counts.get(TaskStatus.COMPLETED, 0)
+        warning = 0
+        total = info + warning + error + success
+
+        recent_errors = (
+            db.query(TaskTracker)
+            .filter(TaskTracker.status == TaskStatus.FAILED)
+            .order_by(TaskTracker.updated_at.desc(), TaskTracker.id.desc())
+            .limit(10)
+            .all()
+        )
+
+        return AdminLogSummaryResponse(
+            total=total,
+            info=info,
+            warning=warning,
+            error=error,
+            success=success,
+            recent_errors=[_task_log_item(task) for task in recent_errors],
+            warning_message=LOG_QUERY_WARNING,
+        )
+    except Exception as error:
+        return AdminLogSummaryResponse(
+            total=0,
+            info=0,
+            warning=0,
+            error=0,
+            success=0,
+            recent_errors=[],
+            warning_message=f"로그 요약 조회에 실패했습니다. {_mask_sensitive(_exception_details(error))}",
+        )
 
 
 def get_system_health(db: Session) -> AdminSystemHealthResponse:
