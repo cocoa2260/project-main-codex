@@ -57,6 +57,46 @@ export interface AdminWorkerListResponse {
   details?: string | null;
 }
 
+export type AdminLogLevel = 'INFO' | 'WARNING' | 'ERROR' | 'SUCCESS';
+
+export interface AdminLogItem {
+  id: string;
+  timestamp: string;
+  level: AdminLogLevel;
+  service: string | null;
+  source: string;
+  message: string;
+  details: Record<string, string | number | null> | null;
+  related_task_id: string | null;
+  related_document_id: string | null;
+}
+
+export interface AdminLogsResponse {
+  items: AdminLogItem[];
+  pagination: AdminPaginationResponse;
+  warning_message?: string | null;
+}
+
+export interface AdminLogSummaryResponse {
+  total: number;
+  info: number;
+  warning: number;
+  error: number;
+  success: number;
+  recent_errors: AdminLogItem[];
+  warning_message?: string | null;
+}
+
+export interface AdminLogListParams {
+  q?: string;
+  level?: AdminLogLevel;
+  service?: string;
+  from?: string;
+  to?: string;
+  page?: number;
+  limit?: number;
+}
+
 export interface AdminUserStats {
   total_users: number;
   admin_users: number;

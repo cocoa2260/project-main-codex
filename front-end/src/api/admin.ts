@@ -4,6 +4,9 @@ import type {
   AdminDocumentDetailResponse,
   AdminDocumentListParams,
   AdminDocumentListResponse,
+  AdminLogListParams,
+  AdminLogsResponse,
+  AdminLogSummaryResponse,
   AdminQueueListResponse,
   AdminSystemHealthResponse,
   AdminTaskDetailResponse,
@@ -32,6 +35,16 @@ export async function getAdminQueues(): Promise<AdminQueueListResponse> {
 
 export async function getAdminWorkers(): Promise<AdminWorkerListResponse> {
   const response = await apiClient.get<AdminWorkerListResponse>('/api/admin/workers');
+  return response.data;
+}
+
+export async function getAdminLogs(params?: AdminLogListParams): Promise<AdminLogsResponse> {
+  const response = await apiClient.get<AdminLogsResponse>('/api/admin/logs', { params });
+  return response.data;
+}
+
+export async function getAdminLogSummary(): Promise<AdminLogSummaryResponse> {
+  const response = await apiClient.get<AdminLogSummaryResponse>('/api/admin/logs/summary');
   return response.data;
 }
 
