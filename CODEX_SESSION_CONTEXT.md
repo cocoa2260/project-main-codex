@@ -159,6 +159,19 @@ Summary:
 - Protected endpoint with require_admin
 - No DB migration or model changes
 
+### BE-ADMIN-006
+Admin Queue / Worker Monitoring API
+Status: DONE
+Summary:
+- Added admin queue monitoring API at GET /api/admin/queues
+- Added admin worker monitoring API at GET /api/admin/workers
+- Protected both endpoints with require_admin
+- Added read-only Redis pending queue count collection
+- Added read-only Celery inspect collection for active, reserved, scheduled, stats, and active queues
+- Worker status values are limited to ACTIVE, IDLE, and WARNING
+- Celery inspect, Redis connection, and worker non-response failures return WARNING details instead of failing the whole API response
+- No DB migration, model changes, Docker changes, or Celery task logic changes
+
 ### FE-017
 Admin User Management API Integration
 Status: DONE

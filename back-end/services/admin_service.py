@@ -31,6 +31,8 @@ from schemas.admin import AdminDashboardSummaryResponse
 from schemas.admin import AdminDocumentDetailResponse
 from schemas.admin import AdminDocumentListItemResponse
 from schemas.admin import AdminDocumentListResponse
+from schemas.admin import AdminQueueListResponse
+from schemas.admin import AdminQueueResponse
 from schemas.admin import AdminSystemHealthResponse
 from schemas.admin import AdminSystemHealthServiceResponse
 from schemas.admin import AdminTaskDetailResponse
@@ -41,6 +43,8 @@ from schemas.admin import AdminUserDetailResponse
 from schemas.admin import AdminUserDocumentResponse
 from schemas.admin import AdminUserListItemResponse
 from schemas.admin import AdminUserListResponse
+from schemas.admin import AdminWorkerListResponse
+from schemas.admin import AdminWorkerResponse
 from schemas.admin import AdminLatestTaskResponse
 from schemas.admin import AdminOwnerResponse
 from schemas.admin import AdminPaginationResponse
@@ -53,6 +57,8 @@ from schemas.admin import UserStatsResponse
 HEALTHY = "HEALTHY"
 WARNING = "WARNING"
 ERROR = "ERROR"
+ACTIVE = "ACTIVE"
+IDLE = "IDLE"
 STORAGE_DIR = "/storage/uploads"
 
 
@@ -84,6 +90,10 @@ def _health_service(
 
 def _exception_details(error: Exception) -> str:
     return f"{error.__class__.__name__}: {error}"
+
+
+def _join_details(details: list[str]) -> str | None:
+    return " ".join(details) if details else None
 
 
 def _check_api_health() -> AdminSystemHealthServiceResponse:
@@ -241,6 +251,233 @@ def _check_celery_health() -> AdminSystemHealthServiceResponse:
         name="Celery",
         status=HEALTHY,
         details=f"{len(workers)} worker(s) responded.",
+    )
+
+
+def _redis_client():
+    redis_url = _redis_url()
+
+    if redis_url is None:
+        return None
+
+    return redis.Redis.from_url(
+        redis_url,
+        socket_connect_timeout=1,
+        socket_timeout=1,
+    )
+
+
+def _default_queue_name() -> str:
+    return str(celery_app.conf.task_default_queue or "celery")
+
+
+def _safe_inspect_call(inspect_control, method_name: str):
+    try:
+        method = getattr(inspect_control, method_name)
+        return method(), None
+    except Exception as error:
+        return None, f"{method_name} unavailable. {_exception_details(error)}"
+
+
+def _task_request(task: dict) -> dict:
+    request = task.get("request")
+    if isinstance(request, dict):
+        return request
+
+    return task
+
+
+def _task_queue_name(task: dict) -> str | None:
+    request = _task_request(task)
+    delivery_info = request.get("delivery_info")
+
+    if isinstance(delivery_info, dict):
+        queue_name = delivery_info.get("routing_key") or delivery_info.get("queue")
+        if queue_name:
+            return str(queue_name)
+
+    queue_name = request.get("queue")
+    return str(queue_name) if queue_name else None
+
+
+def _queue_names_from_active_queues(active_queues: dict | None) -> set[str]:
+    queue_names = set()
+
+    for queues in (active_queues or {}).values():
+        for queue in queues or []:
+            if not isinstance(queue, dict):
+                continue
+
+            queue_name = queue.get("name") or queue.get("routing_key")
+            if queue_name:
+                queue_names.add(str(queue_name))
+
+    return queue_names
+
+
+def _count_tasks_by_queue(tasks_by_worker: dict | None) -> dict[str, int]:
+    counts: dict[str, int] = {}
+
+    for tasks in (tasks_by_worker or {}).values():
+        for task in tasks or []:
+            if not isinstance(task, dict):
+                continue
+
+            queue_name = _task_queue_name(task)
+            if queue_name:
+                counts[queue_name] = counts.get(queue_name, 0) + 1
+
+    return counts
+
+
+def _pending_counts(queue_names: set[str]) -> tuple[dict[str, int], str | None]:
+    client = _redis_client()
+
+    if client is None:
+        return {}, "Redis URL is not configured."
+
+    try:
+        return {
+            queue_name: int(client.llen(queue_name))
+            for queue_name in queue_names
+        }, None
+    except Exception as error:
+        return {}, f"Redis queue length unavailable. {_exception_details(error)}"
+    finally:
+        client.close()
+
+
+def _processed_count(worker_stats: dict | None) -> int | None:
+    if not worker_stats:
+        return None
+
+    totals = worker_stats.get("total")
+    if not isinstance(totals, dict):
+        return None
+
+    return sum(int(count or 0) for count in totals.values())
+
+
+def get_admin_queues() -> AdminQueueListResponse:
+    checked_at = _checked_at()
+    details = []
+    queue_names = {_default_queue_name()}
+
+    inspect_control = celery_app.control.inspect(timeout=1)
+    active_queues, active_queue_error = _safe_inspect_call(inspect_control, "active_queues")
+    active, active_error = _safe_inspect_call(inspect_control, "active")
+    scheduled, scheduled_error = _safe_inspect_call(inspect_control, "scheduled")
+    reserved, reserved_error = _safe_inspect_call(inspect_control, "reserved")
+
+    for error in [active_queue_error, active_error, scheduled_error, reserved_error]:
+        if error:
+            details.append(error)
+
+    queue_names.update(_queue_names_from_active_queues(active_queues))
+    queue_names.update(_count_tasks_by_queue(active).keys())
+    queue_names.update(_count_tasks_by_queue(scheduled).keys())
+    queue_names.update(_count_tasks_by_queue(reserved).keys())
+
+    pending_counts, pending_error = _pending_counts(queue_names)
+    if pending_error:
+        details.append(pending_error)
+
+    active_counts = _count_tasks_by_queue(active)
+    scheduled_counts = _count_tasks_by_queue(scheduled)
+    reserved_counts = _count_tasks_by_queue(reserved)
+    status = WARNING if details else HEALTHY
+
+    return AdminQueueListResponse(
+        queues=[
+            AdminQueueResponse(
+                name=queue_name,
+                pending_count=pending_counts.get(queue_name, 0),
+                active_count=active_counts.get(queue_name) if active is not None else None,
+                scheduled_count=scheduled_counts.get(queue_name) if scheduled is not None else None,
+                reserved_count=reserved_counts.get(queue_name) if reserved is not None else None,
+                status=status if details else None,
+                details=_join_details(details),
+            )
+            for queue_name in sorted(queue_names)
+        ],
+        checked_at=checked_at,
+        status=status,
+        details=_join_details(details),
+    )
+
+
+def get_admin_workers() -> AdminWorkerListResponse:
+    checked_at = _checked_at()
+    details = []
+
+    inspect_control = celery_app.control.inspect(timeout=1)
+    ping, ping_error = _safe_inspect_call(inspect_control, "ping")
+    active, active_error = _safe_inspect_call(inspect_control, "active")
+    scheduled, scheduled_error = _safe_inspect_call(inspect_control, "scheduled")
+    reserved, reserved_error = _safe_inspect_call(inspect_control, "reserved")
+    stats, stats_error = _safe_inspect_call(inspect_control, "stats")
+    active_queues, active_queue_error = _safe_inspect_call(inspect_control, "active_queues")
+
+    for error in [
+        ping_error,
+        active_error,
+        scheduled_error,
+        reserved_error,
+        stats_error,
+        active_queue_error,
+    ]:
+        if error:
+            details.append(error)
+
+    if not ping:
+        details.append("No Celery workers responded to inspect.")
+
+    worker_names = set((ping or {}).keys())
+    worker_names.update((active or {}).keys())
+    worker_names.update((scheduled or {}).keys())
+    worker_names.update((reserved or {}).keys())
+    worker_names.update((stats or {}).keys())
+    worker_names.update((active_queues or {}).keys())
+
+    workers = []
+    for worker_name in sorted(worker_names):
+        worker_active = active.get(worker_name, []) if active is not None else None
+        worker_reserved = reserved.get(worker_name, []) if reserved is not None else None
+        worker_scheduled = scheduled.get(worker_name, []) if scheduled is not None else None
+        worker_stats = stats.get(worker_name) if stats is not None else None
+        worker_queues = active_queues.get(worker_name, []) if active_queues is not None else None
+
+        worker_details = []
+        if ping and worker_name not in ping:
+            worker_details.append("Worker did not respond to ping.")
+
+        if details:
+            worker_status = WARNING
+        else:
+            worker_status = ACTIVE if len(worker_active or []) > 0 else IDLE
+
+        workers.append(
+            AdminWorkerResponse(
+                id=worker_name,
+                name=worker_name,
+                status=worker_status,
+                active_task_count=len(worker_active) if worker_active is not None else None,
+                reserved_task_count=len(worker_reserved) if worker_reserved is not None else None,
+                scheduled_task_count=len(worker_scheduled) if worker_scheduled is not None else None,
+                processed_count=_processed_count(worker_stats),
+                current_queues=sorted(_queue_names_from_active_queues({worker_name: worker_queues}))
+                if worker_queues is not None
+                else None,
+                checked_at=checked_at,
+                details=_join_details(worker_details) or (_join_details(details) if details else None),
+            )
+        )
+
+    return AdminWorkerListResponse(
+        workers=workers,
+        checked_at=checked_at,
+        status=WARNING if details else HEALTHY,
+        details=_join_details(details),
     )
 
 
