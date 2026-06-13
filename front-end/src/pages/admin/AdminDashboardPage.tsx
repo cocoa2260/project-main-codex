@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { getAdminDashboardSummary } from '../../api/admin';
+import type { LucideIcon } from 'lucide-react';
+import { getAdminDashboardSummary, getAdminSystemHealth } from '../../api/admin';
 import { Sidebar } from '../../components/common/Sidebar';
-import type { AdminDashboardSummaryResponse, AdminRecentEvent } from '../../types/admin';
+import type {
+  AdminDashboardSummaryResponse,
+  AdminHealthService,
+  AdminHealthServiceStatus,
+  AdminRecentEvent,
+} from '../../types/admin';
 import type { TaskStatus, TaskType } from '../../types/document';
 import { getDocumentStatusPresentation, normalizeDocumentStatus } from '../../utils/documentStatus';
 import {
-  Home,
   FileText,
   Clock,
-  Settings,
   Menu,
   X,
   Search,
@@ -33,11 +36,12 @@ import {
 } from 'lucide-react';
 
 interface SystemService {
+  key: string;
   name: string;
-  status: 'healthy' | 'warning' | 'error' | 'offline';
-  icon: any;
-  details?: string;
-  uptime?: string;
+  status: AdminHealthServiceStatus;
+  icon: LucideIcon;
+  details: string;
+  checkedAt: string;
 }
 
 interface Job {
@@ -57,9 +61,31 @@ interface AdminDashboardPageProps {
 const AUTO_REFRESH_INTERVAL_MS = 30_000;
 const taskTypes: TaskType[] = ['OCR', 'SUMMARY', 'EMBEDDING', 'RAG_INDEXING'];
 
+const healthServiceOrder = ['api', 'postgresql', 'redis', 'ollama', 'storage', 'celery'] as const;
+
+const healthServicePresentation: Record<typeof healthServiceOrder[number], { name: string; icon: LucideIcon }> = {
+  api: { name: 'API', icon: Activity },
+  postgresql: { name: 'PostgreSQL', icon: Database },
+  redis: { name: 'Redis', icon: Zap },
+  ollama: { name: 'Ollama', icon: Cpu },
+  storage: { name: 'Storage', icon: HardDrive },
+  celery: { name: 'Celery', icon: Layers },
+};
+
 function getApiErrorMessage(error: unknown): string {
   const response = (error as { response?: { data?: { detail?: string; message?: string } } }).response;
   return response?.data?.detail ?? response?.data?.message ?? (error instanceof Error ? error.message : '관리자 대시보드 정보를 불러오지 못했습니다.');
+}
+
+function normalizeHealthServiceKey(service: Pick<AdminHealthService, 'key' | 'name'>): typeof healthServiceOrder[number] | null {
+  const value = `${service.key} ${service.name}`.toLowerCase();
+  if (value.includes('api')) return 'api';
+  if (value.includes('postgres') || value.includes('postgresql')) return 'postgresql';
+  if (value.includes('redis')) return 'redis';
+  if (value.includes('ollama')) return 'ollama';
+  if (value.includes('storage') || value.includes('store')) return 'storage';
+  if (value.includes('celery')) return 'celery';
+  return null;
 }
 
 function normalizeTaskStatus(status?: string | null): TaskStatus {
@@ -109,38 +135,16 @@ function formatRelativeTime(value?: string | null): string {
 }
 
 export function AdminDashboardPage({ onLogout }: AdminDashboardPageProps) {
-  const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [summary, setSummary] = useState<AdminDashboardSummaryResponse | null>(null);
+  const [healthServices, setHealthServices] = useState<AdminHealthService[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isHealthLoading, setIsHealthLoading] = useState(true);
+  const [isHealthRefreshing, setIsHealthRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  const menuItems = [
-    { id: 'dashboard', label: 'Overview', icon: Home },
-    { id: 'users', label: 'Users', icon: Users },
-    { id: 'documents', label: 'Documents', icon: FileText },
-    { id: 'jobs', label: 'Jobs', icon: Activity },
-    { id: 'system', label: 'System', icon: Cpu },
-    { id: 'settings', label: 'Settings', icon: Settings }
-  ];
-
-
-
-  const adminMenuRoutes: Record<string, string> = {
-    dashboard: '/admin',
-    users: '/admin/users',
-    documents: '/admin/documents',
-    jobs: '/admin/jobs',
-    system: '/admin/logs',
-    settings: '/admin/settings',
-  };
-
-  const handleMenuClick = (menuId: string) => {
-    const route = adminMenuRoutes[menuId];
-    if (route) navigate(route);
-  };
+  const [healthErrorMessage, setHealthErrorMessage] = useState<string | null>(null);
 
   const fetchDashboardSummary = useCallback(async (showLoading = false) => {
     if (showLoading) {
@@ -163,20 +167,47 @@ export function AdminDashboardPage({ onLogout }: AdminDashboardPageProps) {
     }
   }, []);
 
+  const fetchSystemHealth = useCallback(async (showLoading = false) => {
+    if (showLoading) {
+      setIsHealthLoading(true);
+    } else {
+      setIsHealthRefreshing(true);
+    }
+
+    setHealthErrorMessage(null);
+
+    try {
+      const response = await getAdminSystemHealth();
+      setHealthServices(response.services);
+    } catch (error) {
+      setHealthErrorMessage(getApiErrorMessage(error));
+    } finally {
+      setIsHealthLoading(false);
+      setIsHealthRefreshing(false);
+    }
+  }, []);
+
   useEffect(() => {
-    void fetchDashboardSummary(true);
-  }, [fetchDashboardSummary]);
+    const timeoutId = window.setTimeout(() => {
+      void fetchDashboardSummary(true);
+      void fetchSystemHealth(true);
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [fetchDashboardSummary, fetchSystemHealth]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
       void fetchDashboardSummary(false);
+      void fetchSystemHealth(false);
     }, AUTO_REFRESH_INTERVAL_MS);
 
     return () => window.clearInterval(intervalId);
-  }, [fetchDashboardSummary]);
+  }, [fetchDashboardSummary, fetchSystemHealth]);
 
   const handleRefresh = () => {
     void fetchDashboardSummary(false);
+    void fetchSystemHealth(false);
   };
 
   const taskStatusCounts = summary?.tasks.by_status;
@@ -253,50 +284,29 @@ export function AdminDashboardPage({ onLogout }: AdminDashboardPageProps) {
     }
   ];
 
-  const systemServices: SystemService[] = useMemo(() => [
-    {
-      name: 'OCR Queue',
-      status: getCount(summary?.tasks.by_type, 'OCR') > 0 ? 'healthy' : 'offline',
-      icon: FileText,
-      details: `${getCount(summary?.tasks.by_type, 'OCR').toLocaleString()} tasks`,
-      uptime: `${processingTasks.toLocaleString()} active`
-    },
-    {
-      name: 'Summary Queue',
-      status: getCount(summary?.tasks.by_type, 'SUMMARY') > 0 ? 'healthy' : 'offline',
-      icon: Zap,
-      details: `${getCount(summary?.tasks.by_type, 'SUMMARY').toLocaleString()} tasks`,
-      uptime: `${pendingTasks.toLocaleString()} queued`
-    },
-    {
-      name: 'Document Store',
-      status: failedDocuments > 0 ? 'warning' : 'healthy',
-      icon: Database,
-      details: `${(summary?.documents.total ?? 0).toLocaleString()} documents`,
-      uptime: `${failedDocuments.toLocaleString()} failed`
-    },
-    {
-      name: 'Embedding Queue',
-      status: getCount(summary?.tasks.by_type, 'EMBEDDING') > 0 ? 'healthy' : 'offline',
-      icon: Activity,
-      details: `${getCount(summary?.tasks.by_type, 'EMBEDDING').toLocaleString()} tasks`,
-      uptime: `${completedTasks.toLocaleString()} completed`
-    },
-    {
-      name: 'Users',
-      status: (summary?.users.total_users ?? 0) > 0 ? 'healthy' : 'offline',
-      icon: Database,
-      details: `${(summary?.users.total_users ?? 0).toLocaleString()} users`,
-      uptime: `${(summary?.users.today_users ?? 0).toLocaleString()} today`
-    },
-    {
-      name: 'Queue System',
-      status: failedTasks > 0 ? 'warning' : 'healthy',
-      icon: Layers,
-      details: `${pendingTasks.toLocaleString()} queued`,
-      uptime: `${failedTasks.toLocaleString()} failed`
-    }
-  ], [completedTasks, failedDocuments, failedTasks, pendingTasks, processingTasks, summary]);
+  const systemServices: SystemService[] = useMemo(() => {
+    const servicesByKey = new Map<typeof healthServiceOrder[number], AdminHealthService>();
+    healthServices.forEach((service) => {
+      const normalizedKey = normalizeHealthServiceKey(service);
+      if (normalizedKey) {
+        servicesByKey.set(normalizedKey, service);
+      }
+    });
+
+    return healthServiceOrder.map((key) => {
+      const service = servicesByKey.get(key);
+      const presentation = healthServicePresentation[key];
+
+      return {
+        key,
+        name: presentation.name,
+        status: service?.status ?? 'OFFLINE',
+        icon: presentation.icon,
+        details: service?.details ?? (healthErrorMessage ? '상태를 불러오지 못했습니다.' : '상태 확인 대기 중'),
+        checkedAt: formatDateTime(service?.checked_at),
+      };
+    });
+  }, [healthErrorMessage, healthServices]);
 
   const activeJobs: Job[] = useMemo(() => (
     (summary?.recent_events ?? [])
@@ -361,15 +371,15 @@ export function AdminDashboardPage({ onLogout }: AdminDashboardPageProps) {
       : null,
   ].filter((alert): alert is NonNullable<typeof alert> => Boolean(alert));
 
-  const getStatusColor = (status: SystemService['status']) => {
+  const getStatusColor = (status: AdminHealthServiceStatus) => {
     switch (status) {
-      case 'healthy':
+      case 'HEALTHY':
         return 'bg-green-500/10 border-green-500/20 text-green-400';
-      case 'warning':
+      case 'WARNING':
         return 'bg-yellow-500/10 border-yellow-500/20 text-yellow-400';
-      case 'error':
+      case 'ERROR':
         return 'bg-red-500/10 border-red-500/20 text-red-400';
-      default:
+      case 'OFFLINE':
         return 'bg-gray-500/10 border-gray-500/20 text-gray-400';
     }
   };
@@ -437,13 +447,13 @@ export function AdminDashboardPage({ onLogout }: AdminDashboardPageProps) {
 
             {/* System status badge */}
             <div className={`flex items-center gap-2 px-3 py-1.5 border rounded-lg ${
-              errorMessage
+              errorMessage || healthErrorMessage
                 ? 'bg-red-500/10 border-red-500/20'
                 : 'bg-green-500/10 border-green-500/20'
             }`}>
-              <div className={`w-2 h-2 rounded-full animate-pulse ${errorMessage ? 'bg-red-400' : 'bg-green-400'}`} />
-              <span className={`text-sm font-medium ${errorMessage ? 'text-red-400' : 'text-green-400'}`}>
-                {errorMessage ? 'Dashboard API Error' : isLoading ? 'Loading Dashboard' : 'Dashboard API Connected'}
+              <div className={`w-2 h-2 rounded-full animate-pulse ${errorMessage || healthErrorMessage ? 'bg-red-400' : 'bg-green-400'}`} />
+              <span className={`text-sm font-medium ${errorMessage || healthErrorMessage ? 'text-red-400' : 'text-green-400'}`}>
+                {errorMessage || healthErrorMessage ? 'Admin API Error' : isLoading || isHealthLoading ? 'Loading Admin APIs' : 'Admin APIs Connected'}
               </span>
             </div>
 
@@ -492,10 +502,10 @@ export function AdminDashboardPage({ onLogout }: AdminDashboardPageProps) {
                 <button
                   type="button"
                   onClick={handleRefresh}
-                  disabled={isLoading || isRefreshing}
+                  disabled={isLoading || isRefreshing || isHealthLoading || isHealthRefreshing}
                   className="inline-flex items-center gap-2 px-3 py-2 bg-white/5 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed border border-white/10 rounded-lg transition-colors text-gray-300 text-sm"
                 >
-                  <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                  <RefreshCw className={`w-4 h-4 ${isRefreshing || isHealthRefreshing ? 'animate-spin' : ''}`} />
                   새로고침
                 </button>
               </div>
@@ -576,12 +586,24 @@ export function AdminDashboardPage({ onLogout }: AdminDashboardPageProps) {
                     <button
                       type="button"
                       onClick={handleRefresh}
-                      disabled={isLoading || isRefreshing}
-                      className="p-2 hover:bg-white/5 rounded-lg transition-colors"
+                      disabled={isLoading || isRefreshing || isHealthLoading || isHealthRefreshing}
+                      className="p-2 hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
                     >
-                      <RefreshCw className={`w-4 h-4 text-gray-400 ${isRefreshing ? 'animate-spin' : ''}`} />
+                      <RefreshCw className={`w-4 h-4 text-gray-400 ${isHealthRefreshing ? 'animate-spin' : ''}`} />
                     </button>
                   </div>
+
+                  {healthErrorMessage && (
+                    <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+                      <div className="flex items-start gap-2">
+                        <XCircle className="w-4 h-4 text-red-400 mt-0.5" />
+                        <div>
+                          <p className="text-red-400 text-sm font-medium">시스템 헬스 정보를 불러오지 못했습니다.</p>
+                          <p className="text-red-400/80 text-xs mt-1">{healthErrorMessage}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {systemServices.map((service) => {
@@ -594,16 +616,20 @@ export function AdminDashboardPage({ onLogout }: AdminDashboardPageProps) {
                         >
                           <div className="flex items-start justify-between mb-3">
                             <ServiceIcon className="w-5 h-5" />
-                            <div className={`w-2 h-2 rounded-full ${
-                              service.status === 'healthy' ? 'bg-green-400 animate-pulse' :
-                              service.status === 'warning' ? 'bg-yellow-400 animate-pulse' :
-                              service.status === 'error' ? 'bg-red-400 animate-pulse' :
+                            {isHealthLoading ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <div className={`w-2 h-2 rounded-full ${
+                              service.status === 'HEALTHY' ? 'bg-green-400 animate-pulse' :
+                              service.status === 'WARNING' ? 'bg-yellow-400 animate-pulse' :
+                              service.status === 'ERROR' ? 'bg-red-400 animate-pulse' :
                               'bg-gray-400'
                             }`} />
+                            )}
                           </div>
                           <h4 className="font-medium mb-1">{service.name}</h4>
                           <p className="text-xs opacity-80">{service.details}</p>
-                          <p className="text-xs opacity-60 mt-1">Uptime: {service.uptime}</p>
+                          <p className="text-xs opacity-60 mt-1">Checked: {service.checkedAt}</p>
                         </div>
                       );
                     })}

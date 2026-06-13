@@ -4,6 +4,7 @@ import type {
   AdminDocumentDetailResponse,
   AdminDocumentListParams,
   AdminDocumentListResponse,
+  AdminSystemHealthResponse,
   AdminTaskDetailResponse,
   AdminTaskListParams,
   AdminTaskListResponse,
@@ -14,6 +15,11 @@ import type {
 
 export async function getAdminDashboardSummary(): Promise<AdminDashboardSummaryResponse> {
   const response = await apiClient.get<AdminDashboardSummaryResponse>('/api/admin/dashboard/summary');
+  return response.data;
+}
+
+export async function getAdminSystemHealth(): Promise<AdminSystemHealthResponse> {
+  const response = await apiClient.get<AdminSystemHealthResponse>('/api/admin/system/health');
   return response.data;
 }
 
