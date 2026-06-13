@@ -1,11 +1,8 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { getAdminSettings } from '../../api/admin';
 import { Sidebar } from '../../components/common/Sidebar';
+import type { AdminSettingItem, AdminSettingsCategory } from '../../types/admin';
 import {
-  Home,
-  FileText,
-  Users,
-  Activity,
   Settings,
   Shield,
   Menu,
@@ -14,10 +11,8 @@ import {
   Save,
   RotateCcw,
   Eye,
-  Database,
   Cpu,
   Lock,
-  Zap,
   Brain,
   Sparkles,
   HardDrive,
@@ -27,13 +22,13 @@ import {
   Info,
   Clock,
   User,
-  Globe,
-  Server,
-  Layers,
-  Sliders
+  Sliders,
+  RefreshCw,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
 
-interface SettingCategory {
+interface SettingCategoryNavigationItem {
   id: string;
   label: string;
   icon: typeof Settings;
@@ -44,110 +39,197 @@ interface AdminSettingsPageProps {
   onLogout?: () => void;
 }
 
+const categoryIconMap: Record<string, typeof Settings> = {
+  ocr: Eye,
+  llm: Brain,
+  rag: Sparkles,
+  embedding: Sparkles,
+  worker: Cpu,
+  storage: HardDrive,
+  security: Lock,
+};
+
+const fallbackCategoryLabels: Record<string, string> = {
+  ocr: 'OCR 설정',
+  llm: 'LLM 설정',
+  rag: 'RAG 설정',
+  embedding: 'Embedding 설정',
+  worker: 'Worker 설정',
+  storage: 'Storage 설정',
+  security: 'Security 설정',
+};
+
+const categoryDescriptions: Record<string, string> = {
+  ocr: '문서 텍스트 추출 엔진 설정',
+  llm: 'AI 모델 및 추론 파라미터 설정',
+  rag: '문서 검색 및 임베딩 파라미터',
+  embedding: '벡터 임베딩 모델 및 검색 설정',
+  worker: '백그라운드 작업 처리 설정',
+  storage: '파일 저장소 및 보관 정책',
+  security: '보안 및 접근 제어 설정',
+};
+
+function getApiErrorMessage(error: unknown): string {
+  const response = (error as { response?: { data?: { detail?: string; message?: string } } }).response;
+  return response?.data?.detail ?? response?.data?.message ?? (error instanceof Error ? error.message : '설정을 불러오지 못했습니다.');
+}
+
+function getCategoryLabel(category: AdminSettingsCategory): string {
+  return fallbackCategoryLabels[category.id] ?? `${category.name} 설정`;
+}
+
+function getSettingValue(setting: AdminSettingItem): string {
+  if (setting.sensitive) {
+    return setting.value ? String(setting.value) : '••••••••';
+  }
+
+  if (Array.isArray(setting.value)) {
+    return setting.value.length > 0 ? setting.value.join(', ') : '-';
+  }
+
+  if (typeof setting.value === 'boolean') {
+    return setting.value ? 'Enabled' : 'Disabled';
+  }
+
+  if (setting.value === null || setting.value === undefined || setting.value === '') {
+    return '-';
+  }
+
+  return String(setting.value);
+}
+
+function renderSettingControl(setting: AdminSettingItem) {
+  const value = getSettingValue(setting);
+
+  if (typeof setting.value === 'boolean') {
+    return (
+      <button
+        type="button"
+        disabled
+        className={`
+          relative h-6 w-12 cursor-not-allowed rounded-full transition-colors opacity-70
+          ${setting.value ? 'bg-primary' : 'bg-white/10'}
+        `}
+        aria-label={`${setting.label}: ${value}`}
+      >
+        <span
+          className={`
+            absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform
+            ${setting.value ? 'left-6' : 'left-0.5'}
+          `}
+        />
+      </button>
+    );
+  }
+
+  if (Array.isArray(setting.value)) {
+    return (
+      <div className="flex flex-wrap gap-2">
+        {setting.value.length > 0 ? (
+          setting.value.map((item) => (
+            <span key={item} className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 font-mono text-xs text-gray-300">
+              {item}
+            </span>
+          ))
+        ) : (
+          <span className="text-sm text-gray-500">설정값 없음</span>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <input
+      type={typeof setting.value === 'number' ? 'number' : 'text'}
+      value={value}
+      disabled
+      readOnly
+      className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 font-mono text-sm text-gray-300 opacity-80 focus:outline-none"
+    />
+  );
+}
+
 export function AdminSettingsPage({ onLogout }: AdminSettingsPageProps) {
-  const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeCategory, setActiveCategory] = useState('ocr');
-  const [hasChanges, setHasChanges] = useState(false);
+  const [categories, setCategories] = useState<AdminSettingsCategory[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // OCR Settings
-  const [ocrEngine, setOcrEngine] = useState('tesseract');
-  const [ocrDpi, setOcrDpi] = useState('300');
-  const [ocrThreshold, setOcrThreshold] = useState(true);
-  const [ocrConfidence, setOcrConfidence] = useState('75');
+  const settingCategories = useMemo<SettingCategoryNavigationItem[]>(() => (
+    categories.map((category) => ({
+      id: category.id,
+      label: getCategoryLabel(category),
+      icon: categoryIconMap[category.id] ?? Settings,
+      badge: category.settings.length,
+    }))
+  ), [categories]);
 
-  // LLM Settings
-  const [ollamaUrl, setOllamaUrl] = useState('http://localhost:11434');
-  const [llmModel, setLlmModel] = useState('gemma:7b');
-  const [temperature, setTemperature] = useState('0.7');
-  const [maxTokens, setMaxTokens] = useState('2048');
+  const activeCategoryData = useMemo(() => (
+    categories.find((category) => category.id === activeCategory) ?? categories[0] ?? null
+  ), [activeCategory, categories]);
 
-  // RAG Settings
-  const [chunkSize, setChunkSize] = useState('512');
-  const [chunkOverlap, setChunkOverlap] = useState('50');
-  const [embeddingModel, setEmbeddingModel] = useState('all-MiniLM-L6-v2');
-  const [topK, setTopK] = useState('5');
-
-  // Worker Settings
-  const [workerCount, setWorkerCount] = useState('4');
-  const [concurrency, setConcurrency] = useState('2');
-  const [queueLimit, setQueueLimit] = useState('100');
-  const [retryLimit, setRetryLimit] = useState('3');
-
-  // Storage Settings
-  const [storageBackend, setStorageBackend] = useState('local');
-  const [storagePath, setStoragePath] = useState('/var/lib/ai-platform/storage');
-  const [maxFileSize, setMaxFileSize] = useState('50');
-  const [retentionDays, setRetentionDays] = useState('90');
-
-  // Security Settings
-  const [jwtExpiry, setJwtExpiry] = useState('24');
-  const [mfaEnabled, setMfaEnabled] = useState(false);
-  const [apiRateLimit, setApiRateLimit] = useState('1000');
-  const [corsEnabled, setCorsEnabled] = useState(true);
-
-  const menuItems = [
-    { id: 'dashboard', label: 'Overview', icon: Home },
-    { id: 'users', label: 'Users', icon: Users },
-    { id: 'documents', label: 'Documents', icon: FileText },
-    { id: 'jobs', label: 'Jobs', icon: Activity },
-    { id: 'system', label: 'System', icon: Shield },
-    { id: 'settings', label: 'Settings', icon: Settings }
-  ];
-
-
-
-  const adminMenuRoutes: Record<string, string> = {
-    dashboard: '/admin',
-    users: '/admin/users',
-    documents: '/admin/documents',
-    jobs: '/admin/jobs',
-    system: '/admin/logs',
-    settings: '/admin/settings',
-  };
-
-  const handleMenuClick = (menuId: string) => {
-    const route = adminMenuRoutes[menuId];
-    if (route) navigate(route);
-  };
-  const settingCategories: SettingCategory[] = [
-    { id: 'ocr', label: 'OCR 설정', icon: Eye },
-    { id: 'llm', label: 'LLM 설정', icon: Brain },
-    { id: 'rag', label: 'RAG 설정', icon: Sparkles },
-    { id: 'worker', label: 'Worker 설정', icon: Cpu },
-    { id: 'storage', label: 'Storage 설정', icon: HardDrive },
-    { id: 'security', label: 'Security 설정', icon: Lock }
-  ];
-
-  const changeHistory = [
-    { time: '2시간 전', user: '김철수', setting: 'LLM Model', value: 'gemma:7b → llama2:13b' },
-    { time: '5시간 전', user: '이영희', setting: 'Worker Count', value: '3 → 4' },
-    { time: '1일 전', user: '박민수', setting: 'OCR DPI', value: '200 → 300' },
-    { time: '2일 전', user: '정수진', setting: 'Chunk Size', value: '256 → 512' }
-  ];
-
-  const activeSettings = [
-    { label: 'OCR Engine', value: ocrEngine, category: 'OCR' },
-    { label: 'LLM Model', value: llmModel, category: 'LLM' },
-    { label: 'Worker Count', value: workerCount, category: 'Worker' },
-    { label: 'Storage Backend', value: storageBackend, category: 'Storage' }
-  ];
+  const activeSettings = useMemo(() => (
+    categories.flatMap((category) => (
+      category.settings.slice(0, 2).map((setting) => ({
+        key: `${category.id}-${setting.key}`,
+        label: setting.label,
+        value: getSettingValue(setting),
+        category: category.name,
+        sensitive: setting.sensitive,
+      }))
+    )).slice(0, 6)
+  ), [categories]);
 
   const warnings = [
-    { type: 'warning' as const, message: 'Worker count 변경 시 재시작 필요' },
-    { type: 'info' as const, message: 'LLM temperature 0.7 권장값 사용 중' }
+    { type: 'info' as const, message: '현재 설정 화면은 Admin Settings Read API 기반의 읽기 전용 모드입니다.' },
+    { type: 'warning' as const, message: '저장, 초기화, 환경변수 변경, 재시작 액션은 아직 연결되지 않았습니다.' }
   ];
 
+  const fetchSettings = useCallback(async (showLoading = false) => {
+    if (showLoading) {
+      setIsLoading(true);
+    } else {
+      setIsRefreshing(true);
+    }
+
+    setErrorMessage(null);
+
+    try {
+      const response = await getAdminSettings();
+      setCategories(response.categories);
+      setActiveCategory((current) => {
+        if (response.categories.some((category) => category.id === current)) return current;
+        return response.categories[0]?.id ?? current;
+      });
+    } catch (error) {
+      setErrorMessage(getApiErrorMessage(error));
+      setCategories([]);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      void fetchSettings(true);
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [fetchSettings]);
+
+  const handleRefresh = () => {
+    void fetchSettings(false);
+  };
+
   const handleSave = () => {
-    console.log('Settings saved');
-    setHasChanges(false);
+    return undefined;
   };
 
   const handleReset = () => {
-    if (confirm('모든 설정을 기본값으로 되돌리시겠습니까?')) {
-      console.log('Settings reset');
-      setHasChanges(false);
-    }
+    return undefined;
   };
 
   return (
@@ -179,12 +261,20 @@ export function AdminSettingsPage({ onLogout }: AdminSettingsPageProps) {
           </div>
 
           <div className="flex items-center gap-3">
-            {hasChanges && (
-              <div className="flex items-center gap-2 px-3 py-2 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
-                <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse" />
-                <span className="text-yellow-400 text-sm font-medium">저장되지 않은 변경사항</span>
-              </div>
-            )}
+            <div className="hidden sm:flex items-center gap-2 px-3 py-2 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+              <Info className="w-4 h-4 text-blue-400" />
+              <span className="text-blue-400 text-sm font-medium">Read-only</span>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleRefresh}
+              disabled={isLoading || isRefreshing}
+              className="p-2 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-60 rounded-lg transition-colors"
+              title="새로고침"
+            >
+              <RefreshCw className={`w-5 h-5 text-gray-400 ${isRefreshing ? 'animate-spin' : ''}`} />
+            </button>
 
             <button
               type="button"
@@ -212,487 +302,164 @@ export function AdminSettingsPage({ onLogout }: AdminSettingsPageProps) {
                 <div className="bg-[#111116] border border-white/10 rounded-xl p-4 sticky top-6">
                   <h3 className="text-white font-semibold mb-3 px-2">설정 카테고리</h3>
                   <nav className="space-y-1">
-                    {settingCategories.map((category) => (
-                      <button
-                        key={category.id}
-                        type="button"
-                        onClick={() => setActiveCategory(category.id)}
-                        className={`
-                          w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all
-                          ${activeCategory === category.id
-                            ? 'bg-primary/10 text-primary border border-primary/20'
-                            : 'text-gray-400 hover:bg-white/5 hover:text-white'
-                          }
-                        `}
-                      >
-                        <category.icon className="w-4 h-4" />
-                        <span className="flex-1 text-left text-sm font-medium">{category.label}</span>
-                        <ChevronRight className="w-4 h-4 opacity-50" />
-                      </button>
-                    ))}
+                    {isLoading ? (
+                      <div className="flex items-center gap-2 px-3 py-2.5 text-sm text-gray-400">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        설정 로딩 중
+                      </div>
+                    ) : settingCategories.length > 0 ? (
+                      settingCategories.map((category) => (
+                        <button
+                          key={category.id}
+                          type="button"
+                          onClick={() => setActiveCategory(category.id)}
+                          className={`
+                            w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all
+                            ${activeCategory === category.id
+                              ? 'bg-primary/10 text-primary border border-primary/20'
+                              : 'text-gray-400 hover:bg-white/5 hover:text-white'
+                            }
+                          `}
+                        >
+                          <category.icon className="w-4 h-4" />
+                          <span className="flex-1 text-left text-sm font-medium">{category.label}</span>
+                          {category.badge !== undefined && (
+                            <span className="rounded-full bg-white/5 px-2 py-0.5 text-xs text-gray-500">{category.badge}</span>
+                          )}
+                          <ChevronRight className="w-4 h-4 opacity-50" />
+                        </button>
+                      ))
+                    ) : (
+                      <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-3 text-sm text-gray-500">
+                        표시할 설정 카테고리가 없습니다.
+                      </div>
+                    )}
                   </nav>
 
                   <div className="mt-6 pt-6 border-t border-white/10 space-y-3">
                     <button
                       type="button"
                       onClick={handleSave}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 rounded-lg transition-colors"
+                      disabled
+                      title="설정 저장 기능은 준비 중입니다."
+                      className="w-full flex cursor-not-allowed items-center justify-center gap-2 px-4 py-2.5 bg-primary/40 rounded-lg transition-colors opacity-60"
                     >
                       <Save className="w-4 h-4 text-white" />
-                      <span className="text-white font-medium text-sm">저장</span>
+                      <span className="text-white font-medium text-sm">저장 준비 중</span>
                     </button>
                     <button
                       type="button"
                       onClick={handleReset}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg transition-colors"
+                      disabled
+                      title="설정 초기화 기능은 준비 중입니다."
+                      className="w-full flex cursor-not-allowed items-center justify-center gap-2 px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg transition-colors opacity-60"
                     >
                       <RotateCcw className="w-4 h-4 text-gray-400" />
-                      <span className="text-gray-400 font-medium text-sm">초기화</span>
+                      <span className="text-gray-400 font-medium text-sm">초기화 준비 중</span>
                     </button>
+                    <p className="text-xs leading-relaxed text-gray-500">
+                      현재 backend 응답은 editable=false이며, 이 화면은 설정 조회만 지원합니다.
+                    </p>
                   </div>
                 </div>
               </div>
 
               {/* Settings content */}
               <div className="xl:col-span-2 space-y-6">
-                {/* OCR Settings */}
-                {activeCategory === 'ocr' && (
+                {isLoading && (
+                  <div className="bg-[#111116] border border-white/10 rounded-xl p-8">
+                    <div className="flex items-center justify-center gap-3 text-gray-400">
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      <span className="text-sm">설정 정보를 불러오는 중입니다.</span>
+                    </div>
+                  </div>
+                )}
+
+                {!isLoading && errorMessage && (
+                  <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-6">
+                    <div className="flex items-start gap-3">
+                      <AlertCircle className="h-5 w-5 flex-shrink-0 text-red-400" />
+                      <div className="min-w-0">
+                        <h2 className="text-base font-semibold text-red-300">설정 조회 실패</h2>
+                        <p className="mt-1 text-sm text-red-200/80">{errorMessage}</p>
+                        <button
+                          type="button"
+                          onClick={handleRefresh}
+                          disabled={isRefreshing}
+                          className="mt-4 inline-flex items-center gap-2 rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-200 transition-colors hover:bg-red-400/20 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                          다시 시도
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {!isLoading && !errorMessage && !activeCategoryData && (
+                  <div className="bg-[#111116] border border-white/10 rounded-xl p-8 text-center">
+                    <Settings className="mx-auto h-10 w-10 text-gray-600" />
+                    <h2 className="mt-3 text-lg font-semibold text-white">설정 항목 없음</h2>
+                    <p className="mt-1 text-sm text-gray-500">API에서 반환된 설정 카테고리가 없습니다.</p>
+                    <button
+                      type="button"
+                      onClick={handleRefresh}
+                      disabled={isRefreshing}
+                      className="mt-5 inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-gray-300 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                      새로고침
+                    </button>
+                  </div>
+                )}
+
+                {!isLoading && !errorMessage && activeCategoryData && (
                   <div className="space-y-6">
-                    <div>
-                      <h2 className="text-xl font-bold text-white mb-1">OCR 설정</h2>
-                      <p className="text-gray-400 text-sm">문서 텍스트 추출 엔진 설정</p>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <h2 className="text-xl font-bold text-white mb-1">{getCategoryLabel(activeCategoryData)}</h2>
+                        <p className="text-gray-400 text-sm">
+                          {categoryDescriptions[activeCategoryData.id] ?? `${activeCategoryData.name} 설정값을 확인합니다.`}
+                        </p>
+                      </div>
+                      <div className="inline-flex items-center gap-2 rounded-lg border border-blue-500/20 bg-blue-500/10 px-3 py-2 text-sm text-blue-300">
+                        <Shield className="h-4 w-4" />
+                        읽기 전용
+                      </div>
                     </div>
 
                     <div className="bg-[#111116] border border-white/10 rounded-xl p-6 space-y-6">
-                      {/* OCR Engine */}
-                      <div>
-                        <label className="block text-white font-medium mb-2 text-sm">OCR Engine</label>
-                        <select
-                          value={ocrEngine}
-                          onChange={(e) => { setOcrEngine(e.target.value); setHasChanges(true); }}
-                          className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent"
-                        >
-                          <option value="tesseract">Tesseract OCR</option>
-                          <option value="easyocr">EasyOCR</option>
-                          <option value="paddleocr">PaddleOCR</option>
-                          <option value="google-vision">Google Cloud Vision</option>
-                        </select>
-                        <p className="text-gray-500 text-xs mt-1">사용할 OCR 엔진을 선택하세요</p>
-                      </div>
+                      {activeCategoryData.settings.length > 0 ? (
+                        activeCategoryData.settings.map((setting) => (
+                          <div key={setting.key} className="space-y-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <label className="block text-white font-medium text-sm">{setting.label}</label>
+                              {setting.sensitive && (
+                                <span className="rounded-full border border-yellow-500/20 bg-yellow-500/10 px-2 py-0.5 text-xs text-yellow-300">
+                                  sensitive
+                                </span>
+                              )}
+                              {!setting.editable && (
+                                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-xs text-gray-400">
+                                  read-only
+                                </span>
+                              )}
+                            </div>
 
-                      {/* DPI */}
-                      <div>
-                        <label className="block text-white font-medium mb-2 text-sm">DPI 설정</label>
-                        <input
-                          type="number"
-                          value={ocrDpi}
-                          onChange={(e) => { setOcrDpi(e.target.value); setHasChanges(true); }}
-                          className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent"
-                          placeholder="300"
-                        />
-                        <p className="text-gray-500 text-xs mt-1">스캔 해상도 (권장: 300)</p>
-                      </div>
+                            {renderSettingControl(setting)}
 
-                      {/* Threshold */}
-                      <div>
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <label className="block text-white font-medium mb-1 text-sm">Adaptive Threshold</label>
-                            <p className="text-gray-500 text-xs">이미지 전처리 시 적응형 임계값 적용</p>
+                            <p className="text-gray-500 text-xs">
+                              {setting.sensitive
+                                ? '민감 설정은 API 마스킹 값만 표시하며 원본 노출은 지원하지 않습니다.'
+                                : 'Backend 설정 조회 API에서 반환된 현재 값입니다.'}
+                            </p>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => { setOcrThreshold(!ocrThreshold); setHasChanges(true); }}
-                            className={`
-                              relative w-12 h-6 rounded-full transition-colors
-                              ${ocrThreshold ? 'bg-primary' : 'bg-white/10'}
-                            `}
-                          >
-                            <div
-                              className={`
-                                absolute top-0.5 w-5 h-5 bg-white rounded-full transition-transform
-                                ${ocrThreshold ? 'left-6' : 'left-0.5'}
-                              `}
-                            />
-                          </button>
+                        ))
+                      ) : (
+                        <div className="rounded-lg border border-white/10 bg-white/5 p-5 text-center">
+                          <p className="text-sm text-gray-400">이 카테고리에 표시할 설정 항목이 없습니다.</p>
                         </div>
-                      </div>
-
-                      {/* Confidence */}
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <label className="block text-white font-medium text-sm">Confidence Threshold</label>
-                          <span className="text-primary font-medium text-sm">{ocrConfidence}%</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="0"
-                          max="100"
-                          value={ocrConfidence}
-                          onChange={(e) => { setOcrConfidence(e.target.value); setHasChanges(true); }}
-                          className="w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer"
-                        />
-                        <p className="text-gray-500 text-xs mt-1">최소 신뢰도 기준 (낮을수록 더 많은 텍스트 추출)</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* LLM Settings */}
-                {activeCategory === 'llm' && (
-                  <div className="space-y-6">
-                    <div>
-                      <h2 className="text-xl font-bold text-white mb-1">LLM 설정</h2>
-                      <p className="text-gray-400 text-sm">AI 모델 및 추론 파라미터 설정</p>
-                    </div>
-
-                    <div className="bg-[#111116] border border-white/10 rounded-xl p-6 space-y-6">
-                      {/* Ollama URL */}
-                      <div>
-                        <label className="block text-white font-medium mb-2 text-sm">Ollama URL</label>
-                        <input
-                          type="text"
-                          value={ollamaUrl}
-                          onChange={(e) => { setOllamaUrl(e.target.value); setHasChanges(true); }}
-                          className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent font-mono"
-                          placeholder="http://localhost:11434"
-                        />
-                        <p className="text-gray-500 text-xs mt-1">Ollama 서버 주소</p>
-                      </div>
-
-                      {/* Model */}
-                      <div>
-                        <label className="block text-white font-medium mb-2 text-sm">LLM Model</label>
-                        <select
-                          value={llmModel}
-                          onChange={(e) => { setLlmModel(e.target.value); setHasChanges(true); }}
-                          className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent"
-                        >
-                          <option value="gemma:7b">Gemma 7B</option>
-                          <option value="llama2:13b">Llama 2 13B</option>
-                          <option value="mistral:7b">Mistral 7B</option>
-                          <option value="mixtral:8x7b">Mixtral 8x7B</option>
-                          <option value="qwen:14b">Qwen 14B</option>
-                        </select>
-                        <p className="text-gray-500 text-xs mt-1">요약 및 분석에 사용할 모델</p>
-                      </div>
-
-                      {/* Temperature */}
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <label className="block text-white font-medium text-sm">Temperature</label>
-                          <span className="text-primary font-medium text-sm">{temperature}</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="0"
-                          max="2"
-                          step="0.1"
-                          value={temperature}
-                          onChange={(e) => { setTemperature(e.target.value); setHasChanges(true); }}
-                          className="w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer"
-                        />
-                        <p className="text-gray-500 text-xs mt-1">창의성 조절 (0.0 = 결정적, 2.0 = 창의적)</p>
-                      </div>
-
-                      {/* Max Tokens */}
-                      <div>
-                        <label className="block text-white font-medium mb-2 text-sm">Max Tokens</label>
-                        <input
-                          type="number"
-                          value={maxTokens}
-                          onChange={(e) => { setMaxTokens(e.target.value); setHasChanges(true); }}
-                          className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent"
-                          placeholder="2048"
-                        />
-                        <p className="text-gray-500 text-xs mt-1">최대 응답 길이</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* RAG Settings */}
-                {activeCategory === 'rag' && (
-                  <div className="space-y-6">
-                    <div>
-                      <h2 className="text-xl font-bold text-white mb-1">RAG 설정</h2>
-                      <p className="text-gray-400 text-sm">문서 검색 및 임베딩 파라미터</p>
-                    </div>
-
-                    <div className="bg-[#111116] border border-white/10 rounded-xl p-6 space-y-6">
-                      {/* Chunk Size */}
-                      <div>
-                        <label className="block text-white font-medium mb-2 text-sm">Chunk Size</label>
-                        <input
-                          type="number"
-                          value={chunkSize}
-                          onChange={(e) => { setChunkSize(e.target.value); setHasChanges(true); }}
-                          className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent"
-                          placeholder="512"
-                        />
-                        <p className="text-gray-500 text-xs mt-1">텍스트 청크 크기 (토큰 단위)</p>
-                      </div>
-
-                      {/* Chunk Overlap */}
-                      <div>
-                        <label className="block text-white font-medium mb-2 text-sm">Chunk Overlap</label>
-                        <input
-                          type="number"
-                          value={chunkOverlap}
-                          onChange={(e) => { setChunkOverlap(e.target.value); setHasChanges(true); }}
-                          className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent"
-                          placeholder="50"
-                        />
-                        <p className="text-gray-500 text-xs mt-1">청크 간 중복 토큰 수</p>
-                      </div>
-
-                      {/* Embedding Model */}
-                      <div>
-                        <label className="block text-white font-medium mb-2 text-sm">Embedding Model</label>
-                        <select
-                          value={embeddingModel}
-                          onChange={(e) => { setEmbeddingModel(e.target.value); setHasChanges(true); }}
-                          className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent"
-                        >
-                          <option value="all-MiniLM-L6-v2">all-MiniLM-L6-v2</option>
-                          <option value="all-mpnet-base-v2">all-mpnet-base-v2</option>
-                          <option value="multilingual-e5-base">multilingual-e5-base</option>
-                          <option value="bge-base-en-v1.5">bge-base-en-v1.5</option>
-                        </select>
-                        <p className="text-gray-500 text-xs mt-1">벡터 임베딩 모델</p>
-                      </div>
-
-                      {/* Top-K */}
-                      <div>
-                        <label className="block text-white font-medium mb-2 text-sm">Top-K 검색 결과</label>
-                        <input
-                          type="number"
-                          value={topK}
-                          onChange={(e) => { setTopK(e.target.value); setHasChanges(true); }}
-                          className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent"
-                          placeholder="5"
-                        />
-                        <p className="text-gray-500 text-xs mt-1">검색 시 반환할 최대 청크 수</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Worker Settings */}
-                {activeCategory === 'worker' && (
-                  <div className="space-y-6">
-                    <div>
-                      <h2 className="text-xl font-bold text-white mb-1">Worker 설정</h2>
-                      <p className="text-gray-400 text-sm">백그라운드 작업 처리 설정</p>
-                    </div>
-
-                    <div className="bg-[#111116] border border-white/10 rounded-xl p-6 space-y-6">
-                      {/* Worker Count */}
-                      <div>
-                        <label className="block text-white font-medium mb-2 text-sm">Worker 개수</label>
-                        <input
-                          type="number"
-                          value={workerCount}
-                          onChange={(e) => { setWorkerCount(e.target.value); setHasChanges(true); }}
-                          className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent"
-                          placeholder="4"
-                        />
-                        <p className="text-gray-500 text-xs mt-1">동시 실행 Worker 프로세스 수 (재시작 필요)</p>
-                      </div>
-
-                      {/* Concurrency */}
-                      <div>
-                        <label className="block text-white font-medium mb-2 text-sm">Concurrency</label>
-                        <input
-                          type="number"
-                          value={concurrency}
-                          onChange={(e) => { setConcurrency(e.target.value); setHasChanges(true); }}
-                          className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent"
-                          placeholder="2"
-                        />
-                        <p className="text-gray-500 text-xs mt-1">Worker당 동시 작업 수</p>
-                      </div>
-
-                      {/* Queue Limit */}
-                      <div>
-                        <label className="block text-white font-medium mb-2 text-sm">Queue 제한</label>
-                        <input
-                          type="number"
-                          value={queueLimit}
-                          onChange={(e) => { setQueueLimit(e.target.value); setHasChanges(true); }}
-                          className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent"
-                          placeholder="100"
-                        />
-                        <p className="text-gray-500 text-xs mt-1">큐당 최대 대기 작업 수</p>
-                      </div>
-
-                      {/* Retry Limit */}
-                      <div>
-                        <label className="block text-white font-medium mb-2 text-sm">재시도 횟수</label>
-                        <input
-                          type="number"
-                          value={retryLimit}
-                          onChange={(e) => { setRetryLimit(e.target.value); setHasChanges(true); }}
-                          className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent"
-                          placeholder="3"
-                        />
-                        <p className="text-gray-500 text-xs mt-1">작업 실패 시 최대 재시도 횟수</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Storage Settings */}
-                {activeCategory === 'storage' && (
-                  <div className="space-y-6">
-                    <div>
-                      <h2 className="text-xl font-bold text-white mb-1">Storage 설정</h2>
-                      <p className="text-gray-400 text-sm">파일 저장소 및 보관 정책</p>
-                    </div>
-
-                    <div className="bg-[#111116] border border-white/10 rounded-xl p-6 space-y-6">
-                      {/* Storage Backend */}
-                      <div>
-                        <label className="block text-white font-medium mb-2 text-sm">Storage Backend</label>
-                        <select
-                          value={storageBackend}
-                          onChange={(e) => { setStorageBackend(e.target.value); setHasChanges(true); }}
-                          className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent"
-                        >
-                          <option value="local">Local Filesystem</option>
-                          <option value="s3">Amazon S3</option>
-                          <option value="gcs">Google Cloud Storage</option>
-                          <option value="azure">Azure Blob Storage</option>
-                        </select>
-                        <p className="text-gray-500 text-xs mt-1">파일 저장 백엔드</p>
-                      </div>
-
-                      {/* Storage Path */}
-                      <div>
-                        <label className="block text-white font-medium mb-2 text-sm">Storage Path</label>
-                        <input
-                          type="text"
-                          value={storagePath}
-                          onChange={(e) => { setStoragePath(e.target.value); setHasChanges(true); }}
-                          className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent font-mono"
-                          placeholder="/var/lib/ai-platform/storage"
-                        />
-                        <p className="text-gray-500 text-xs mt-1">로컬 저장소 경로 또는 버킷 이름</p>
-                      </div>
-
-                      {/* Max File Size */}
-                      <div>
-                        <label className="block text-white font-medium mb-2 text-sm">최대 파일 크기 (MB)</label>
-                        <input
-                          type="number"
-                          value={maxFileSize}
-                          onChange={(e) => { setMaxFileSize(e.target.value); setHasChanges(true); }}
-                          className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent"
-                          placeholder="50"
-                        />
-                        <p className="text-gray-500 text-xs mt-1">업로드 가능한 최대 파일 크기</p>
-                      </div>
-
-                      {/* Retention Days */}
-                      <div>
-                        <label className="block text-white font-medium mb-2 text-sm">보관 기간 (일)</label>
-                        <input
-                          type="number"
-                          value={retentionDays}
-                          onChange={(e) => { setRetentionDays(e.target.value); setHasChanges(true); }}
-                          className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent"
-                          placeholder="90"
-                        />
-                        <p className="text-gray-500 text-xs mt-1">문서 자동 삭제 기간 (0 = 무제한)</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Security Settings */}
-                {activeCategory === 'security' && (
-                  <div className="space-y-6">
-                    <div>
-                      <h2 className="text-xl font-bold text-white mb-1">Security 설정</h2>
-                      <p className="text-gray-400 text-sm">보안 및 접근 제어 설정</p>
-                    </div>
-
-                    <div className="bg-[#111116] border border-white/10 rounded-xl p-6 space-y-6">
-                      {/* JWT Expiry */}
-                      <div>
-                        <label className="block text-white font-medium mb-2 text-sm">JWT 만료 시간 (시간)</label>
-                        <input
-                          type="number"
-                          value={jwtExpiry}
-                          onChange={(e) => { setJwtExpiry(e.target.value); setHasChanges(true); }}
-                          className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent"
-                          placeholder="24"
-                        />
-                        <p className="text-gray-500 text-xs mt-1">인증 토큰 유효 시간</p>
-                      </div>
-
-                      {/* MFA */}
-                      <div>
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <label className="block text-white font-medium mb-1 text-sm">2단계 인증 (MFA)</label>
-                            <p className="text-gray-500 text-xs">모든 관리자 계정에 MFA 강제 적용</p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => { setMfaEnabled(!mfaEnabled); setHasChanges(true); }}
-                            className={`
-                              relative w-12 h-6 rounded-full transition-colors
-                              ${mfaEnabled ? 'bg-primary' : 'bg-white/10'}
-                            `}
-                          >
-                            <div
-                              className={`
-                                absolute top-0.5 w-5 h-5 bg-white rounded-full transition-transform
-                                ${mfaEnabled ? 'left-6' : 'left-0.5'}
-                              `}
-                            />
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* API Rate Limit */}
-                      <div>
-                        <label className="block text-white font-medium mb-2 text-sm">API Rate Limit (req/hour)</label>
-                        <input
-                          type="number"
-                          value={apiRateLimit}
-                          onChange={(e) => { setApiRateLimit(e.target.value); setHasChanges(true); }}
-                          className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent"
-                          placeholder="1000"
-                        />
-                        <p className="text-gray-500 text-xs mt-1">사용자당 시간당 API 요청 제한</p>
-                      </div>
-
-                      {/* CORS */}
-                      <div>
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <label className="block text-white font-medium mb-1 text-sm">CORS 활성화</label>
-                            <p className="text-gray-500 text-xs">Cross-Origin Resource Sharing 허용</p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => { setCorsEnabled(!corsEnabled); setHasChanges(true); }}
-                            className={`
-                              relative w-12 h-6 rounded-full transition-colors
-                              ${corsEnabled ? 'bg-primary' : 'bg-white/10'}
-                            `}
-                          >
-                            <div
-                              className={`
-                                absolute top-0.5 w-5 h-5 bg-white rounded-full transition-transform
-                                ${corsEnabled ? 'left-6' : 'left-0.5'}
-                              `}
-                            />
-                          </button>
-                        </div>
-                      </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -707,16 +474,27 @@ export function AdminSettingsPage({ onLogout }: AdminSettingsPageProps) {
                     활성 설정
                   </h3>
                   <div className="space-y-3">
-                    {activeSettings.map((setting, idx) => (
-                      <div key={idx} className="p-3 bg-white/5 rounded-lg">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-gray-400 text-xs">{setting.category}</span>
-                          <CheckCircle2 className="w-3 h-3 text-green-400" />
-                        </div>
-                        <p className="text-white text-sm font-medium mb-0.5">{setting.label}</p>
-                        <code className="text-primary text-xs font-mono">{setting.value}</code>
+                    {isLoading ? (
+                      <div className="flex items-center gap-2 text-sm text-gray-400">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        요약 로딩 중
                       </div>
-                    ))}
+                    ) : activeSettings.length > 0 ? (
+                      activeSettings.map((setting) => (
+                        <div key={setting.key} className="p-3 bg-white/5 rounded-lg">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-gray-400 text-xs">{setting.category}</span>
+                            <CheckCircle2 className="w-3 h-3 text-green-400" />
+                          </div>
+                          <p className="text-white text-sm font-medium mb-0.5">{setting.label}</p>
+                          <code className={`text-xs font-mono ${setting.sensitive ? 'text-yellow-300' : 'text-primary'}`}>
+                            {setting.value}
+                          </code>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-gray-500">표시할 활성 설정이 없습니다.</p>
+                    )}
                   </div>
                 </div>
 
@@ -761,20 +539,16 @@ export function AdminSettingsPage({ onLogout }: AdminSettingsPageProps) {
                     <Clock className="w-5 h-5 text-primary" />
                     변경 이력
                   </h3>
-                  <div className="space-y-3">
-                    {changeHistory.map((change, idx) => (
-                      <div key={idx} className="p-3 bg-white/5 rounded-lg">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-gray-400 text-xs">{change.time}</span>
-                          <div className="flex items-center gap-1.5">
-                            <User className="w-3 h-3 text-gray-500" />
-                            <span className="text-gray-400 text-xs">{change.user}</span>
-                          </div>
-                        </div>
-                        <p className="text-white text-sm font-medium mb-1">{change.setting}</p>
-                        <code className="text-gray-400 text-xs font-mono">{change.value}</code>
+                  <div className="p-3 bg-white/5 rounded-lg">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-gray-400 text-xs">준비 중</span>
+                      <div className="flex items-center gap-1.5">
+                        <User className="w-3 h-3 text-gray-500" />
+                        <span className="text-gray-400 text-xs">System</span>
                       </div>
-                    ))}
+                    </div>
+                    <p className="text-white text-sm font-medium mb-1">Read-only Settings</p>
+                    <code className="text-gray-400 text-xs font-mono">변경 이력 API 연결 전까지 조회 전용으로 표시됩니다.</code>
                   </div>
                 </div>
               </div>

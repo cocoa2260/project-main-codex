@@ -15,6 +15,26 @@ export interface AdminSystemHealthResponse {
   services: AdminHealthService[];
 }
 
+export type AdminSettingValue = string | number | boolean | string[] | null;
+
+export interface AdminSettingItem {
+  key: string;
+  label: string;
+  value: AdminSettingValue;
+  editable: boolean;
+  sensitive: boolean;
+}
+
+export interface AdminSettingsCategory {
+  id: string;
+  name: string;
+  settings: AdminSettingItem[];
+}
+
+export interface AdminSettingsResponse {
+  categories: AdminSettingsCategory[];
+}
+
 export type AdminWorkerStatus = 'ACTIVE' | 'IDLE' | 'OFFLINE' | 'WARNING';
 
 export interface AdminQueueItem {
