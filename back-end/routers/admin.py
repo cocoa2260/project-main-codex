@@ -22,6 +22,7 @@ from schemas.admin import AdminDocumentListResponse
 from schemas.admin import AdminLogListResponse
 from schemas.admin import AdminLogSummaryResponse
 from schemas.admin import AdminQueueListResponse
+from schemas.admin import AdminSettingsResponse
 from schemas.admin import AdminSystemHealthResponse
 from schemas.admin import AdminTaskDetailResponse
 from schemas.admin import AdminTaskListResponse
@@ -31,6 +32,7 @@ from schemas.admin import AdminWorkerListResponse
 from services.admin_service import get_admin_document_detail
 from services.admin_service import get_admin_logs_summary
 from services.admin_service import get_admin_queues
+from services.admin_service import get_admin_settings
 from services.admin_service import get_admin_task_detail
 from services.admin_service import get_admin_user_detail
 from services.admin_service import get_admin_workers
@@ -160,6 +162,16 @@ def list_workers(
     current_user: User = Depends(require_admin),
 ):
     return get_admin_workers()
+
+
+@router.get(
+    "/settings",
+    response_model=AdminSettingsResponse,
+)
+def admin_settings(
+    current_user: User = Depends(require_admin),
+):
+    return get_admin_settings()
 
 
 @router.get(

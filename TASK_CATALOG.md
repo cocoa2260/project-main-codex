@@ -110,6 +110,7 @@
 | FE-019 | Queue / Worker Monitoring Integration | Medium | DONE |
 | BE-ADMIN-007 | Admin Logs API | Medium | DONE |
 | FE-020 | Admin Logs API Integration | Medium | DONE |
+| BE-ADMIN-008 | Admin Settings Read API | Medium | DONE |
 
 ---
 
@@ -117,7 +118,7 @@
 
 | ID | Task | Priority | Status |
 |------|------|------|------|
-| BE-ADMIN-008 | Failed Task Retry API | Medium | TODO |
+| BE-ADMIN-012 | Failed Task Retry API | Medium | TODO |
 | FE-021 | Failed Task Retry UI Integration | Medium | TODO |
 | BE-ADMIN-009 | Document Retry API | Medium | TODO |
 | FE-022 | Document Retry UI Integration | Medium | TODO |
@@ -278,6 +279,20 @@ Status: DONE
 - 모든 endpoint require_admin 보호
 - DB model 변경 및 migration 없음
 - Read-only logs API only
+
+Priority: Medium
+Status: DONE
+
+### BE-ADMIN-008 Admin Settings Read API
+
+- Admin Settings 화면용 설정 조회 API 추가
+- GET /api/admin/settings
+- OCR / LLM / Embedding / Worker / Storage / Security 카테고리로 설정 그룹화
+- 모든 설정은 editable=false 고정
+- 민감정보 미노출 및 URL credential 마스킹 적용
+- 모든 endpoint require_admin 보호
+- DB 저장 / migration / 환경변수 / Docker 변경 없음
+- Read-only settings API only
 
 Priority: Medium
 Status: DONE

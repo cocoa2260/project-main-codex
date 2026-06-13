@@ -93,6 +93,27 @@ class AdminWorkerListResponse(BaseModel):
     details: str | None = None
 
 
+AdminSettingValue = str | int | bool | list[str] | None
+
+
+class AdminSettingItemResponse(BaseModel):
+    key: str
+    label: str
+    value: AdminSettingValue
+    editable: bool
+    sensitive: bool
+
+
+class AdminSettingsCategoryResponse(BaseModel):
+    id: str
+    name: str
+    settings: list[AdminSettingItemResponse]
+
+
+class AdminSettingsResponse(BaseModel):
+    categories: list[AdminSettingsCategoryResponse]
+
+
 class AdminLogItemResponse(BaseModel):
     id: UUID
     timestamp: datetime

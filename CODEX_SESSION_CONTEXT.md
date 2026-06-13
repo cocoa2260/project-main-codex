@@ -186,6 +186,19 @@ Summary:
 - Log read failures return empty results with warning_message instead of failing the whole API
 - No DB migration, model changes, Docker changes, logging structure changes, or action APIs
 
+### BE-ADMIN-008
+Admin Settings Read API
+Status: DONE
+Summary:
+- Added admin settings read API at GET /api/admin/settings
+- Returned OCR, LLM, Embedding, Worker, Storage, and Security settings categories
+- Added AdminSettingsResponse, AdminSettingsCategoryResponse, and AdminSettingItemResponse DTOs
+- Kept all returned settings editable=false for this read-only step
+- Masked URL credentials defensively and did not expose SECRET_KEY, DATABASE_URL, passwords, API keys, or tokens
+- Protected endpoint with require_admin
+- No DB migration, model changes, environment variable changes, Docker changes, or settings save API
+- py_compile and API auth checks passed
+
 ### FE-017
 Admin User Management API Integration
 Status: DONE
