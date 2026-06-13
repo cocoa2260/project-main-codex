@@ -228,6 +228,21 @@ Summary:
 - Included queue and worker refresh in manual refresh and 30 second polling with cleanup
 - Preserved existing task table, monitoring cards, worker/queue sections, and disabled future action buttons
 
+### FE-020
+Admin Logs API Integration
+Status: DONE
+Summary:
+- Added admin logs API client for GET /api/admin/logs and GET /api/admin/logs/summary
+- Added AdminLogsResponse, AdminLogItem, AdminLogSummaryResponse, AdminLogLevel, and AdminLogListParams frontend DTOs
+- Replaced AdminLogPage log mock data with API-backed log list data
+- Replaced AdminLogPage summary/stat mock data with API-backed summary data
+- Displayed timestamp, level, service, source, message, details, related_task_id, and related_document_id
+- Connected search(q), level filter, service filter, page, and limit to API query params
+- Added independent loading, error, empty, warning, pagination, manual refresh, and 30 second polling states for logs and summary
+- Preserved System Health integration and existing log monitoring sections
+- Kept API-less log actions disabled/prepared and did not implement state-changing log actions
+- Backend unchanged
+
 ---
 
 ### FE-011

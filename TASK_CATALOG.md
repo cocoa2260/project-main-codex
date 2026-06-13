@@ -109,7 +109,7 @@
 | BE-ADMIN-006 | Admin Queue / Worker Monitoring API | Medium | DONE |
 | FE-019 | Queue / Worker Monitoring Integration | Medium | DONE |
 | BE-ADMIN-007 | Admin Logs API | Medium | DONE |
-| FE-020 | Admin Settings Page API Integration | Medium | TODO |
+| FE-020 | Admin Logs API Integration | Medium | DONE |
 
 ---
 
@@ -294,6 +294,24 @@ Status: DONE
 - Queue / Worker 독립 loading / error / empty 상태 추가
 - 기존 Refresh 및 30초 polling에 Queue / Worker 갱신 포함
 - Read-only monitoring UI만 구현
+
+Priority: Medium
+Status: DONE
+
+### FE-020 Admin Logs API Integration
+
+- Admin logs API client 추가
+- Admin logs DTO 타입 추가
+- AdminLogPage log mock data 제거
+- AdminLogPage summary/stat mock data 제거
+- GET /api/admin/logs 목록 연동
+- GET /api/admin/logs/summary 요약 연동
+- q / level / service / page / limit API query 연결
+- Pagination / Loading / Error / Empty / Refresh 상태 추가
+- 30초 polling 및 unmount cleanup 적용
+- 로그 action UI는 삭제하지 않고 준비 중/비활성 처리
+- Backend 변경 없음
+- Read-only logs monitoring UI만 구현
 
 Priority: Medium
 Status: DONE

@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import { getAdminSystemHealth } from '../../api/admin';
+import { getAdminLogSummary, getAdminLogs, getAdminSystemHealth } from '../../api/admin';
 import { Sidebar } from '../../components/common/Sidebar';
-import type { AdminHealthService, AdminHealthServiceStatus } from '../../types/admin';
+import type {
+  AdminHealthService,
+  AdminHealthServiceStatus,
+  AdminLogItem,
+  AdminLogLevel,
+  AdminLogSummaryResponse,
+} from '../../types/admin';
 import {
   Activity,
   Menu,
@@ -14,7 +20,6 @@ import {
   ChevronDown,
   ChevronUp,
   Copy,
-  Eye,
   RotateCcw,
   FileCode,
   AlertCircle,
@@ -22,7 +27,6 @@ import {
   Info,
   CheckCircle2,
   XCircle,
-  User,
   Server,
   Database,
   Cpu,
@@ -32,19 +36,6 @@ import {
   Filter,
   ExternalLink
 } from 'lucide-react';
-
-interface LogEntry {
-  id: string;
-  timestamp: string;
-  level: 'info' | 'warning' | 'error' | 'success';
-  service: string;
-  source: string;
-  message: string;
-  user?: string;
-  details?: string;
-  relatedJob?: string;
-  relatedDocument?: string;
-}
 
 interface AdminLogPageProps {
   onLogout?: () => void;
@@ -60,6 +51,38 @@ interface SystemHealthItem {
 }
 
 const AUTO_REFRESH_INTERVAL_MS = 30_000;
+const PAGE_LIMIT = 50;
+
+type LogLevelFilter = 'all' | AdminLogLevel;
+
+type ServiceFilter = 'all' | 'OCR' | 'Queue' | 'API' | 'Security';
+
+interface LogFilterOption {
+  label: string;
+  value: LogLevelFilter | ServiceFilter;
+  type: 'level' | 'service' | 'all';
+}
+
+const logFilterOptions: LogFilterOption[] = [
+  { label: 'All', value: 'all', type: 'all' },
+  { label: 'Info', value: 'INFO', type: 'level' },
+  { label: 'Success', value: 'SUCCESS', type: 'level' },
+  { label: 'Warning', value: 'WARNING', type: 'level' },
+  { label: 'Error', value: 'ERROR', type: 'level' },
+  { label: 'OCR', value: 'OCR', type: 'service' },
+  { label: 'Queue', value: 'Queue', type: 'service' },
+  { label: 'API', value: 'API', type: 'service' },
+  { label: 'Security', value: 'Security', type: 'service' },
+];
+
+const emptySummary: AdminLogSummaryResponse = {
+  total: 0,
+  info: 0,
+  warning: 0,
+  error: 0,
+  success: 0,
+  recent_errors: [],
+};
 
 const healthServiceOrder = ['api', 'postgresql', 'redis', 'ollama', 'storage', 'celery'] as const;
 
@@ -72,9 +95,9 @@ const healthServicePresentation: Record<typeof healthServiceOrder[number], { nam
   celery: { name: 'Celery', icon: Cpu },
 };
 
-function getApiErrorMessage(error: unknown): string {
+function getApiErrorMessage(error: unknown, fallback = '요청 정보를 불러오지 못했습니다.'): string {
   const response = (error as { response?: { data?: { detail?: string; message?: string } } }).response;
-  return response?.data?.detail ?? response?.data?.message ?? (error instanceof Error ? error.message : '시스템 헬스 정보를 불러오지 못했습니다.');
+  return response?.data?.detail ?? response?.data?.message ?? (error instanceof Error ? error.message : fallback);
 }
 
 function normalizeHealthServiceKey(service: Pick<AdminHealthService, 'key' | 'name'>): typeof healthServiceOrder[number] | null {
@@ -102,112 +125,113 @@ function formatDateTime(value?: string | null): string {
   }).format(date);
 }
 
+function formatTime(value?: string | null): string {
+  if (!value) return '-';
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return new Intl.DateTimeFormat('ko-KR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).format(date);
+}
+
+function formatDetails(details: AdminLogItem['details']): string {
+  if (!details) return '';
+
+  return Object.entries(details)
+    .map(([key, value]) => `${key}: ${value ?? '-'}`)
+    .join('\n');
+}
+
 export function AdminLogPage({ onLogout }: AdminLogPageProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [filterLevel, setFilterLevel] = useState<'all' | 'info' | 'warning' | 'error' | 'ocr' | 'queue' | 'api' | 'security'>('all');
+  const [filterLevel, setFilterLevel] = useState<LogLevelFilter>('all');
+  const [filterService, setFilterService] = useState<ServiceFilter>('all');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
   const [expandedLog, setExpandedLog] = useState<string | null>(null);
+  const [logs, setLogs] = useState<AdminLogItem[]>([]);
+  const [summary, setSummary] = useState<AdminLogSummaryResponse>(emptySummary);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: PAGE_LIMIT,
+    total: 0,
+    total_pages: 0,
+  });
+  const [isLogsLoading, setIsLogsLoading] = useState(true);
+  const [isLogsRefreshing, setIsLogsRefreshing] = useState(false);
+  const [logsErrorMessage, setLogsErrorMessage] = useState<string | null>(null);
+  const [logsWarningMessage, setLogsWarningMessage] = useState<string | null>(null);
+  const [isSummaryLoading, setIsSummaryLoading] = useState(true);
+  const [isSummaryRefreshing, setIsSummaryRefreshing] = useState(false);
+  const [summaryErrorMessage, setSummaryErrorMessage] = useState<string | null>(null);
+  const [summaryWarningMessage, setSummaryWarningMessage] = useState<string | null>(null);
   const [healthServices, setHealthServices] = useState<AdminHealthService[]>([]);
   const [isHealthLoading, setIsHealthLoading] = useState(true);
   const [isHealthRefreshing, setIsHealthRefreshing] = useState(false);
   const [healthErrorMessage, setHealthErrorMessage] = useState<string | null>(null);
 
-  const stats = [
-    { label: '전체 로그', value: '12,456', change: '+342', icon: Terminal, color: 'primary' },
-    { label: 'Errors', value: '23', change: '+5', icon: XCircle, color: 'red' },
-    { label: 'Warnings', value: '156', change: '+18', icon: AlertTriangle, color: 'yellow' },
-    { label: 'OCR Events', value: '3,421', change: '+89', icon: Eye, color: 'blue' },
-    { label: 'Queue Events', value: '5,234', change: '+156', icon: Zap, color: 'purple' },
-    { label: 'API Events', value: '3,622', change: '+94', icon: Globe, color: 'green' }
-  ];
-
-  const logs: LogEntry[] = [
-    {
-      id: 'log-001',
-      timestamp: '2026-06-03 14:42:15',
-      level: 'info',
-      service: 'OCR',
-      source: 'worker-1',
-      message: 'OCR processing started for document: 계약서_검토본.pdf',
-      user: '김철수',
-      details: 'Document ID: doc-12345\nPages: 15\nEngine: Tesseract\nDPI: 300',
-      relatedJob: 'job-001',
-      relatedDocument: 'doc-12345'
-    },
-    {
-      id: 'log-002',
-      timestamp: '2026-06-03 14:41:48',
-      level: 'warning',
-      service: 'Worker',
-      source: 'celery-monitor',
-      message: 'Worker overload detected - OCR queue backlog: 45 items',
-      details: 'Queue: ocr-queue\nWaiting jobs: 45\nActive workers: 2\nRecommendation: Scale up workers'
-    },
-    {
-      id: 'log-003',
-      timestamp: '2026-06-03 14:40:32',
-      level: 'error',
-      service: 'OCR',
-      source: 'worker-2',
-      message: 'OCR processing timeout after 180s',
-      user: '정수진',
-      details: 'Document: 기술문서_API.pdf\nError: TimeoutError\nStack trace: ...',
-      relatedJob: 'job-004',
-      relatedDocument: 'doc-67890'
-    },
-    {
-      id: 'log-004',
-      timestamp: '2026-06-03 14:39:15',
-      level: 'success',
-      service: 'Embedding',
-      source: 'worker-3',
-      message: 'Document embedding completed successfully',
-      user: '최민지',
-      details: 'Document: 회의록_0515.pdf\nChunks: 156\nModel: all-MiniLM-L6-v2\nDuration: 8.2s',
-      relatedJob: 'job-005',
-      relatedDocument: 'doc-54321'
-    },
-    {
-      id: 'log-005',
-      timestamp: '2026-06-03 14:38:22',
-      level: 'info',
-      service: 'API',
-      source: 'api-server',
-      message: 'Document uploaded via API endpoint',
-      user: '이영희',
-      details: 'Endpoint: POST /api/documents/upload\nFile size: 2.4 MB\nIP: 192.168.1.45'
-    },
-    {
-      id: 'log-006',
-      timestamp: '2026-06-03 14:37:10',
-      level: 'warning',
-      service: 'Queue',
-      source: 'redis',
-      message: 'Queue memory usage approaching threshold (85%)',
-      details: 'Current: 850 MB / 1000 MB\nOldest job: 15 minutes\nRecommendation: Clear completed jobs'
-    },
-    {
-      id: 'log-007',
-      timestamp: '2026-06-03 14:35:45',
-      level: 'error',
-      service: 'Security',
-      source: 'auth-middleware',
-      message: 'Failed login attempt detected',
-      details: 'Username: unknown_user\nIP: 203.142.65.23\nAttempts: 5\nAction: IP temporarily blocked'
-    },
-    {
-      id: 'log-008',
-      timestamp: '2026-06-03 14:34:12',
-      level: 'info',
-      service: 'LLM',
-      source: 'ollama',
-      message: 'AI summary generation completed',
-      user: '박민수',
-      details: 'Model: gemma:7b\nTokens: 1,234\nTemperature: 0.7\nDuration: 5.3s',
-      relatedJob: 'job-002'
+  const fetchLogs = useCallback(async (page: number, showLoading = false) => {
+    if (showLoading) {
+      setIsLogsLoading(true);
+    } else {
+      setIsLogsRefreshing(true);
     }
-  ];
+
+    setLogsErrorMessage(null);
+    setLogsWarningMessage(null);
+
+    try {
+      const response = await getAdminLogs({
+        q: searchQuery.trim() || undefined,
+        level: filterLevel === 'all' ? undefined : filterLevel,
+        service: filterService === 'all' ? undefined : filterService,
+        from: fromDate || undefined,
+        to: toDate || undefined,
+        page,
+        limit: PAGE_LIMIT,
+      });
+
+      setLogs(response.items);
+      setPagination(response.pagination);
+      setLogsWarningMessage(response.warning_message ?? null);
+    } catch (error) {
+      setLogsErrorMessage(getApiErrorMessage(error, '로그 목록을 불러오지 못했습니다.'));
+      setLogs([]);
+      setPagination((current) => ({ ...current, page, total: 0, total_pages: 0 }));
+    } finally {
+      setIsLogsLoading(false);
+      setIsLogsRefreshing(false);
+    }
+  }, [filterLevel, filterService, fromDate, searchQuery, toDate]);
+
+  const fetchSummary = useCallback(async (showLoading = false) => {
+    if (showLoading) {
+      setIsSummaryLoading(true);
+    } else {
+      setIsSummaryRefreshing(true);
+    }
+
+    setSummaryErrorMessage(null);
+    setSummaryWarningMessage(null);
+
+    try {
+      const response = await getAdminLogSummary();
+      setSummary(response);
+      setSummaryWarningMessage(response.warning_message ?? null);
+    } catch (error) {
+      setSummaryErrorMessage(getApiErrorMessage(error, '로그 요약을 불러오지 못했습니다.'));
+      setSummary(emptySummary);
+    } finally {
+      setIsSummaryLoading(false);
+      setIsSummaryRefreshing(false);
+    }
+  }, []);
 
   const fetchSystemHealth = useCallback(async (showLoading = false) => {
     if (showLoading) {
@@ -222,7 +246,7 @@ export function AdminLogPage({ onLogout }: AdminLogPageProps) {
       const response = await getAdminSystemHealth();
       setHealthServices(response.services);
     } catch (error) {
-      setHealthErrorMessage(getApiErrorMessage(error));
+      setHealthErrorMessage(getApiErrorMessage(error, '시스템 헬스 정보를 불러오지 못했습니다.'));
     } finally {
       setIsHealthLoading(false);
       setIsHealthRefreshing(false);
@@ -231,21 +255,25 @@ export function AdminLogPage({ onLogout }: AdminLogPageProps) {
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
+      void fetchLogs(1, true);
+      void fetchSummary(true);
       void fetchSystemHealth(true);
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
-  }, [fetchSystemHealth]);
+  }, [fetchLogs, fetchSummary, fetchSystemHealth]);
 
   useEffect(() => {
     if (!autoRefresh) return undefined;
 
     const intervalId = window.setInterval(() => {
+      void fetchLogs(pagination.page, false);
+      void fetchSummary(false);
       void fetchSystemHealth(false);
     }, AUTO_REFRESH_INTERVAL_MS);
 
     return () => window.clearInterval(intervalId);
-  }, [autoRefresh, fetchSystemHealth]);
+  }, [autoRefresh, fetchLogs, fetchSummary, fetchSystemHealth, pagination.page]);
 
   const systemHealth: SystemHealthItem[] = useMemo(() => {
     const servicesByKey = new Map<typeof healthServiceOrder[number], AdminHealthService>();
@@ -271,54 +299,48 @@ export function AdminLogPage({ onLogout }: AdminLogPageProps) {
     });
   }, [healthErrorMessage, healthServices]);
 
-  const recentErrors = [
-    { time: '14:40:32', message: 'OCR timeout after 180s', service: 'OCR' },
-    { time: '14:35:45', message: 'Failed login attempt', service: 'Security' },
-    { time: '14:28:15', message: 'Worker connection lost', service: 'Worker' },
-    { time: '14:15:20', message: 'Database query timeout', service: 'Database' }
-  ];
+  const stats = useMemo(() => [
+    { label: '전체 로그', value: summary.total.toLocaleString(), change: `page ${pagination.page}`, icon: Terminal, color: 'primary' },
+    { label: '정보', value: summary.info.toLocaleString(), change: 'INFO', icon: Info, color: 'blue' },
+    { label: '성공', value: summary.success.toLocaleString(), change: 'SUCCESS', icon: CheckCircle2, color: 'green' },
+    { label: '경고', value: summary.warning.toLocaleString(), change: 'WARNING', icon: AlertTriangle, color: 'yellow' },
+    { label: '오류', value: summary.error.toLocaleString(), change: 'ERROR', icon: XCircle, color: 'red' },
+    { label: '최근 오류', value: summary.recent_errors.length.toLocaleString(), change: 'summary', icon: AlertCircle, color: 'purple' },
+  ], [pagination.page, summary]);
 
-  const realtimeActivity = [
-    { time: '14:42', message: 'OCR processing started', type: 'info' as const },
-    { time: '14:41', message: 'Worker overload detected', type: 'warning' as const },
-    { time: '14:40', message: 'OCR timeout occurred', type: 'error' as const },
-    { time: '14:39', message: 'Embedding completed', type: 'success' as const },
-    { time: '14:38', message: 'Document uploaded', type: 'info' as const }
-  ];
+  const recentErrors = summary.recent_errors;
 
-  const filteredLogs = logs.filter(log => {
-    const matchesSearch = log.message.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         log.service.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         log.source.toLowerCase().includes(searchQuery.toLowerCase());
+  const realtimeActivity = logs.slice(0, 5).map((log) => ({
+    id: log.id,
+    time: formatTime(log.timestamp),
+    message: log.message,
+    type: log.level.toLowerCase() as 'success' | 'error' | 'warning' | 'info',
+  }));
 
-    const matchesFilter =
-      filterLevel === 'all' ? true :
-      filterLevel === 'info' ? log.level === 'info' :
-      filterLevel === 'warning' ? log.level === 'warning' :
-      filterLevel === 'error' ? log.level === 'error' :
-      filterLevel === 'ocr' ? log.service.toLowerCase() === 'ocr' :
-      filterLevel === 'queue' ? log.service.toLowerCase() === 'queue' :
-      filterLevel === 'api' ? log.service.toLowerCase() === 'api' :
-      filterLevel === 'security' ? log.service.toLowerCase() === 'security' : true;
-
-    return matchesSearch && matchesFilter;
-  });
-
-  const getLevelColor = (level: LogEntry['level']) => {
+  const getLevelColor = (level: AdminLogLevel) => {
     switch (level) {
-      case 'info': return 'text-blue-400 bg-blue-500/10 border-blue-500/20';
-      case 'warning': return 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20';
-      case 'error': return 'text-red-400 bg-red-500/10 border-red-500/20';
-      case 'success': return 'text-green-400 bg-green-500/10 border-green-500/20';
+      case 'INFO': return 'text-blue-400 bg-blue-500/10 border-blue-500/20';
+      case 'WARNING': return 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20';
+      case 'ERROR': return 'text-red-400 bg-red-500/10 border-red-500/20';
+      case 'SUCCESS': return 'text-green-400 bg-green-500/10 border-green-500/20';
     }
   };
 
-  const getLevelIcon = (level: LogEntry['level']) => {
+  const getLevelIcon = (level: AdminLogLevel) => {
     switch (level) {
-      case 'info': return <Info className="w-4 h-4" />;
-      case 'warning': return <AlertTriangle className="w-4 h-4" />;
-      case 'error': return <XCircle className="w-4 h-4" />;
-      case 'success': return <CheckCircle2 className="w-4 h-4" />;
+      case 'INFO': return <Info className="w-4 h-4" />;
+      case 'WARNING': return <AlertTriangle className="w-4 h-4" />;
+      case 'ERROR': return <XCircle className="w-4 h-4" />;
+      case 'SUCCESS': return <CheckCircle2 className="w-4 h-4" />;
+    }
+  };
+
+  const getLevelLabel = (level: AdminLogLevel) => {
+    switch (level) {
+      case 'INFO': return '정보';
+      case 'SUCCESS': return '성공';
+      case 'WARNING': return '경고';
+      case 'ERROR': return '오류';
     }
   };
 
@@ -340,13 +362,43 @@ export function AdminLogPage({ onLogout }: AdminLogPageProps) {
     }
   };
 
-  const handleCopyLog = (log: LogEntry) => {
-    const logText = `[${log.timestamp}] [${log.level.toUpperCase()}] [${log.service}/${log.source}] ${log.message}`;
-    navigator.clipboard.writeText(logText);
+  const handleRefresh = () => {
+    void fetchLogs(pagination.page, false);
+    void fetchSummary(false);
+    void fetchSystemHealth(false);
   };
 
-  const handleExportLogs = () => {
-    console.log('Exporting logs...');
+  const handlePageChange = (nextPage: number) => {
+    if (nextPage < 1 || (pagination.total_pages > 0 && nextPage > pagination.total_pages)) return;
+    void fetchLogs(nextPage, true);
+  };
+
+  const handleFilterChange = (option: LogFilterOption) => {
+    if (option.type === 'all') {
+      setFilterLevel('all');
+      setFilterService('all');
+      return;
+    }
+
+    if (option.type === 'level') {
+      setFilterLevel(option.value as LogLevelFilter);
+      setFilterService('all');
+      return;
+    }
+
+    setFilterLevel('all');
+    setFilterService(option.value as ServiceFilter);
+  };
+
+  const isFilterActive = (option: LogFilterOption) => {
+    if (option.type === 'all') return filterLevel === 'all' && filterService === 'all';
+    if (option.type === 'level') return filterLevel === option.value;
+    return filterService === option.value;
+  };
+
+  const handleCopyLog = (log: AdminLogItem) => {
+    const logText = `[${log.timestamp}] [${log.level}] [${log.service ?? '-'}/${log.source}] ${log.message}`;
+    navigator.clipboard.writeText(logText);
   };
 
   return (
@@ -399,8 +451,19 @@ export function AdminLogPage({ onLogout }: AdminLogPageProps) {
 
             <button
               type="button"
-              onClick={handleExportLogs}
-              className="flex items-center gap-2 px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg transition-colors"
+              onClick={handleRefresh}
+              disabled={isLogsLoading || isSummaryLoading || isHealthLoading}
+              className="flex items-center gap-2 px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 text-gray-400 ${isLogsRefreshing || isSummaryRefreshing || isHealthRefreshing ? 'animate-spin' : ''}`} />
+              <span className="text-gray-400 text-sm hidden sm:inline">Refresh</span>
+            </button>
+
+            <button
+              type="button"
+              disabled
+              title="로그 Export API 준비중"
+              className="flex items-center gap-2 px-3 py-2 bg-white/5 border border-white/10 rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Download className="w-4 h-4 text-gray-400" />
               <span className="text-gray-400 text-sm hidden sm:inline">Export</span>
@@ -440,6 +503,29 @@ export function AdminLogPage({ onLogout }: AdminLogPageProps) {
                 </div>
               </div>
             </div>
+
+            {(isSummaryLoading || summaryErrorMessage || summaryWarningMessage) && (
+              <div className={`rounded-xl border p-4 ${
+                summaryErrorMessage
+                  ? 'border-red-500/20 bg-red-500/10'
+                  : summaryWarningMessage
+                    ? 'border-yellow-500/20 bg-yellow-500/10'
+                    : 'border-white/10 bg-[#111116]'
+              }`}>
+                <div className="flex items-center gap-2">
+                  {isSummaryLoading ? (
+                    <RefreshCw className="h-4 w-4 animate-spin text-gray-400" />
+                  ) : (
+                    <AlertCircle className={`h-4 w-4 ${summaryErrorMessage ? 'text-red-400' : 'text-yellow-400'}`} />
+                  )}
+                  <p className={`text-sm ${
+                    summaryErrorMessage ? 'text-red-400' : summaryWarningMessage ? 'text-yellow-400' : 'text-gray-400'
+                  }`}>
+                    {isSummaryLoading ? '로그 요약을 불러오는 중입니다.' : summaryErrorMessage ?? summaryWarningMessage}
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Stats */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
@@ -485,94 +571,51 @@ export function AdminLogPage({ onLogout }: AdminLogPageProps) {
                 {/* Filters */}
                 <div className="flex items-center gap-2 overflow-x-auto pb-2">
                   <Filter className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                  {logFilterOptions.map((option, index) => (
+                    <div key={`${option.type}-${option.value}`} className="flex items-center gap-2">
+                      {index === 5 && <div className="w-px h-4 bg-white/10 flex-shrink-0" />}
+                      <button
+                        type="button"
+                        onClick={() => handleFilterChange(option)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex-shrink-0 ${
+                          isFilterActive(option)
+                            ? 'bg-primary text-white'
+                            : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-[#111116] p-3">
+                  <span className="text-xs font-medium text-gray-400">기간</span>
+                  <input
+                    type="datetime-local"
+                    value={fromDate}
+                    onChange={(event) => setFromDate(event.target.value)}
+                    className="min-w-0 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-gray-300 [color-scheme:dark] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    aria-label="로그 시작 일시"
+                  />
+                  <span className="text-xs text-gray-500">~</span>
+                  <input
+                    type="datetime-local"
+                    value={toDate}
+                    onChange={(event) => setToDate(event.target.value)}
+                    className="min-w-0 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-gray-300 [color-scheme:dark] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    aria-label="로그 종료 일시"
+                  />
                   <button
                     type="button"
-                    onClick={() => setFilterLevel('all')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex-shrink-0 ${
-                      filterLevel === 'all'
-                        ? 'bg-primary text-white'
-                        : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
-                    }`}
+                    onClick={() => {
+                      setFromDate('');
+                      setToDate('');
+                    }}
+                    disabled={!fromDate && !toDate}
+                    className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-gray-400 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    All
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFilterLevel('info')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex-shrink-0 ${
-                      filterLevel === 'info'
-                        ? 'bg-primary text-white'
-                        : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
-                    }`}
-                  >
-                    Info
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFilterLevel('warning')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex-shrink-0 ${
-                      filterLevel === 'warning'
-                        ? 'bg-primary text-white'
-                        : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
-                    }`}
-                  >
-                    Warning
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFilterLevel('error')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex-shrink-0 ${
-                      filterLevel === 'error'
-                        ? 'bg-primary text-white'
-                        : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
-                    }`}
-                  >
-                    Error
-                  </button>
-                  <div className="w-px h-4 bg-white/10 flex-shrink-0" />
-                  <button
-                    type="button"
-                    onClick={() => setFilterLevel('ocr')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex-shrink-0 ${
-                      filterLevel === 'ocr'
-                        ? 'bg-primary text-white'
-                        : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
-                    }`}
-                  >
-                    OCR
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFilterLevel('queue')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex-shrink-0 ${
-                      filterLevel === 'queue'
-                        ? 'bg-primary text-white'
-                        : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
-                    }`}
-                  >
-                    Queue
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFilterLevel('api')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex-shrink-0 ${
-                      filterLevel === 'api'
-                        ? 'bg-primary text-white'
-                        : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
-                    }`}
-                  >
-                    API
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFilterLevel('security')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex-shrink-0 ${
-                      filterLevel === 'security'
-                        ? 'bg-primary text-white'
-                        : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
-                    }`}
-                  >
-                    Security
+                    초기화
                   </button>
                 </div>
 
@@ -581,11 +624,40 @@ export function AdminLogPage({ onLogout }: AdminLogPageProps) {
                   <div className="bg-white/5 border-b border-white/10 px-4 py-2 flex items-center gap-2">
                     <Terminal className="w-4 h-4 text-primary" />
                     <span className="text-white text-sm font-medium">System Logs</span>
-                    <span className="text-gray-500 text-xs ml-auto">{filteredLogs.length} entries</span>
+                    <span className="text-gray-500 text-xs ml-auto">
+                      page {pagination.page} / {Math.max(1, pagination.total_pages)} · limit {pagination.limit} · total {pagination.total.toLocaleString()}
+                    </span>
                   </div>
 
+                  {(logsErrorMessage || logsWarningMessage) && (
+                    <div className={`m-4 rounded-lg border p-3 ${
+                      logsErrorMessage ? 'border-red-500/20 bg-red-500/10' : 'border-yellow-500/20 bg-yellow-500/10'
+                    }`}>
+                      <div className="flex items-start gap-2">
+                        <AlertCircle className={`mt-0.5 h-4 w-4 ${logsErrorMessage ? 'text-red-400' : 'text-yellow-400'}`} />
+                        <p className={`text-sm ${logsErrorMessage ? 'text-red-400' : 'text-yellow-400'}`}>
+                          {logsErrorMessage ?? logsWarningMessage}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="divide-y divide-white/5 max-h-[600px] overflow-y-auto">
-                    {filteredLogs.map((log) => (
+                    {isLogsLoading && (
+                      <div className="flex items-center justify-center gap-2 p-8 text-gray-400">
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                        <span className="text-sm">로그를 불러오는 중입니다.</span>
+                      </div>
+                    )}
+
+                    {!isLogsLoading && logs.length === 0 && !logsErrorMessage && (
+                      <div className="p-8 text-center">
+                        <Terminal className="mx-auto mb-3 h-8 w-8 text-gray-600" />
+                        <p className="text-sm text-gray-400">조회된 로그가 없습니다.</p>
+                      </div>
+                    )}
+
+                    {!isLogsLoading && logs.map((log) => (
                       <div key={log.id} className="hover:bg-white/5 transition-colors">
                         <div className="p-4">
                           <div className="flex items-start gap-3">
@@ -598,32 +670,32 @@ export function AdminLogPage({ onLogout }: AdminLogPageProps) {
                             <div className="flex-1 min-w-0">
                               <div className="flex items-start justify-between gap-3 mb-2">
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  <code className="text-gray-400 text-xs font-mono">{log.timestamp}</code>
+                                  <code className="text-gray-400 text-xs font-mono">{formatDateTime(log.timestamp)}</code>
                                   <span className={`px-2 py-0.5 rounded text-xs font-medium border ${getLevelColor(log.level)}`}>
-                                    {log.level.toUpperCase()}
+                                    {getLevelLabel(log.level)}
                                   </span>
                                   <span className="px-2 py-0.5 bg-primary/10 text-primary border border-primary/20 rounded text-xs font-medium">
-                                    {log.service}
+                                    {log.service ?? '-'}
                                   </span>
                                   <span className="text-gray-500 text-xs font-mono">/{log.source}</span>
                                 </div>
-                                {log.user && (
-                                  <div className="flex items-center gap-1.5 text-gray-400 text-xs flex-shrink-0">
-                                    <User className="w-3 h-3" />
-                                    <span>{log.user}</span>
-                                  </div>
-                                )}
                               </div>
 
                               <p className="text-white text-sm mb-3">{log.message}</p>
 
                               {expandedLog === log.id && log.details && (
                                 <div className="mb-3 p-3 bg-black/30 border border-white/5 rounded-lg">
-                                  <pre className="text-gray-400 text-xs font-mono whitespace-pre-wrap">{log.details}</pre>
+                                  <pre className="text-gray-400 text-xs font-mono whitespace-pre-wrap">{formatDetails(log.details)}</pre>
                                 </div>
                               )}
 
                               <div className="flex items-center gap-2 flex-wrap">
+                                <span className="rounded bg-white/5 px-2 py-1 text-xs text-gray-500">
+                                  Task: {log.related_task_id ?? '-'}
+                                </span>
+                                <span className="rounded bg-white/5 px-2 py-1 text-xs text-gray-500">
+                                  Document: {log.related_document_id ?? '-'}
+                                </span>
                                 {log.details && (
                                   <button
                                     type="button"
@@ -651,19 +723,23 @@ export function AdminLogPage({ onLogout }: AdminLogPageProps) {
                                   <Copy className="w-3 h-3" />
                                   <span>복사</span>
                                 </button>
-                                {log.relatedJob && (
+                                {log.related_task_id && (
                                   <button
                                     type="button"
-                                    className="flex items-center gap-1.5 px-2 py-1 bg-white/5 hover:bg-white/10 rounded text-gray-400 hover:text-white text-xs transition-colors"
+                                    disabled
+                                    title="로그 재시도 API 준비중"
+                                    className="flex items-center gap-1.5 px-2 py-1 bg-white/5 rounded text-gray-500 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                                   >
                                     <RotateCcw className="w-3 h-3" />
                                     <span>재시도</span>
                                   </button>
                                 )}
-                                {log.relatedDocument && (
+                                {log.related_document_id && (
                                   <button
                                     type="button"
-                                    className="flex items-center gap-1.5 px-2 py-1 bg-white/5 hover:bg-white/10 rounded text-gray-400 hover:text-white text-xs transition-colors"
+                                    disabled
+                                    title="문서 상세 이동 준비중"
+                                    className="flex items-center gap-1.5 px-2 py-1 bg-white/5 rounded text-gray-500 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                                   >
                                     <ExternalLink className="w-3 h-3" />
                                     <span>문서 보기</span>
@@ -675,6 +751,33 @@ export function AdminLogPage({ onLogout }: AdminLogPageProps) {
                         </div>
                       </div>
                     ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between rounded-xl border border-white/10 bg-[#111116] px-4 py-3">
+                  <p className="text-sm text-gray-400">
+                    {pagination.total.toLocaleString()}개 중 {logs.length.toLocaleString()}개 표시
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handlePageChange(pagination.page - 1)}
+                      disabled={pagination.page <= 1 || isLogsLoading}
+                      className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-gray-300 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      이전
+                    </button>
+                    <span className="min-w-24 text-center text-sm text-gray-400">
+                      {pagination.page} / {Math.max(1, pagination.total_pages)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handlePageChange(pagination.page + 1)}
+                      disabled={pagination.page >= pagination.total_pages || isLogsLoading || pagination.total_pages === 0}
+                      className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-gray-300 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      다음
+                    </button>
                   </div>
                 </div>
               </div>
@@ -746,12 +849,38 @@ export function AdminLogPage({ onLogout }: AdminLogPageProps) {
                     <AlertCircle className="w-5 h-5 text-red-400" />
                     <h3 className="text-white font-semibold text-lg">Recent Errors</h3>
                   </div>
+
+                  {summaryErrorMessage && (
+                    <div className="mb-3 p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+                      <p className="text-red-400 text-sm">{summaryErrorMessage}</p>
+                    </div>
+                  )}
+
+                  {summaryWarningMessage && !summaryErrorMessage && (
+                    <div className="mb-3 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+                      <p className="text-yellow-400 text-sm">{summaryWarningMessage}</p>
+                    </div>
+                  )}
+
                   <div className="space-y-3">
-                    {recentErrors.map((error, idx) => (
-                      <div key={idx} className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+                    {isSummaryLoading && (
+                      <div className="flex items-center gap-2 p-3 text-gray-400">
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                        <span className="text-sm">최근 오류를 불러오는 중입니다.</span>
+                      </div>
+                    )}
+
+                    {!isSummaryLoading && recentErrors.length === 0 && !summaryErrorMessage && (
+                      <div className="p-3 bg-white/5 border border-white/10 rounded-lg">
+                        <p className="text-gray-400 text-sm">최근 오류 로그가 없습니다.</p>
+                      </div>
+                    )}
+
+                    {!isSummaryLoading && recentErrors.map((error) => (
+                      <div key={error.id} className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
                         <div className="flex items-center justify-between mb-1">
-                          <code className="text-gray-400 text-xs font-mono">{error.time}</code>
-                          <span className="text-red-400 text-xs">{error.service}</span>
+                          <code className="text-gray-400 text-xs font-mono">{formatTime(error.timestamp)}</code>
+                          <span className="text-red-400 text-xs">{error.service ?? '-'}</span>
                         </div>
                         <p className="text-red-400/90 text-sm line-clamp-2">{error.message}</p>
                       </div>
@@ -766,8 +895,21 @@ export function AdminLogPage({ onLogout }: AdminLogPageProps) {
                     실시간 활동
                   </h3>
                   <div className="space-y-3">
-                    {realtimeActivity.map((activity, idx) => (
-                      <div key={idx} className="flex items-start gap-3 p-3 bg-white/5 rounded-lg">
+                    {isLogsLoading && (
+                      <div className="flex items-center gap-2 p-3 text-gray-400">
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                        <span className="text-sm">활동을 불러오는 중입니다.</span>
+                      </div>
+                    )}
+
+                    {!isLogsLoading && realtimeActivity.length === 0 && (
+                      <div className="p-3 bg-white/5 rounded-lg">
+                        <p className="text-gray-400 text-sm">표시할 활동이 없습니다.</p>
+                      </div>
+                    )}
+
+                    {!isLogsLoading && realtimeActivity.map((activity) => (
+                      <div key={activity.id} className="flex items-start gap-3 p-3 bg-white/5 rounded-lg">
                         <div className="mt-0.5">
                           {getActivityIcon(activity.type)}
                         </div>
