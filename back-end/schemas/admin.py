@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import datetime
 from uuid import UUID
 
@@ -89,6 +91,34 @@ class AdminWorkerListResponse(BaseModel):
     checked_at: datetime
     status: str | None = None
     details: str | None = None
+
+
+class AdminLogItemResponse(BaseModel):
+    id: UUID
+    timestamp: datetime
+    level: str
+    service: str | None = None
+    source: str
+    message: str
+    details: dict[str, str | int | None] | None = None
+    related_task_id: UUID | None = None
+    related_document_id: UUID | None = None
+
+
+class AdminLogListResponse(BaseModel):
+    items: list[AdminLogItemResponse]
+    pagination: AdminPaginationResponse
+    warning_message: str | None = None
+
+
+class AdminLogSummaryResponse(BaseModel):
+    total: int
+    info: int
+    warning: int
+    error: int
+    success: int
+    recent_errors: list[AdminLogItemResponse]
+    warning_message: str | None = None
 
 
 class AdminOwnerResponse(BaseModel):
