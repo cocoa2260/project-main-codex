@@ -300,6 +300,12 @@ export interface AdminUserDetail extends AdminUserItem {
   recent_tasks: AdminUserRecentTask[];
 }
 
+export interface AdminUserRoleUpdateRequest {
+  role: UserRole;
+}
+
+export type AdminUserRoleUpdateResponse = AdminUserItem;
+
 export interface AdminUserListParams {
   page?: number;
   limit?: number;
