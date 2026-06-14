@@ -15,9 +15,12 @@ import type {
   AdminTaskListResponse,
   AdminUserDetail,
   AdminUserListParams,
+  AdminUserRoleUpdateRequest,
+  AdminUserRoleUpdateResponse,
   AdminUsersResponse,
   AdminWorkerListResponse,
 } from '@/types/admin';
+import type { UserRole } from '@/utils/auth';
 
 export async function getAdminDashboardSummary(): Promise<AdminDashboardSummaryResponse> {
   const response = await apiClient.get<AdminDashboardSummaryResponse>('/api/admin/dashboard/summary');
@@ -81,5 +84,11 @@ export async function getAdminUsers(params?: AdminUserListParams): Promise<Admin
 
 export async function getAdminUserDetail(userId: string): Promise<AdminUserDetail> {
   const response = await apiClient.get<AdminUserDetail>(`/api/admin/users/${userId}`);
+  return response.data;
+}
+
+export async function updateAdminUserRole(userId: string, role: UserRole): Promise<AdminUserRoleUpdateResponse> {
+  const payload: AdminUserRoleUpdateRequest = { role };
+  const response = await apiClient.patch<AdminUserRoleUpdateResponse>(`/api/admin/users/${userId}/role`, payload);
   return response.data;
 }

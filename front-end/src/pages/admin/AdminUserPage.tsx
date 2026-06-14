@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { getAdminUserDetail, getAdminUsers } from '../../api/admin';
+import { getAdminUserDetail, getAdminUsers, updateAdminUserRole } from '../../api/admin';
 import { Sidebar } from '../../components/common/Sidebar';
 import type { AdminUserDetail, AdminUserItem, AdminUserRecentTask } from '../../types/admin';
 import type { TaskStatus } from '../../types/document';
@@ -47,8 +47,35 @@ const roleFilterMap: Partial<Record<FilterStatus, UserRole>> = {
 };
 
 function getApiErrorMessage(error: unknown): string {
-  const response = (error as { response?: { data?: { detail?: string; message?: string } } }).response;
-  return response?.data?.detail ?? response?.data?.message ?? (error instanceof Error ? error.message : '사용자 목록을 불러오지 못했습니다.');
+  const response = (error as { response?: { status?: number; data?: { detail?: unknown; message?: string } } }).response;
+  const detail = response?.data?.detail;
+
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        if (typeof item === 'string') return item;
+        if (item && typeof item === 'object' && 'msg' in item) return String((item as { msg: unknown }).msg);
+        return null;
+      })
+      .filter(Boolean)
+      .join(', ') || '요청을 처리하지 못했습니다.';
+  }
+
+  if (response?.data?.message) return response.data.message;
+
+  switch (response?.status) {
+    case 401:
+      return '인증이 필요합니다. 다시 로그인해 주세요.';
+    case 403:
+      return '이 작업을 수행할 권한이 없습니다.';
+    case 404:
+      return '사용자를 찾을 수 없습니다.';
+    case 409:
+      return '현재 정책상 역할을 변경할 수 없습니다.';
+    default:
+      return error instanceof Error ? error.message : '요청을 처리하지 못했습니다.';
+  }
 }
 
 function formatDateTime(value?: string | null): string {
@@ -75,6 +102,24 @@ function getRoleColor(role: string) {
     default:
       return 'bg-gray-500/10 text-gray-400 border-gray-500/20';
   }
+}
+
+function normalizeUserRole(role: string): UserRole | null {
+  const normalized = role.toUpperCase();
+  if (normalized === 'ADMIN' || normalized === 'USER') return normalized;
+  return null;
+}
+
+function getNextRole(role: string): UserRole | null {
+  const currentRole = normalizeUserRole(role);
+  if (currentRole === 'ADMIN') return 'USER';
+  if (currentRole === 'USER') return 'ADMIN';
+  return null;
+}
+
+function getRoleConfirmMessage(user: AdminUserItem, nextRole: UserRole): string {
+  if (nextRole === 'ADMIN') return `${user.name} 사용자를 ADMIN으로 승격하시겠습니까?`;
+  return `${user.name} 관리자를 USER로 강등하시겠습니까?`;
 }
 
 function getStatusColor(status: UserDisplayStatus) {
@@ -139,6 +184,10 @@ export function AdminUserPage({ onLogout }: AdminUserPageProps) {
   const [showUserDetail, setShowUserDetail] = useState(false);
   const [detailErrorMessage, setDetailErrorMessage] = useState<string | null>(null);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
+  const [roleActionUser, setRoleActionUser] = useState<AdminUserItem | null>(null);
+  const [roleActionError, setRoleActionError] = useState<string | null>(null);
+  const [roleActionSuccess, setRoleActionSuccess] = useState<string | null>(null);
+  const [isUpdatingRole, setIsUpdatingRole] = useState(false);
 
   const fetchUsers = useCallback(async (page: number, showLoading = false) => {
     if (showLoading) {
@@ -205,6 +254,56 @@ export function AdminUserPage({ onLogout }: AdminUserPageProps) {
     }
   };
 
+  const handleOpenRoleAction = (user: AdminUserItem) => {
+    setRoleActionUser(user);
+    setRoleActionError(null);
+    setRoleActionSuccess(null);
+  };
+
+  const handleConfirmRoleUpdate = async () => {
+    if (!roleActionUser || isUpdatingRole) return;
+
+    const nextRole = getNextRole(roleActionUser.role);
+    if (!nextRole) {
+      setRoleActionError('지원하지 않는 역할 값입니다.');
+      return;
+    }
+
+    setIsUpdatingRole(true);
+    setRoleActionError(null);
+    setRoleActionSuccess(null);
+
+    try {
+      const updatedUser = await updateAdminUserRole(roleActionUser.id, nextRole);
+
+      setUsers((currentUsers) => currentUsers.map((user) => (user.id === updatedUser.id ? updatedUser : user)));
+      setSelectedUser((currentUser) => (currentUser?.id === updatedUser.id ? updatedUser : currentUser));
+      setRoleActionUser(null);
+      setRoleActionSuccess(`${updatedUser.name} 사용자의 역할을 ${updatedUser.role}로 변경했습니다.`);
+
+      await fetchUsers(pagination.page, false);
+
+      if (showUserDetail && selectedUser?.id === updatedUser.id) {
+        setIsDetailLoading(true);
+        setDetailErrorMessage(null);
+
+        try {
+          const detail = await getAdminUserDetail(updatedUser.id);
+          setSelectedUserDetail(detail);
+          setSelectedUser(detail);
+        } catch (detailError) {
+          setDetailErrorMessage(getApiErrorMessage(detailError));
+        } finally {
+          setIsDetailLoading(false);
+        }
+      }
+    } catch (error) {
+      setRoleActionError(getApiErrorMessage(error));
+    } finally {
+      setIsUpdatingRole(false);
+    }
+  };
+
   const stats = useMemo(() => {
     const adminCount = users.filter((user) => user.role === 'ADMIN').length;
     const totalUploads = users.reduce((sum, user) => sum + user.upload_count, 0);
@@ -228,6 +327,7 @@ export function AdminUserPage({ onLogout }: AdminUserPageProps) {
   const recentUsers = useMemo(() => users.slice(0, 3), [users]);
   const topUsers = useMemo(() => [...users].sort((a, b) => b.upload_count - a.upload_count).slice(0, 3), [users]);
   const detailUser = selectedUserDetail ?? selectedUser;
+  const roleActionNextRole = roleActionUser ? getNextRole(roleActionUser.role) : null;
 
   const renderFilterButton = (filter: FilterStatus, label: string, disabled = false) => (
     <button
@@ -640,6 +740,13 @@ export function AdminUserPage({ onLogout }: AdminUserPageProps) {
                 </div>
               )}
 
+              {roleActionSuccess && (
+                <div className="flex items-center gap-2 p-4 bg-green-500/10 border border-green-500/20 rounded-xl text-green-300 text-sm">
+                  <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                  <span>{roleActionSuccess}</span>
+                </div>
+              )}
+
               <div>
                 <h4 className="text-white font-medium mb-3">기본 정보</h4>
                 <div className="space-y-3">
@@ -737,8 +844,13 @@ export function AdminUserPage({ onLogout }: AdminUserPageProps) {
               <div>
                 <h4 className="text-white font-medium mb-3">액션</h4>
                 <div className="space-y-2">
-                  <button type="button" disabled className="w-full py-3 px-4 bg-primary/10 border border-primary/20 text-primary/60 rounded-lg cursor-not-allowed font-medium">
-                    역할 변경 · API 준비중
+                  <button
+                    type="button"
+                    onClick={() => handleOpenRoleAction(detailUser)}
+                    disabled={isUpdatingRole || !getNextRole(detailUser.role)}
+                    className="w-full py-3 px-4 bg-primary/10 hover:bg-primary/20 border border-primary/20 text-primary rounded-lg disabled:opacity-60 disabled:cursor-not-allowed font-medium transition-colors"
+                  >
+                    {isUpdatingRole && roleActionUser?.id === detailUser.id ? '역할 변경 중...' : `역할 변경 · ${getNextRole(detailUser.role) ?? '지원 불가'}`}
                   </button>
                   <button type="button" disabled className="w-full py-3 px-4 bg-yellow-500/10 border border-yellow-500/20 text-yellow-400/60 rounded-lg cursor-not-allowed font-medium">
                     계정 중지 · API 준비중
@@ -751,6 +863,68 @@ export function AdminUserPage({ onLogout }: AdminUserPageProps) {
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {roleActionUser && roleActionNextRole && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center px-4">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => !isUpdatingRole && setRoleActionUser(null)}
+          />
+          <div className="relative w-full max-w-md bg-[#111116] border border-white/10 rounded-xl p-6 shadow-2xl">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="p-2 bg-primary/10 border border-primary/20 rounded-lg">
+                <Shield className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <h3 className="text-white font-semibold text-lg">역할 변경 확인</h3>
+                <p className="text-gray-400 text-sm mt-1">{getRoleConfirmMessage(roleActionUser, roleActionNextRole)}</p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-white/5 border border-white/10 rounded-lg text-sm mb-4">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-gray-400">현재 역할</span>
+                <span className={`px-2.5 py-1 border rounded-lg text-xs font-medium ${getRoleColor(roleActionUser.role)}`}>
+                  {roleActionUser.role}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-3 mt-3">
+                <span className="text-gray-400">변경 역할</span>
+                <span className={`px-2.5 py-1 border rounded-lg text-xs font-medium ${getRoleColor(roleActionNextRole)}`}>
+                  {roleActionNextRole}
+                </span>
+              </div>
+            </div>
+
+            {roleActionError && (
+              <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-300 text-sm mb-4">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{roleActionError}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setRoleActionUser(null)}
+                disabled={isUpdatingRole}
+                className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleConfirmRoleUpdate()}
+                disabled={isUpdatingRole}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+              >
+                {isUpdatingRole && <Loader2 className="w-4 h-4 animate-spin" />}
+                변경
+              </button>
             </div>
           </div>
         </div>

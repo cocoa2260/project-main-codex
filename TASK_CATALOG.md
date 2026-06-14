@@ -124,7 +124,7 @@
 | BE-ADMIN-009 | Document Retry API | Medium | TODO |
 | FE-023 | Document Retry UI Integration | Medium | TODO |
 | BE-ADMIN-014 | User Role Update API | Medium | DONE |
-| FE-024 | User Role Update UI Integration | Medium | TODO |
+| FE-024 | User Role Update UI Integration | Medium | DONE |
 | BE-ADMIN-011 | User Account Status API | Low | TODO |
 | FE-025 | User Account Status UI Integration | Low | TODO |
 
@@ -383,6 +383,22 @@ Status: DONE
 - Loading / Error / Refresh 상태 추가
 - 30초 Auto Refresh 및 useEffect cleanup 적용
 - 기존 Admin Dashboard / Logs UI 섹션 유지
+
+Priority: Medium
+Status: DONE
+
+### FE-024 User Role Update UI Integration
+
+- Admin user role update API client 추가
+- Admin user role update DTO 타입 추가
+- AdminUserPage 기존 역할 변경 액션을 PATCH /api/admin/users/{user_id}/role에 연결
+- USER → ADMIN 승격 및 ADMIN → USER 강등 전 확인 모달 추가
+- Role update 중 중복 클릭 방지 및 진행 상태 표시
+- Backend 정책 에러/self-demotion/last-admin/권한/404/409 오류 메시지 표시
+- 성공 후 사용자 목록 재조회 및 상세 drawer가 열려 있으면 상세 정보 재조회
+- localStorage auth_user 직접 수정 없음
+- 계정 중지, 비밀번호 재설정, 계정 삭제 등 API 없는 action은 준비중/비활성 유지
+- Backend 변경 없음
 
 Priority: Medium
 Status: DONE

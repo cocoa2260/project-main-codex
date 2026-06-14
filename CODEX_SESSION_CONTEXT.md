@@ -286,6 +286,21 @@ Summary:
 - Displayed sensitive settings only through masked API values without adding reveal controls
 - Backend unchanged
 
+### FE-024
+User Role Update UI Integration
+Status: DONE
+Summary:
+- Added admin user role update API client for PATCH /api/admin/users/{user_id}/role
+- Added AdminUserRoleUpdateRequest and AdminUserRoleUpdateResponse frontend DTOs reusing UserRole
+- Enabled the existing AdminUserPage role change action in the detail drawer
+- Added confirmation modal for USER to ADMIN promotion and ADMIN to USER demotion
+- Added role update loading lockout, success feedback, and backend policy error display
+- Refreshed the user list after successful role updates
+- Refreshed open user detail drawer data after successful role updates
+- Kept account status, password reset, delete, export, and user creation actions disabled/prepared
+- Did not modify localStorage auth_user directly
+- Backend unchanged
+
 ---
 
 ### FE-011
