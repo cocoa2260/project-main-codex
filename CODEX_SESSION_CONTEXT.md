@@ -318,6 +318,24 @@ Summary:
 - Did not modify localStorage auth_user directly
 - Backend unchanged
 
+### FE-025
+User Account Status UI Integration
+Status: DONE
+Summary:
+- Added admin user status update API client for PATCH /api/admin/users/{user_id}/status
+- Added AdminUserStatus, AdminUserStatusUpdateRequest, and AdminUserStatusUpdateResponse frontend DTOs
+- Added status, last_active_at, suspended_at, and suspended_reason to admin user list/detail DTOs
+- Connected AdminUserPage account status badges and status filters to API response fields
+- Enabled the existing account status action in the user table and detail drawer
+- Added confirmation modal with target status select and reason input for SUSPENDED changes
+- Added status update loading lockout, success feedback, and backend policy error display
+- Refreshed the user list after successful status updates
+- Refreshed open user detail drawer data after successful status updates
+- Displayed last active time, suspended time, and suspended reason in the detail drawer
+- Kept password reset, delete, export, and user creation actions disabled/prepared
+- Did not modify localStorage auth_user directly
+- Backend unchanged
+
 ---
 
 ### FE-011

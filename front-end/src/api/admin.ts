@@ -17,6 +17,9 @@ import type {
   AdminUserListParams,
   AdminUserRoleUpdateRequest,
   AdminUserRoleUpdateResponse,
+  AdminUserStatus,
+  AdminUserStatusUpdateRequest,
+  AdminUserStatusUpdateResponse,
   AdminUsersResponse,
   AdminWorkerListResponse,
 } from '@/types/admin';
@@ -90,5 +93,18 @@ export async function getAdminUserDetail(userId: string): Promise<AdminUserDetai
 export async function updateAdminUserRole(userId: string, role: UserRole): Promise<AdminUserRoleUpdateResponse> {
   const payload: AdminUserRoleUpdateRequest = { role };
   const response = await apiClient.patch<AdminUserRoleUpdateResponse>(`/api/admin/users/${userId}/role`, payload);
+  return response.data;
+}
+
+export async function updateAdminUserStatus(
+  userId: string,
+  status: AdminUserStatus,
+  reason?: string,
+): Promise<AdminUserStatusUpdateResponse> {
+  const payload: AdminUserStatusUpdateRequest = {
+    status,
+    ...(reason?.trim() ? { reason: reason.trim() } : {}),
+  };
+  const response = await apiClient.patch<AdminUserStatusUpdateResponse>(`/api/admin/users/${userId}/status`, payload);
   return response.data;
 }
