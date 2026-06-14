@@ -270,11 +270,17 @@ export interface AdminTaskListParams {
   sort_order?: 'asc' | 'desc';
 }
 
+export type AdminUserStatus = 'ACTIVE' | 'SUSPENDED' | 'INACTIVE';
+
 export interface AdminUserItem {
   id: string;
   name: string;
   email: string;
   role: UserRole | string;
+  status: AdminUserStatus | string;
+  last_active_at: string | null;
+  suspended_at: string | null;
+  suspended_reason: string | null;
   document_count: number;
   upload_count: number;
   created_at: string;
@@ -306,11 +312,19 @@ export interface AdminUserRoleUpdateRequest {
 
 export type AdminUserRoleUpdateResponse = AdminUserItem;
 
+export interface AdminUserStatusUpdateRequest {
+  status: AdminUserStatus;
+  reason?: string;
+}
+
+export type AdminUserStatusUpdateResponse = AdminUserItem;
+
 export interface AdminUserListParams {
   page?: number;
   limit?: number;
   q?: string;
   role?: UserRole;
-  sort_by?: 'created_at' | 'updated_at' | 'name' | 'email' | 'role' | 'document_count' | 'upload_count';
+  status?: AdminUserStatus;
+  sort_by?: 'created_at' | 'updated_at' | 'name' | 'email' | 'role' | 'status' | 'last_active_at' | 'document_count' | 'upload_count';
   sort_order?: 'asc' | 'desc';
 }
