@@ -27,6 +27,8 @@ from core.security import ALGORITHM
 from models.document import Document
 from models.document import DocumentStatus
 from models.document_chunk import DocumentChunk
+from models.audit_log import AuditAction
+from models.audit_log import AuditTargetType
 from models.task_tracker import TaskStatus
 from models.task_tracker import TaskTracker
 from models.task_tracker import TaskType
@@ -64,6 +66,7 @@ from schemas.admin import DocumentStatsResponse
 from schemas.admin import RecentEventResponse
 from schemas.admin import TaskStatsResponse
 from schemas.admin import UserStatsResponse
+from services.audit_service import record_admin_action
 
 
 HEALTHY = "HEALTHY"
@@ -1496,6 +1499,8 @@ def update_admin_user_role(
     user_id: UUID,
     new_role: str,
     current_user: User,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
 ) -> tuple[AdminUserListItemResponse | None, str | None]:
     user = db.query(User).filter(User.id == user_id).first()
 
@@ -1517,7 +1522,19 @@ def update_admin_user_role(
             return None, ROLE_UPDATE_SELF_DEMOTION
 
     if user.role != new_role:
+        old_role = user.role
         user.role = new_role
+        record_admin_action(
+            db=db,
+            actor_user=current_user,
+            action=AuditAction.USER_ROLE_CHANGED,
+            target_type=AuditTargetType.USER,
+            target_id=user.id,
+            old_value={"role": old_role},
+            new_value={"role": new_role},
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
         db.commit()
         db.refresh(user)
 
@@ -1537,6 +1554,8 @@ def update_admin_user_status(
     new_status: str,
     reason: str | None,
     current_user: User,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
 ) -> tuple[AdminUserListItemResponse | None, str | None]:
     user = db.query(User).filter(User.id == user_id).first()
 
@@ -1561,15 +1580,37 @@ def update_admin_user_status(
         if user.id == current_user.id:
             return None, STATUS_UPDATE_SELF_SUSPEND
 
+    old_status = user.status
+    old_suspended_reason = user.suspended_reason
+    new_suspended_reason = reason.strip() if reason and reason.strip() else None
+
     if user.status != new_status:
         user.status = new_status
 
     if new_status == UserStatus.SUSPENDED:
         user.suspended_at = func.now()
-        user.suspended_reason = reason.strip() if reason and reason.strip() else None
+        user.suspended_reason = new_suspended_reason
     else:
         user.suspended_at = None
         user.suspended_reason = None
+
+    if old_status != new_status or old_suspended_reason != user.suspended_reason:
+        new_value = {"status": new_status}
+        if new_status == UserStatus.SUSPENDED:
+            new_value["suspended_reason"] = user.suspended_reason
+
+        record_admin_action(
+            db=db,
+            actor_user=current_user,
+            action=AuditAction.USER_STATUS_CHANGED,
+            target_type=AuditTargetType.USER,
+            target_id=user.id,
+            old_value={"status": old_status},
+            new_value=new_value,
+            reason=user.suspended_reason,
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
 
     db.commit()
     db.refresh(user)

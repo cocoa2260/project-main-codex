@@ -142,6 +142,30 @@ class AdminLogSummaryResponse(BaseModel):
     warning_message: str | None = None
 
 
+AuditValue = dict[str, object] | list[object] | str | int | bool | None
+
+
+class AdminAuditLogItemResponse(BaseModel):
+    id: UUID
+    actor_user_id: UUID | None = None
+    actor_email_snapshot: str | None = None
+    target_type: str
+    target_id: UUID | None = None
+    action: str
+    old_value: AuditValue = None
+    new_value: AuditValue = None
+    reason: str | None = None
+    ip_address: str | None = None
+    user_agent: str | None = None
+    metadata: AuditValue = None
+    created_at: datetime
+
+
+class AdminAuditLogListResponse(BaseModel):
+    items: list[AdminAuditLogItemResponse]
+    pagination: AdminPaginationResponse
+
+
 class AdminOwnerResponse(BaseModel):
     id: UUID
     email: str

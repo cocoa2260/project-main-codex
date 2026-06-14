@@ -232,6 +232,21 @@ Summary:
 - Kept INACTIVE login allowed as display/status metadata
 - Updated last_active_at on successful login
 
+### BE-ADMIN-015
+Admin Audit Log API
+Status: DONE
+Summary:
+- Added AuditLog model backed by the audit_logs table
+- Added Alembic migration 20260615_000001_create_audit_logs
+- Added audit_service with record_admin_action and list_admin_audit_logs
+- Sanitized audit old_value, new_value, reason, metadata, ip_address, and user_agent before persistence
+- Recorded USER_ROLE_CHANGED on successful admin role changes
+- Recorded USER_STATUS_CHANGED on successful admin status changes
+- Captured actor_user_id, actor_email_snapshot, target_type, target_id, action, old/new values, reason, ip_address, user_agent, metadata, and created_at
+- Added GET /api/admin/audit-logs protected by require_admin
+- Added action, actor_user_id, target_type, target_id, from, to, page, and limit filters
+- Preserved existing Admin Logs TaskTracker fallback API unchanged
+
 ### FE-017
 Admin User Management API Integration
 Status: DONE

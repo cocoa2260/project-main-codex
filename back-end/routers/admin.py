@@ -6,9 +6,12 @@ from fastapi import APIRouter
 from fastapi import Depends
 from fastapi import HTTPException
 from fastapi import Query
+from fastapi import Request
 from sqlalchemy.orm import Session
 
 from db.session import get_db
+from models.audit_log import AuditAction
+from models.audit_log import AuditTargetType
 from models.document import DocumentStatus
 from models.task_tracker import TaskStage
 from models.task_tracker import TaskStatus
@@ -17,6 +20,7 @@ from models.user import User
 from models.user import UserRole
 from models.user import UserStatus
 from routers.deps import require_admin
+from schemas.admin import AdminAuditLogListResponse
 from schemas.admin import AdminDashboardSummaryResponse
 from schemas.admin import AdminDocumentDetailResponse
 from schemas.admin import AdminDocumentListResponse
@@ -33,6 +37,7 @@ from schemas.admin import AdminUserListResponse
 from schemas.admin import AdminUserRoleUpdateRequest
 from schemas.admin import AdminUserStatusUpdateRequest
 from schemas.admin import AdminWorkerListResponse
+from services.audit_service import list_admin_audit_logs
 from services.admin_service import get_admin_document_detail
 from services.admin_service import get_admin_logs_summary
 from services.admin_service import get_admin_queues
@@ -134,7 +139,26 @@ LOG_LEVELS = {
     "ERROR",
     "SUCCESS",
 }
+AUDIT_ACTIONS = {
+    AuditAction.USER_ROLE_CHANGED,
+    AuditAction.USER_STATUS_CHANGED,
+}
+AUDIT_TARGET_TYPES = {
+    AuditTargetType.USER,
+}
 SORT_ORDERS = {"asc", "desc"}
+
+
+def _client_ip(request: Request) -> str | None:
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        return forwarded_for.split(",", 1)[0].strip() or None
+
+    return request.client.host if request.client else None
+
+
+def _user_agent(request: Request) -> str | None:
+    return request.headers.get("user-agent")
 
 
 @router.get(
@@ -235,6 +259,42 @@ def list_logs(
 
 
 @router.get(
+    "/audit-logs",
+    response_model=AdminAuditLogListResponse,
+    response_model_exclude_none=True,
+)
+def list_audit_logs(
+    action: str | None = None,
+    actor_user_id: UUID | None = None,
+    target_type: str | None = None,
+    target_id: UUID | None = None,
+    from_datetime: datetime | None = Query(default=None, alias="from"),
+    to_datetime: datetime | None = Query(default=None, alias="to"),
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=50, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    if action and action not in AUDIT_ACTIONS:
+        raise HTTPException(status_code=400, detail="지원하지 않는 감사 로그 액션입니다.")
+
+    if target_type and target_type not in AUDIT_TARGET_TYPES:
+        raise HTTPException(status_code=400, detail="지원하지 않는 감사 로그 대상 유형입니다.")
+
+    return list_admin_audit_logs(
+        db=db,
+        action=action,
+        actor_user_id=actor_user_id,
+        target_type=target_type,
+        target_id=target_id,
+        from_datetime=from_datetime,
+        to_datetime=to_datetime,
+        page=page,
+        limit=limit,
+    )
+
+
+@router.get(
     "/users",
     response_model=AdminUserListResponse,
 )
@@ -280,6 +340,7 @@ def list_users(
 def update_user_role(
     user_id: UUID,
     req: AdminUserRoleUpdateRequest,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
@@ -291,6 +352,8 @@ def update_user_role(
         user_id=user_id,
         new_role=req.role,
         current_user=current_user,
+        ip_address=_client_ip(request),
+        user_agent=_user_agent(request),
     )
 
     if error_code == ROLE_UPDATE_SELF_DEMOTION:
@@ -312,6 +375,7 @@ def update_user_role(
 def update_user_status(
     user_id: UUID,
     req: AdminUserStatusUpdateRequest,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
@@ -324,6 +388,8 @@ def update_user_status(
         new_status=req.status,
         reason=req.reason,
         current_user=current_user,
+        ip_address=_client_ip(request),
+        user_agent=_user_agent(request),
     )
 
     if error_code == STATUS_UPDATE_SELF_SUSPEND:
