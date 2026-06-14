@@ -27,7 +27,9 @@ from schemas.admin import AdminSystemHealthResponse
 from schemas.admin import AdminTaskDetailResponse
 from schemas.admin import AdminTaskListResponse
 from schemas.admin import AdminUserDetailResponse
+from schemas.admin import AdminUserListItemResponse
 from schemas.admin import AdminUserListResponse
+from schemas.admin import AdminUserRoleUpdateRequest
 from schemas.admin import AdminWorkerListResponse
 from services.admin_service import get_admin_document_detail
 from services.admin_service import get_admin_logs_summary
@@ -38,10 +40,13 @@ from services.admin_service import get_admin_user_detail
 from services.admin_service import get_admin_workers
 from services.admin_service import get_dashboard_summary
 from services.admin_service import get_system_health
+from services.admin_service import ROLE_UPDATE_LAST_ADMIN
+from services.admin_service import ROLE_UPDATE_SELF_DEMOTION
 from services.admin_service import list_admin_documents
 from services.admin_service import list_admin_logs
 from services.admin_service import list_admin_tasks
 from services.admin_service import list_admin_users
+from services.admin_service import update_admin_user_role
 
 
 router = APIRouter()
@@ -249,6 +254,38 @@ def list_users(
         sort_by=sort_by,
         sort_order=sort_order,
     )
+
+
+@router.patch(
+    "/users/{user_id}/role",
+    response_model=AdminUserListItemResponse,
+)
+def update_user_role(
+    user_id: UUID,
+    req: AdminUserRoleUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    if req.role not in USER_ROLES:
+        raise HTTPException(status_code=400, detail="지원하지 않는 사용자 역할입니다.")
+
+    user, error_code = update_admin_user_role(
+        db=db,
+        user_id=user_id,
+        new_role=req.role,
+        current_user=current_user,
+    )
+
+    if error_code == ROLE_UPDATE_SELF_DEMOTION:
+        raise HTTPException(status_code=400, detail="자기 자신의 관리자 권한은 해제할 수 없습니다.")
+
+    if error_code == ROLE_UPDATE_LAST_ADMIN:
+        raise HTTPException(status_code=409, detail="마지막 관리자 계정은 일반 사용자로 변경할 수 없습니다.")
+
+    if user is None:
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+
+    return user
 
 
 @router.get(

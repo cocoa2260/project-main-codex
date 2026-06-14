@@ -242,6 +242,10 @@ class AdminUserListItemResponse(BaseModel):
     updated_at: datetime
 
 
+class AdminUserRoleUpdateRequest(BaseModel):
+    role: str
+
+
 class AdminUserDocumentResponse(BaseModel):
     id: UUID
     file_name: str
