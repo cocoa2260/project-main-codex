@@ -123,7 +123,7 @@
 | FE-022 | Failed Task Retry UI Integration | Medium | TODO |
 | BE-ADMIN-009 | Document Retry API | Medium | TODO |
 | FE-023 | Document Retry UI Integration | Medium | TODO |
-| BE-ADMIN-010 | User Role Update API | Medium | TODO |
+| BE-ADMIN-014 | User Role Update API | Medium | DONE |
 | FE-024 | User Role Update UI Integration | Medium | TODO |
 | BE-ADMIN-011 | User Account Status API | Low | TODO |
 | FE-025 | User Account Status UI Integration | Low | TODO |
@@ -277,6 +277,19 @@ Status: DONE
 - DB model 변경 및 migration 없음
 - Docker / Celery task 로직 변경 없음
 - Read-only monitoring API only
+
+### BE-ADMIN-014 User Role Update API
+
+- Admin 사용자 Role 변경 API 추가
+- PATCH /api/admin/users/{user_id}/role
+- USER / ADMIN role 변경 지원
+- 자기 자신을 USER로 강등하는 요청 차단
+- 마지막 남은 ADMIN을 USER로 강등하는 요청 차단
+- 동일 role 요청은 200 idempotent 처리
+- 모든 endpoint require_admin 보호
+- DB model 변경 및 migration 없음
+- Auth / JWT 구조 변경 없음
+- Audit log는 후속 task로 분리
 
 Priority: Medium
 Status: DONE

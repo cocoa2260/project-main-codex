@@ -199,6 +199,22 @@ Summary:
 - No DB migration, model changes, environment variable changes, Docker changes, or settings save API
 - py_compile and API auth checks passed
 
+### BE-ADMIN-014
+User Role Update API
+Status: DONE
+Summary:
+- Added admin user role update API at PATCH /api/admin/users/{user_id}/role
+- Added AdminUserRoleUpdateRequest DTO
+- Reused AdminUserListItemResponse shape for role update response
+- Allowed USER to ADMIN promotion
+- Allowed ADMIN to USER demotion when policy checks pass
+- Blocked self-demotion from ADMIN to USER
+- Blocked demotion of the last remaining ADMIN
+- Kept same-role requests idempotent with 200 response
+- Protected endpoint with require_admin
+- No DB migration, model changes, UserRole changes, Auth/JWT changes, or audit log table
+- Audit log is deferred to a later task
+
 ### FE-017
 Admin User Management API Integration
 Status: DONE

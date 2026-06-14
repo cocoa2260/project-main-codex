@@ -79,6 +79,8 @@ LOG_LEVEL_ERROR = "ERROR"
 LOG_LEVEL_SUCCESS = "SUCCESS"
 LOG_SOURCE_TASK_TRACKER = "TaskTracker"
 LOG_QUERY_WARNING = "TaskTracker 기반 이벤트 로그를 사용했습니다. 파일 로그 위치가 명확하지 않습니다."
+ROLE_UPDATE_SELF_DEMOTION = "SELF_DEMOTION"
+ROLE_UPDATE_LAST_ADMIN = "LAST_ADMIN"
 
 SENSITIVE_VALUE_PATTERNS = [
     re.compile(
@@ -871,6 +873,19 @@ def _user_list_item_response(row) -> AdminUserListItemResponse:
     )
 
 
+def _admin_user_item_response(user: User, document_count: int) -> AdminUserListItemResponse:
+    return AdminUserListItemResponse(
+        id=user.id,
+        name=user.name,
+        email=user.email,
+        role=user.role,
+        document_count=document_count,
+        upload_count=document_count,
+        created_at=user.created_at,
+        updated_at=user.updated_at,
+    )
+
+
 def _user_document_response(document: Document) -> AdminUserDocumentResponse:
     return AdminUserDocumentResponse(
         id=document.id,
@@ -1446,6 +1461,46 @@ def get_admin_user_detail(
         documents=[_user_document_response(document) for document in documents],
         recent_tasks=[_task_list_item_response(row) for row in recent_task_rows],
     )
+
+
+def update_admin_user_role(
+    db: Session,
+    user_id: UUID,
+    new_role: str,
+    current_user: User,
+) -> tuple[AdminUserListItemResponse | None, str | None]:
+    user = db.query(User).filter(User.id == user_id).first()
+
+    if user is None:
+        return None, None
+
+    if user.role == UserRole.ADMIN and new_role == UserRole.USER:
+        admin_count = (
+            db.query(func.count(User.id))
+            .filter(User.role == UserRole.ADMIN)
+            .scalar()
+            or 0
+        )
+
+        if admin_count <= 1:
+            return None, ROLE_UPDATE_LAST_ADMIN
+
+        if user.id == current_user.id:
+            return None, ROLE_UPDATE_SELF_DEMOTION
+
+    if user.role != new_role:
+        user.role = new_role
+        db.commit()
+        db.refresh(user)
+
+    document_count = (
+        db.query(func.count(Document.id))
+        .filter(Document.user_id == user.id)
+        .scalar()
+        or 0
+    )
+
+    return _admin_user_item_response(user, document_count), None
 
 
 def list_admin_documents(
