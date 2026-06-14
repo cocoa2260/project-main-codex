@@ -215,6 +215,23 @@ Summary:
 - No DB migration, model changes, UserRole changes, Auth/JWT changes, or audit log table
 - Audit log is deferred to a later task
 
+### BE-ADMIN-011
+User Account Status API
+Status: DONE
+Summary:
+- Added UserStatus values ACTIVE, SUSPENDED, and INACTIVE
+- Added User.status, User.last_active_at, User.suspended_at, and User.suspended_reason
+- Added Alembic migration 20260614_000001_add_user_account_status
+- Added admin user status update API at PATCH /api/admin/users/{user_id}/status
+- Added status filter to GET /api/admin/users
+- Added account status fields to admin user list and detail responses
+- Blocked self-suspension for admin users
+- Blocked suspension of the last active ADMIN account
+- Blocked SUSPENDED users during login
+- Blocked existing JWT access for SUSPENDED users in get_current_user
+- Kept INACTIVE login allowed as display/status metadata
+- Updated last_active_at on successful login
+
 ### FE-017
 Admin User Management API Integration
 Status: DONE

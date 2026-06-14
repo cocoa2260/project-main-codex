@@ -236,6 +236,10 @@ class AdminUserListItemResponse(BaseModel):
     name: str
     email: str
     role: str
+    status: str
+    last_active_at: datetime | None = None
+    suspended_at: datetime | None = None
+    suspended_reason: str | None = None
     document_count: int
     upload_count: int
     created_at: datetime
@@ -244,6 +248,11 @@ class AdminUserListItemResponse(BaseModel):
 
 class AdminUserRoleUpdateRequest(BaseModel):
     role: str
+
+
+class AdminUserStatusUpdateRequest(BaseModel):
+    status: str
+    reason: str | None = None
 
 
 class AdminUserDocumentResponse(BaseModel):
