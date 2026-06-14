@@ -16,6 +16,12 @@ class UserRole:
     ADMIN = "ADMIN"
 
 
+class UserStatus:
+    ACTIVE = "ACTIVE"
+    SUSPENDED = "SUSPENDED"
+    INACTIVE = "INACTIVE"
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -50,6 +56,33 @@ class User(Base):
         ),
         nullable=False,
         default=UserRole.USER,
+    )
+
+    status = Column(
+        Enum(
+            UserStatus.ACTIVE,
+            UserStatus.SUSPENDED,
+            UserStatus.INACTIVE,
+            name="user_status",
+        ),
+        nullable=False,
+        default=UserStatus.ACTIVE,
+        server_default=UserStatus.ACTIVE,
+    )
+
+    last_active_at = Column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    suspended_at = Column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    suspended_reason = Column(
+        String(500),
+        nullable=True,
     )
 
     created_at = Column(

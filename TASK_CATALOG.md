@@ -125,7 +125,7 @@
 | FE-023 | Document Retry UI Integration | Medium | TODO |
 | BE-ADMIN-014 | User Role Update API | Medium | DONE |
 | FE-024 | User Role Update UI Integration | Medium | DONE |
-| BE-ADMIN-011 | User Account Status API | Low | TODO |
+| BE-ADMIN-011 | User Account Status API | Low | DONE |
 | FE-025 | User Account Status UI Integration | Low | TODO |
 
 ---
@@ -178,6 +178,24 @@ Status: DONE
 - celery_task_id 및 내부 경로 미노출
 
 Priority: High
+Status: DONE
+
+### BE-ADMIN-011 User Account Status API
+
+- Admin 사용자 계정 상태 변경 API 추가
+- PATCH /api/admin/users/{user_id}/status
+- UserStatus ACTIVE / SUSPENDED / INACTIVE 추가
+- User 모델에 status / last_active_at / suspended_at / suspended_reason 추가
+- Admin 사용자 목록/상세 응답에 계정 상태 필드 포함
+- Admin 사용자 목록 status 필터 지원
+- SUSPENDED 계정 로그인 차단
+- get_current_user에서 SUSPENDED 계정 기존 JWT 즉시 차단
+- 자기 자신 SUSPENDED 차단
+- 마지막 ADMIN SUSPENDED 차단
+- INACTIVE는 로그인 허용 및 상태 표시용으로 유지
+- Alembic migration 추가
+
+Priority: Low
 Status: DONE
 
 ### FE-016 Admin Task Monitoring API Integration

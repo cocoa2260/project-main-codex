@@ -15,6 +15,7 @@ from models.task_tracker import TaskStatus
 from models.task_tracker import TaskType
 from models.user import User
 from models.user import UserRole
+from models.user import UserStatus
 from routers.deps import require_admin
 from schemas.admin import AdminDashboardSummaryResponse
 from schemas.admin import AdminDocumentDetailResponse
@@ -30,6 +31,7 @@ from schemas.admin import AdminUserDetailResponse
 from schemas.admin import AdminUserListItemResponse
 from schemas.admin import AdminUserListResponse
 from schemas.admin import AdminUserRoleUpdateRequest
+from schemas.admin import AdminUserStatusUpdateRequest
 from schemas.admin import AdminWorkerListResponse
 from services.admin_service import get_admin_document_detail
 from services.admin_service import get_admin_logs_summary
@@ -42,11 +44,14 @@ from services.admin_service import get_dashboard_summary
 from services.admin_service import get_system_health
 from services.admin_service import ROLE_UPDATE_LAST_ADMIN
 from services.admin_service import ROLE_UPDATE_SELF_DEMOTION
+from services.admin_service import STATUS_UPDATE_LAST_ADMIN
+from services.admin_service import STATUS_UPDATE_SELF_SUSPEND
 from services.admin_service import list_admin_documents
 from services.admin_service import list_admin_logs
 from services.admin_service import list_admin_tasks
 from services.admin_service import list_admin_users
 from services.admin_service import update_admin_user_role
+from services.admin_service import update_admin_user_status
 
 
 router = APIRouter()
@@ -107,12 +112,19 @@ USER_ROLES = {
     UserRole.USER,
     UserRole.ADMIN,
 }
+USER_STATUSES = {
+    UserStatus.ACTIVE,
+    UserStatus.SUSPENDED,
+    UserStatus.INACTIVE,
+}
 USER_SORT_FIELDS = {
     "created_at",
     "updated_at",
     "name",
     "email",
     "role",
+    "status",
+    "last_active_at",
     "document_count",
     "upload_count",
 }
@@ -229,6 +241,7 @@ def list_logs(
 def list_users(
     q: str | None = None,
     role: str | None = None,
+    status: str | None = None,
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=20, ge=1, le=100),
     sort_by: str = Query(default="created_at"),
@@ -238,6 +251,9 @@ def list_users(
 ):
     if role and role not in USER_ROLES:
         raise HTTPException(status_code=400, detail="지원하지 않는 사용자 역할입니다.")
+
+    if status and status not in USER_STATUSES:
+        raise HTTPException(status_code=400, detail="지원하지 않는 사용자 상태입니다.")
 
     if sort_by not in USER_SORT_FIELDS:
         raise HTTPException(status_code=400, detail="지원하지 않는 정렬 필드입니다.")
@@ -249,6 +265,7 @@ def list_users(
         db=db,
         q=q,
         role=role,
+        status=status,
         page=page,
         limit=limit,
         sort_by=sort_by,
@@ -281,6 +298,39 @@ def update_user_role(
 
     if error_code == ROLE_UPDATE_LAST_ADMIN:
         raise HTTPException(status_code=409, detail="마지막 관리자 계정은 일반 사용자로 변경할 수 없습니다.")
+
+    if user is None:
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+
+    return user
+
+
+@router.patch(
+    "/users/{user_id}/status",
+    response_model=AdminUserListItemResponse,
+)
+def update_user_status(
+    user_id: UUID,
+    req: AdminUserStatusUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    if req.status not in USER_STATUSES:
+        raise HTTPException(status_code=400, detail="지원하지 않는 사용자 상태입니다.")
+
+    user, error_code = update_admin_user_status(
+        db=db,
+        user_id=user_id,
+        new_status=req.status,
+        reason=req.reason,
+        current_user=current_user,
+    )
+
+    if error_code == STATUS_UPDATE_SELF_SUSPEND:
+        raise HTTPException(status_code=400, detail="자기 자신의 계정은 정지할 수 없습니다.")
+
+    if error_code == STATUS_UPDATE_LAST_ADMIN:
+        raise HTTPException(status_code=409, detail="마지막 관리자 계정은 정지할 수 없습니다.")
 
     if user is None:
         raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")

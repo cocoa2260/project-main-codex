@@ -1,6 +1,8 @@
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from models.user import User
+from models.user import UserStatus
 
 from schemas.auth import SignupRequest
 
@@ -39,5 +41,12 @@ def authenticate(db:Session, email:str, password:str):
 
     if not verify_password(password, user.password):
         return None
+
+    if user.status == UserStatus.SUSPENDED:
+        return None
+
+    user.last_active_at = func.now()
+    db.commit()
+    db.refresh(user)
 
     return user
