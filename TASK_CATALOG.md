@@ -127,6 +127,7 @@
 | FE-024 | User Role Update UI Integration | Medium | DONE |
 | BE-ADMIN-011 | User Account Status API | Low | DONE |
 | FE-025 | User Account Status UI Integration | Low | DONE |
+| BE-ADMIN-015 | Admin Audit Log API | Medium | DONE |
 
 ---
 
@@ -438,4 +439,21 @@ Status: DONE
 - Backend 변경 없음
 
 Priority: Low
+Status: DONE
+
+### BE-ADMIN-015 Admin Audit Log API
+
+- audit_logs 테이블 추가
+- AuditLog 모델 추가
+- Admin action 감사 기록용 audit_service 추가
+- User Role 변경 성공 시 USER_ROLE_CHANGED 감사 로그 기록
+- User Status 변경 성공 시 USER_STATUS_CHANGED 감사 로그 기록
+- GET /api/admin/audit-logs 조회 API 추가
+- action / actor_user_id / target_type / target_id / from / to / page / limit 필터 지원
+- old_value / new_value / metadata 저장 전 민감정보 sanitization 적용
+- Request context 기반 ip_address / user_agent 저장
+- 모든 endpoint require_admin 보호
+- Alembic migration 20260615_000001 추가
+
+Priority: Medium
 Status: DONE
