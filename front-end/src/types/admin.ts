@@ -297,6 +297,15 @@ export interface AdminTaskListResponse {
 
 export type AdminTaskDetailResponse = AdminTaskListItemResponse;
 
+export interface AdminTaskRetryResponse {
+  original_task_id: string;
+  retry_task_id: string;
+  document_id: string;
+  task_type: TaskType;
+  status: TaskStatus;
+  message: string;
+}
+
 export interface AdminTaskListParams {
   page?: number;
   limit?: number;

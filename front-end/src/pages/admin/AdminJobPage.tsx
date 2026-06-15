@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { getAdminQueues, getAdminTaskDetail, getAdminTasks, getAdminWorkers } from '../../api/admin';
+import { getAdminQueues, getAdminTaskDetail, getAdminTasks, getAdminWorkers, retryAdminTask } from '../../api/admin';
 import { Sidebar } from '../../components/common/Sidebar';
 import type {
   AdminQueueItem,
@@ -37,6 +37,7 @@ const PAGE_LIMIT = 20;
 const AUTO_REFRESH_INTERVAL_MS = 30_000;
 
 const taskTypes: TaskType[] = ['OCR', 'SUMMARY', 'EMBEDDING', 'RAG_INDEXING'];
+const retryableTaskTypes: TaskType[] = ['OCR', 'SUMMARY'];
 
 const filterStatusMap: Record<Exclude<FilterStatus, 'all'>, TaskStatus> = {
   running: 'PROCESSING',
@@ -129,6 +130,15 @@ function getActivityType(status: string): 'success' | 'error' | 'warning' | 'inf
   return 'info';
 }
 
+function getRetryDisabledReason(task: AdminTaskListItemResponse): string | null {
+  const normalizedStatus = normalizeTaskStatus(task.status);
+  const normalizedType = normalizeTaskType(task.task_type);
+
+  if (normalizedStatus !== 'FAILED') return '실패한 작업만 재시도할 수 있습니다.';
+  if (!normalizedType || !retryableTaskTypes.includes(normalizedType)) return 'OCR 또는 SUMMARY 실패 작업만 재시도할 수 있습니다.';
+  return null;
+}
+
 export function AdminJobPage({ onLogout }: AdminJobPageProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -154,6 +164,9 @@ export function AdminJobPage({ onLogout }: AdminJobPageProps) {
   const [workers, setWorkers] = useState<AdminWorkerItem[]>([]);
   const [isWorkersLoading, setIsWorkersLoading] = useState(true);
   const [workersErrorMessage, setWorkersErrorMessage] = useState<string | null>(null);
+  const [retryingTaskId, setRetryingTaskId] = useState<string | null>(null);
+  const [retrySuccessMessage, setRetrySuccessMessage] = useState<string | null>(null);
+  const [retryErrorMessage, setRetryErrorMessage] = useState<string | null>(null);
 
   const fetchTasks = useCallback(async (page: number, showLoading = false) => {
     if (showLoading) {
@@ -275,6 +288,33 @@ export function AdminJobPage({ onLogout }: AdminJobPageProps) {
       setDetailErrorMessage(getApiErrorMessage(error));
     } finally {
       setIsDetailLoading(false);
+    }
+  };
+
+  const handleRetryTask = async (task: AdminTaskListItemResponse) => {
+    const retryDisabledReason = getRetryDisabledReason(task);
+    if (retryDisabledReason || retryingTaskId) return;
+
+    const confirmed = window.confirm(`${task.task_type} 작업을 재시도할까요?\n문서: ${task.document.file_name}`);
+    if (!confirmed) return;
+
+    setRetryingTaskId(task.id);
+    setRetrySuccessMessage(null);
+    setRetryErrorMessage(null);
+
+    try {
+      const response = await retryAdminTask(task.id);
+      setRetrySuccessMessage(response.message || '작업 재시도를 요청했습니다.');
+      await fetchTasks(pagination.page, false);
+
+      if (selectedTask?.id === task.id) {
+        const detail = await getAdminTaskDetail(task.id);
+        setSelectedTask(detail);
+      }
+    } catch (error) {
+      setRetryErrorMessage(getApiErrorMessage(error, '작업 재시도를 요청하지 못했습니다.'));
+    } finally {
+      setRetryingTaskId(null);
     }
   };
 
@@ -569,6 +609,26 @@ export function AdminJobPage({ onLogout }: AdminJobPageProps) {
                   </div>
                 )}
 
+                {retrySuccessMessage && (
+                  <div className="flex items-start gap-3 rounded-xl border border-green-500/20 bg-green-500/10 p-4 text-green-300">
+                    <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">재시도 요청 완료</p>
+                      <p className="mt-1 text-sm text-green-300/80">{retrySuccessMessage}</p>
+                    </div>
+                  </div>
+                )}
+
+                {retryErrorMessage && (
+                  <div className="flex items-start gap-3 rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-red-300">
+                    <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">재시도 요청 오류</p>
+                      <p className="mt-1 text-sm text-red-300/80">{retryErrorMessage}</p>
+                    </div>
+                  </div>
+                )}
+
                 {/* Table */}
                 <div className="bg-[#111116] border border-white/10 rounded-xl overflow-hidden">
                   <div className="overflow-x-auto">
@@ -605,6 +665,8 @@ export function AdminJobPage({ onLogout }: AdminJobPageProps) {
                           const normalizedStatus = normalizeTaskStatus(job.status);
                           const statusPresentation = getDocumentStatusPresentation(job.status, job.stage);
                           const normalizedStage = normalizeTaskStage(job.stage);
+                          const retryDisabledReason = getRetryDisabledReason(job);
+                          const isRetrying = retryingTaskId === job.id;
 
                           return (
                             <tr key={job.id} className="hover:bg-white/5 transition-colors">
@@ -662,16 +724,15 @@ export function AdminJobPage({ onLogout }: AdminJobPageProps) {
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-right">
                                 <div className="flex items-center justify-end gap-2">
-                                  {normalizedStatus === 'FAILED' && (
-                                    <button
-                                      type="button"
-                                      className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-                                      title="재시도"
-                                      disabled
-                                    >
-                                      <RefreshCw className="w-4 h-4 text-yellow-400" />
-                                    </button>
-                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleRetryTask(job)}
+                                    className="p-2 hover:bg-white/10 rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+                                    title={retryDisabledReason ?? '재시도'}
+                                    disabled={Boolean(retryDisabledReason) || Boolean(retryingTaskId)}
+                                  >
+                                    <RefreshCw className={`w-4 h-4 text-yellow-400 ${isRetrying ? 'animate-spin' : ''}`} />
+                                  </button>
                                   {normalizedStatus === 'PROCESSING' && (
                                     <button
                                       type="button"
@@ -881,7 +942,11 @@ export function AdminJobPage({ onLogout }: AdminJobPageProps) {
                       <h3 className="text-white font-semibold text-lg">실패한 작업</h3>
                     </div>
                     <div className="space-y-3">
-                      {failedJobs.map((job) => (
+                      {failedJobs.map((job) => {
+                        const retryDisabledReason = getRetryDisabledReason(job);
+                        const isRetrying = retryingTaskId === job.id;
+
+                        return (
                         <div
                           key={job.id}
                           className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg"
@@ -896,14 +961,17 @@ export function AdminJobPage({ onLogout }: AdminJobPageProps) {
                           </div>
                           <button
                             type="button"
-                            disabled
+                            onClick={() => void handleRetryTask(job)}
+                            disabled={Boolean(retryDisabledReason) || Boolean(retryingTaskId)}
+                            title={retryDisabledReason ?? '재시도'}
                             className="w-full py-1.5 px-3 bg-red-500/20 border border-red-500/30 rounded text-red-400 text-xs transition-colors flex items-center justify-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-60"
                           >
-                            <RefreshCw className="w-3 h-3" />
+                            <RefreshCw className={`w-3 h-3 ${isRetrying ? 'animate-spin' : ''}`} />
                             재시도
                           </button>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}
