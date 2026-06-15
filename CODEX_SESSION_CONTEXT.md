@@ -270,6 +270,22 @@ Summary:
 - Displayed sensitive settings only through masked API values without adding reveal controls
 - Backend unchanged
 
+### BE-ADMIN-012
+Failed Task Retry API
+Status: DONE
+Summary:
+- Added admin failed task retry API at POST /api/admin/tasks/{task_id}/retry
+- Supported OCR and SUMMARY retries only
+- Preserved existing FAILED TaskTracker rows and created new TaskTracker rows for retry attempts
+- Enqueued OCR retry through process_document_ocr.delay(document_id, retry_task_id)
+- Enqueued SUMMARY retry through process_document_summary.delay(document_id, retry_task_id)
+- Rejected non-FAILED retry targets with 409
+- Rejected duplicate PENDING/PROCESSING task for the same document/task_type with 409
+- Required ocr_markdown for SUMMARY retry
+- Updated Document.status to PROCESSING after successful retry registration
+- Added FAILED_TASK_RETRY audit log output
+- No DB migration, model schema changes, EMBEDDING retry, or RAG_INDEXING retry
+
 ---
 
 ### FE-011

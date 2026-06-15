@@ -119,7 +119,7 @@
 
 | ID | Task | Priority | Status |
 |------|------|------|------|
-| BE-ADMIN-012 | Failed Task Retry API | Medium | BLOCKED |
+| BE-ADMIN-012 | Failed Task Retry API | Medium | DONE |
 | FE-022 | Failed Task Retry UI Integration | Medium | TODO |
 | BE-ADMIN-009 | Document Retry API | Medium | TODO |
 | FE-023 | Document Retry UI Integration | Medium | TODO |
@@ -277,6 +277,24 @@ Status: DONE
 - DB model 변경 및 migration 없음
 - Docker / Celery task 로직 변경 없음
 - Read-only monitoring API only
+
+Priority: Medium
+Status: DONE
+
+### BE-ADMIN-012 Failed Task Retry API
+
+- Admin 실패 Task 재시도 API 추가
+- POST /api/admin/tasks/{task_id}/retry
+- OCR / SUMMARY TaskType만 지원
+- FAILED 상태 TaskTracker만 재시도 허용
+- 기존 FAILED TaskTracker는 변경하지 않고 새 TaskTracker 생성
+- 동일 document / task_type 기준 PENDING 또는 PROCESSING Task 존재 시 409 반환
+- OCR retry는 process_document_ocr.delay(document_id, new_task_id) 사용
+- SUMMARY retry는 ocr_markdown 존재 시 process_document_summary.delay(document_id, new_task_id) 사용
+- retry 등록 성공 시 Document.status를 PROCESSING으로 변경
+- FAILED_TASK_RETRY audit log 기록
+- EMBEDDING / RAG_INDEXING retry 미지원
+- DB model 변경 및 migration 없음
 
 Priority: Medium
 Status: DONE

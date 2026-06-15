@@ -6,6 +6,7 @@ from fastapi import APIRouter
 from fastapi import Depends
 from fastapi import HTTPException
 from fastapi import Query
+from fastapi import Request
 from sqlalchemy.orm import Session
 
 from db.session import get_db
@@ -17,6 +18,7 @@ from models.user import User
 from models.user import UserRole
 from routers.deps import require_admin
 from schemas.admin import AdminDashboardSummaryResponse
+from schemas.admin import AdminAuditLogListResponse
 from schemas.admin import AdminDocumentDetailResponse
 from schemas.admin import AdminDocumentListResponse
 from schemas.admin import AdminLogListResponse
@@ -26,6 +28,7 @@ from schemas.admin import AdminSettingsResponse
 from schemas.admin import AdminSystemHealthResponse
 from schemas.admin import AdminTaskDetailResponse
 from schemas.admin import AdminTaskListResponse
+from schemas.admin import AdminTaskRetryResponse
 from schemas.admin import AdminUserDetailResponse
 from schemas.admin import AdminUserListResponse
 from schemas.admin import AdminWorkerListResponse
@@ -42,6 +45,9 @@ from services.admin_service import list_admin_documents
 from services.admin_service import list_admin_logs
 from services.admin_service import list_admin_tasks
 from services.admin_service import list_admin_users
+from services.admin_service import AdminTaskRetryError
+from services.admin_service import retry_failed_task
+from services.audit_service import list_audit_logs as list_admin_audit_logs
 
 
 router = APIRouter()
@@ -214,6 +220,27 @@ def list_logs(
         to_datetime=to_datetime,
         page=page,
         limit=limit,
+    )
+
+
+@router.get(
+    "/audit-logs",
+    response_model=AdminAuditLogListResponse,
+)
+def list_audit_logs(
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=50, ge=1, le=100),
+    action: str | None = None,
+    target_type: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    return list_admin_audit_logs(
+        db=db,
+        page=page,
+        limit=limit,
+        action=action,
+        target_type=target_type,
     )
 
 
@@ -392,3 +419,25 @@ def get_task(
         raise HTTPException(status_code=404, detail="작업을 찾을 수 없습니다.")
 
     return task
+
+
+@router.post(
+    "/tasks/{task_id}/retry",
+    response_model=AdminTaskRetryResponse,
+)
+def retry_task(
+    task_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    try:
+        return retry_failed_task(
+            db=db,
+            task_id=task_id,
+            actor=current_user,
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+        )
+    except AdminTaskRetryError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail)

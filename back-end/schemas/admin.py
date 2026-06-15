@@ -142,6 +142,27 @@ class AdminLogSummaryResponse(BaseModel):
     warning_message: str | None = None
 
 
+class AdminAuditLogItemResponse(BaseModel):
+    id: UUID
+    actor_user_id: UUID | None = None
+    actor_email_snapshot: str | None = None
+    target_type: str
+    target_id: UUID | None = None
+    action: str
+    old_value: dict | None = None
+    new_value: dict | None = None
+    reason: str | None = None
+    ip_address: str | None = None
+    user_agent: str | None = None
+    metadata: dict | None = None
+    created_at: datetime
+
+
+class AdminAuditLogListResponse(BaseModel):
+    items: list[AdminAuditLogItemResponse]
+    pagination: AdminPaginationResponse
+
+
 class AdminOwnerResponse(BaseModel):
     id: UUID
     email: str
@@ -229,6 +250,15 @@ class AdminTaskListResponse(BaseModel):
 
 class AdminTaskDetailResponse(AdminTaskListItemResponse):
     pass
+
+
+class AdminTaskRetryResponse(BaseModel):
+    original_task_id: UUID
+    retry_task_id: UUID
+    document_id: UUID
+    task_type: str
+    status: str
+    message: str
 
 
 class AdminUserListItemResponse(BaseModel):

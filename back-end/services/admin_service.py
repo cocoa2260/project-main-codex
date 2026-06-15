@@ -28,6 +28,7 @@ from models.document import Document
 from models.document import DocumentStatus
 from models.document_chunk import DocumentChunk
 from models.task_tracker import TaskStatus
+from models.task_tracker import TaskStage
 from models.task_tracker import TaskTracker
 from models.task_tracker import TaskType
 from models.user import User
@@ -44,6 +45,7 @@ from schemas.admin import AdminTaskDetailResponse
 from schemas.admin import AdminTaskDocumentResponse
 from schemas.admin import AdminTaskListItemResponse
 from schemas.admin import AdminTaskListResponse
+from schemas.admin import AdminTaskRetryResponse
 from schemas.admin import AdminUserDetailResponse
 from schemas.admin import AdminUserDocumentResponse
 from schemas.admin import AdminUserListItemResponse
@@ -63,6 +65,11 @@ from schemas.admin import DocumentStatsResponse
 from schemas.admin import RecentEventResponse
 from schemas.admin import TaskStatsResponse
 from schemas.admin import UserStatsResponse
+from services.audit_service import record_failed_task_retry
+from services.document_service import attach_celery_task_id
+from services.document_service import create_document_task
+from tasks.ocr_tasks import process_document_ocr
+from tasks.summary_tasks import process_document_summary
 
 
 HEALTHY = "HEALTHY"
@@ -79,6 +86,7 @@ LOG_LEVEL_ERROR = "ERROR"
 LOG_LEVEL_SUCCESS = "SUCCESS"
 LOG_SOURCE_TASK_TRACKER = "TaskTracker"
 LOG_QUERY_WARNING = "TaskTracker 기반 이벤트 로그를 사용했습니다. 파일 로그 위치가 명확하지 않습니다."
+RETRY_REGISTERED_MESSAGE = "재시도 작업을 등록했습니다."
 
 SENSITIVE_VALUE_PATTERNS = [
     re.compile(
@@ -1724,3 +1732,120 @@ def get_admin_task_detail(
 
     item = _task_list_item_response(row)
     return AdminTaskDetailResponse(**item.dict())
+
+
+class AdminTaskRetryError(Exception):
+    def __init__(self, status_code: int, detail: str):
+        self.status_code = status_code
+        self.detail = detail
+
+
+def retry_failed_task(
+    db: Session,
+    task_id: UUID,
+    actor: User,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> AdminTaskRetryResponse:
+    original_task = (
+        db.query(TaskTracker)
+        .options(joinedload(TaskTracker.document))
+        .filter(TaskTracker.id == task_id)
+        .first()
+    )
+
+    if original_task is None:
+        raise AdminTaskRetryError(404, "작업을 찾을 수 없습니다.")
+
+    if original_task.status != TaskStatus.FAILED:
+        raise AdminTaskRetryError(409, "실패한 작업만 재시도할 수 있습니다.")
+
+    if original_task.task_type not in {TaskType.OCR, TaskType.SUMMARY}:
+        raise AdminTaskRetryError(400, "지원하지 않는 작업 유형입니다.")
+
+    document = original_task.document
+    if document is None:
+        raise AdminTaskRetryError(404, "문서를 찾을 수 없습니다.")
+
+    running_task = (
+        db.query(TaskTracker)
+        .filter(
+            TaskTracker.document_id == original_task.document_id,
+            TaskTracker.task_type == original_task.task_type,
+            TaskTracker.status.in_([TaskStatus.PENDING, TaskStatus.PROCESSING]),
+        )
+        .first()
+    )
+    if running_task is not None:
+        raise AdminTaskRetryError(409, "이미 실행 중인 동일 유형 작업이 있습니다.")
+
+    retry_task = None
+    try:
+        if original_task.task_type == TaskType.OCR:
+            retry_task = create_document_task(
+                db=db,
+                document_id=document.id,
+                task_type=TaskType.OCR,
+                stage=TaskStage.OCR_PENDING,
+                message="OCR 재시도 작업 대기 중입니다.",
+            )
+            async_result = process_document_ocr.delay(
+                str(document.id),
+                str(retry_task.id),
+            )
+        else:
+            if not document.ocr_markdown:
+                raise AdminTaskRetryError(400, "OCR Markdown 결과가 없습니다.")
+
+            retry_task = create_document_task(
+                db=db,
+                document_id=document.id,
+                task_type=TaskType.SUMMARY,
+                stage=TaskStage.SUMMARY_PENDING,
+                message="요약 재시도 작업 대기 중입니다.",
+            )
+            async_result = process_document_summary.delay(
+                str(document.id),
+                str(retry_task.id),
+            )
+    except AdminTaskRetryError:
+        raise
+    except Exception as error:
+        if retry_task is not None:
+            retry_task.status = TaskStatus.FAILED
+            retry_task.stage = TaskStage.FAILED
+            retry_task.message = "재시도 작업 등록 중 오류가 발생했습니다."
+            retry_task.error_message = str(error)
+            retry_task.completed_at = datetime.now(timezone.utc)
+            db.commit()
+        raise
+
+    attach_celery_task_id(
+        db=db,
+        task_id=retry_task.id,
+        celery_task_id=async_result.id,
+    )
+
+    document.status = DocumentStatus.PROCESSING
+    db.commit()
+    db.refresh(retry_task)
+
+    record_failed_task_retry(
+        db=db,
+        actor=actor,
+        target_task_id=original_task.id,
+        retry_task_id=retry_task.id,
+        document_id=document.id,
+        task_type=original_task.task_type,
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
+
+    return AdminTaskRetryResponse(
+        original_task_id=original_task.id,
+        retry_task_id=retry_task.id,
+        document_id=document.id,
+        task_type=retry_task.task_type,
+        status=retry_task.status,
+        message=RETRY_REGISTERED_MESSAGE,
+    )
