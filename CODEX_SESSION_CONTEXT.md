@@ -351,6 +351,21 @@ Summary:
 - Did not modify localStorage auth_user directly
 - Backend unchanged
 
+### FE-026
+Admin Audit Log UI Integration
+Status: DONE
+Summary:
+- Added admin audit log API client for GET /api/admin/audit-logs
+- Added AdminAuditLogItem, AdminAuditLogsResponse, AdminAuditAction, and filter DTO types
+- Integrated audit logs into AdminLogPage as a separate section from operational logs
+- Preserved existing operational logs, log stats, recent errors, system health, export, copy, retry, and document action UI
+- Added audit action, from, to, page, and limit query support in the UI flow
+- Added audit log loading, error, empty, refresh, polling, and pagination states
+- Added audit row click detail display for actor, action, target, old/new values, reason, IP, user agent, metadata, and created_at
+- Added safe compact JSON rendering with truncation/scrolling for audit old_value, new_value, and metadata
+- Included audit logs in existing refresh and 30 second polling cleanup
+- Backend unchanged
+
 ---
 
 ### FE-011

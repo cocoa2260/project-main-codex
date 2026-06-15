@@ -1,5 +1,7 @@
 import { apiClient } from './client';
 import type {
+  AdminAuditLogListParams,
+  AdminAuditLogsResponse,
   AdminDashboardSummaryResponse,
   AdminDocumentDetailResponse,
   AdminDocumentListParams,
@@ -57,6 +59,11 @@ export async function getAdminLogs(params?: AdminLogListParams): Promise<AdminLo
 
 export async function getAdminLogSummary(): Promise<AdminLogSummaryResponse> {
   const response = await apiClient.get<AdminLogSummaryResponse>('/api/admin/logs/summary');
+  return response.data;
+}
+
+export async function getAdminAuditLogs(params?: AdminAuditLogListParams): Promise<AdminAuditLogsResponse> {
+  const response = await apiClient.get<AdminAuditLogsResponse>('/api/admin/audit-logs', { params });
   return response.data;
 }
 
