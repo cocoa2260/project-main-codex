@@ -261,6 +261,20 @@ Summary:
 - Added DOCUMENT_DELETED and DOCUMENT audit constants/filter support
 - No DB migration, table, column, frontend, or Docker changes
 
+### FE-028
+Admin Document Original Export UI Integration
+Status: DONE
+Summary:
+- Added admin original document export API client for GET /api/admin/documents/{document_id}/export?format=original
+- Added blob download handling with Content-Disposition filename support and document.file_name fallback
+- Added Blob URL creation, download trigger, and revoke cleanup
+- Enabled AdminDocumentPage original download action with a clear "원본 다운로드" label
+- Added duplicate-click prevention and in-row loading state while a download is pending
+- Added success and backend error message display for original downloads
+- Preserved delete and retry actions unchanged
+- Kept unsupported export formats such as OCR Markdown, Summary, Metadata, Chunk, Embedding, and ZIP deferred/disabled
+- Frontend-only change; backend and API contract unchanged
+
 ### BE-ADMIN-017
 Admin Account Delete API
 Status: BLOCKED

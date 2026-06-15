@@ -32,6 +32,61 @@ import type {
 } from '@/types/admin';
 import type { UserRole } from '@/utils/auth';
 
+type BlobErrorResponse = {
+  response?: {
+    data?: unknown;
+    headers?: Record<string, string | undefined>;
+  };
+};
+
+function sanitizeDownloadFileName(fileName?: string): string {
+  const fallback = 'document-original.pdf';
+  const trimmed = fileName?.trim();
+  if (!trimmed) return fallback;
+
+  return trimmed.replace(/[\\/:*?"<>|]/g, '_') || fallback;
+}
+
+function getHeaderValue(headers: Record<string, string | undefined>, headerName: string): string | undefined {
+  const lowerHeaderName = headerName.toLowerCase();
+  const matchedKey = Object.keys(headers).find((key) => key.toLowerCase() === lowerHeaderName);
+  return matchedKey ? headers[matchedKey] : undefined;
+}
+
+function getFileNameFromContentDisposition(contentDisposition?: string): string | undefined {
+  if (!contentDisposition) return undefined;
+
+  const encodedMatch = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (encodedMatch?.[1]) {
+    try {
+      return decodeURIComponent(encodedMatch[1].replace(/"/g, ''));
+    } catch {
+      return encodedMatch[1].replace(/"/g, '');
+    }
+  }
+
+  const fallbackMatch = contentDisposition.match(/filename="?([^";]+)"?/i);
+  return fallbackMatch?.[1];
+}
+
+async function normalizeBlobError(error: unknown): Promise<never> {
+  const blobError = error as BlobErrorResponse;
+  const data = blobError.response?.data;
+
+  if (data instanceof Blob) {
+    const contentType = getHeaderValue(blobError.response?.headers ?? {}, 'content-type') ?? data.type;
+    if (contentType.includes('application/json')) {
+      try {
+        blobError.response!.data = JSON.parse(await data.text());
+      } catch {
+        // Keep the original blob if the backend did not return parseable JSON.
+      }
+    }
+  }
+
+  throw error;
+}
+
 export async function getAdminDashboardSummary(): Promise<AdminDashboardSummaryResponse> {
   const response = await apiClient.get<AdminDashboardSummaryResponse>('/api/admin/dashboard/summary');
   return response.data;
@@ -85,6 +140,33 @@ export async function getAdminDocumentDetail(documentId: string): Promise<AdminD
 export async function deleteAdminDocument(documentId: string): Promise<AdminDocumentDeleteResponse> {
   const response = await apiClient.delete<AdminDocumentDeleteResponse>(`/api/admin/documents/${documentId}`);
   return response.data;
+}
+
+export async function downloadAdminDocumentOriginal(documentId: string, fileName?: string): Promise<string> {
+  try {
+    const response = await apiClient.get<Blob>(`/api/admin/documents/${documentId}/export`, {
+      params: { format: 'original' },
+      responseType: 'blob',
+    });
+
+    const contentDisposition = getHeaderValue(response.headers as Record<string, string | undefined>, 'content-disposition');
+    const downloadFileName = sanitizeDownloadFileName(
+      getFileNameFromContentDisposition(contentDisposition) ?? fileName,
+    );
+    const url = window.URL.createObjectURL(response.data);
+    const anchor = document.createElement('a');
+
+    anchor.href = url;
+    anchor.download = downloadFileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+
+    return downloadFileName;
+  } catch (error) {
+    return normalizeBlobError(error);
+  }
 }
 
 export async function retryAdminDocumentFromStage(
