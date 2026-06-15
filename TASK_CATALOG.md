@@ -132,6 +132,7 @@
 | BE-ADMIN-016 | Admin Document Delete API | Medium | DONE |
 | FE-027 | Admin Document Delete UI Integration | Medium | DONE |
 | BE-ADMIN-017 | Admin Account Delete API | Medium | BLOCKED |
+| BE-ADMIN-018 | Admin Document Original Export API | Medium | DONE |
 
 ---
 
@@ -545,6 +546,22 @@ Status: DONE
 - 다운로드 / 채팅 / 재시도 등 API 없는 action은 기존 준비중/비활성 정책 유지
 - Frontend 변경만 수행
 - Backend / API contract 변경 없음
+
+Priority: Medium
+Status: DONE
+
+### BE-ADMIN-018 Admin Document Original Export API
+
+- Admin 문서 원본 PDF 다운로드 API 추가
+- GET /api/admin/documents/{document_id}/export?format=original
+- format 기본값은 original이며 original 외 값은 400 반환
+- FileResponse로 application/pdf attachment 반환
+- ADMIN은 소유자 제한 없이 전체 문서 원본 다운로드 가능
+- 비인증 401 / USER 403 / 문서 없음 404 / storage 파일 없음 404 처리
+- storage_path 및 파일 경로를 응답 body와 감사 로그에 노출하지 않음
+- 성공한 original export에 대해서만 DOCUMENT_EXPORTED audit log 기록
+- OCR Markdown / Summary / Metadata / Chunk / Embedding / ZIP export 미구현
+- DB schema 변경 및 migration 없음
 
 Priority: Medium
 Status: DONE

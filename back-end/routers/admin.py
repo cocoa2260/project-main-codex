@@ -7,6 +7,7 @@ from fastapi import Depends
 from fastapi import HTTPException
 from fastapi import Query
 from fastapi import Request
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from db.session import get_db
@@ -60,8 +61,10 @@ from services.admin_service import list_admin_documents
 from services.admin_service import list_admin_logs
 from services.admin_service import list_admin_tasks
 from services.admin_service import list_admin_users
+from services.admin_service import AdminDocumentExportError
 from services.admin_service import AdminTaskRetryError
 from services.admin_service import AdminDocumentRetryError
+from services.admin_service import prepare_admin_document_original_export
 from services.admin_service import retry_admin_document_from_stage
 from services.admin_service import retry_failed_task
 from services.admin_service import update_admin_user_role
@@ -153,6 +156,7 @@ AUDIT_ACTIONS = {
     AuditAction.USER_STATUS_CHANGED,
     AuditAction.DOCUMENT_DELETED,
     AuditAction.DOCUMENT_REPROCESS_REQUESTED,
+    AuditAction.DOCUMENT_EXPORTED,
 }
 AUDIT_TARGET_TYPES = {
     AuditTargetType.USER,
@@ -488,6 +492,36 @@ def get_document(
         raise HTTPException(status_code=404, detail="문서를 찾을 수 없습니다.")
 
     return document
+
+
+@router.get(
+    "/documents/{document_id}/export",
+    response_class=FileResponse,
+)
+def export_document(
+    document_id: UUID,
+    request: Request,
+    format: str = Query(default="original"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    try:
+        export_file = prepare_admin_document_original_export(
+            db=db,
+            document_id=document_id,
+            export_format=format,
+            actor=current_user,
+            ip_address=_client_ip(request),
+            user_agent=_user_agent(request),
+        )
+    except AdminDocumentExportError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail)
+
+    return FileResponse(
+        path=export_file.path,
+        media_type=export_file.content_type,
+        filename=export_file.file_name,
+    )
 
 
 @router.post(
