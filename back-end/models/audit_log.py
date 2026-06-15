@@ -16,10 +16,12 @@ from db.database import Base
 class AuditAction:
     USER_ROLE_CHANGED = "USER_ROLE_CHANGED"
     USER_STATUS_CHANGED = "USER_STATUS_CHANGED"
+    DOCUMENT_DELETED = "DOCUMENT_DELETED"
 
 
 class AuditTargetType:
     USER = "USER"
+    DOCUMENT = "DOCUMENT"
 
 
 class AuditLog(Base):

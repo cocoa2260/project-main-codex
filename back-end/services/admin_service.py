@@ -6,6 +6,7 @@ from math import ceil
 import os
 from pathlib import Path
 import re
+import shutil
 from urllib.parse import urlsplit
 from urllib.parse import urlunsplit
 from uuid import UUID
@@ -38,6 +39,7 @@ from models.user import UserRole
 from models.user import UserStatus
 from schemas.admin import AdminDashboardSummaryResponse
 from schemas.admin import AdminDocumentDetailResponse
+from schemas.admin import AdminDocumentDeleteResponse
 from schemas.admin import AdminDocumentListItemResponse
 from schemas.admin import AdminDocumentListResponse
 from schemas.admin import AdminQueueListResponse
@@ -95,6 +97,7 @@ ROLE_UPDATE_SELF_DEMOTION = "SELF_DEMOTION"
 ROLE_UPDATE_LAST_ADMIN = "LAST_ADMIN"
 STATUS_UPDATE_SELF_SUSPEND = "SELF_SUSPEND"
 STATUS_UPDATE_LAST_ADMIN = "LAST_ADMIN"
+DOCUMENT_DELETE_MESSAGE = "문서가 삭제되었습니다."
 
 SENSITIVE_VALUE_PATTERNS = [
     re.compile(
@@ -1796,6 +1799,95 @@ def get_admin_document_detail(
         chunk_count=chunk_count,
         keywords=keywords,
     )
+
+
+def _document_cleanup_paths(storage_path: str | None) -> list[Path]:
+    if not storage_path:
+        return []
+
+    original_path = Path(storage_path)
+    paths = [
+        original_path,
+        original_path.with_suffix(".md"),
+        original_path.with_suffix(".txt"),
+        original_path.with_suffix(".json"),
+        original_path.with_name(f"{original_path.stem}.ocr.md"),
+        original_path.with_name(f"{original_path.stem}.ocr.txt"),
+        original_path.with_name(f"{original_path.stem}.ocr.json"),
+        original_path.with_name(f"{original_path.stem}_ocr.md"),
+        original_path.with_name(f"{original_path.stem}_ocr.txt"),
+        original_path.with_name(f"{original_path.stem}_ocr.json"),
+        original_path.with_name(f"{original_path.stem}_ocr"),
+        original_path.with_name(f"{original_path.stem}.ocr"),
+    ]
+
+    unique_paths = []
+    seen = set()
+    for path in paths:
+        path_key = str(path)
+        if path_key not in seen:
+            seen.add(path_key)
+            unique_paths.append(path)
+
+    return unique_paths
+
+
+def _delete_storage_path_if_exists(path: Path) -> None:
+    try:
+        if path.is_dir():
+            shutil.rmtree(path)
+            return
+
+        path.unlink()
+    except FileNotFoundError:
+        return
+
+
+def delete_admin_document(
+    db: Session,
+    document_id: UUID,
+    actor: User,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> AdminDocumentDeleteResponse | None:
+    document = db.query(Document).filter(Document.id == document_id).first()
+
+    if document is None:
+        return None
+
+    old_value = {
+        "document_id": str(document.id),
+        "file_name": document.file_name,
+        "status": document.status,
+    }
+    cleanup_paths = _document_cleanup_paths(document.storage_path)
+    response = AdminDocumentDeleteResponse(
+        document_id=document.id,
+        file_name=document.file_name,
+        deleted=True,
+        message=DOCUMENT_DELETE_MESSAGE,
+    )
+
+    for path in cleanup_paths:
+        _delete_storage_path_if_exists(path)
+
+    record_admin_action(
+        db=db,
+        actor_user=actor,
+        action=AuditAction.DOCUMENT_DELETED,
+        target_type=AuditTargetType.DOCUMENT,
+        target_id=document.id,
+        old_value=old_value,
+        new_value={"deleted": True},
+        reason="Admin deleted document.",
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
+
+    db.delete(document)
+    db.commit()
+
+    return response
 
 
 def _base_task_query(db: Session):
