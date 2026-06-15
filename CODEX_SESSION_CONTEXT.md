@@ -307,6 +307,23 @@ Next:
 - Define account deletion policy
 - Implement hard delete API only after policy confirmation
 
+### BE-ADMIN-018
+Admin Document Original Export API
+Status: DONE
+Summary:
+- Added admin document original export API at GET /api/admin/documents/{document_id}/export?format=original
+- Protected the endpoint with require_admin
+- Defaulted missing format to original and rejected non-original formats with 400
+- Returned stored original PDF through FileResponse with application/pdf and attachment filename based on document.file_name
+- Allowed ADMIN users to export any document without owner restriction
+- Returned 404 for missing Document rows, missing storage_path, and missing storage files without exposing storage_path or file paths
+- Recorded DOCUMENT_EXPORTED audit logs only after successful export preparation
+- Audit old_value includes document_id, file_name, and status
+- Audit new_value includes exported=true and format=original
+- Audit metadata includes format, content_type, and file_size only
+- Did not export OCR Markdown, Summary, Metadata, Chunk, Embedding, or ZIP
+- No DB migration or schema changes
+
 ### FE-017
 Admin User Management API Integration
 Status: DONE
