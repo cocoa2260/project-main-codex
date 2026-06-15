@@ -396,6 +396,26 @@ Summary:
 - Added FAILED_TASK_RETRY audit log output
 - No DB migration, model schema changes, EMBEDDING retry, or RAG_INDEXING retry
 
+### BE-ADMIN-009
+Document Retry API
+Status: DONE
+Summary:
+- Added admin document retry API at POST /api/admin/documents/{document_id}/retry-from-stage
+- Protected the endpoint with require_admin
+- Added AdminDocumentRetryRequest and AdminDocumentRetryResponse DTOs
+- Supported retry_from_stage OCR and SUMMARY only
+- Allowed retry for FAILED, COMPLETED, and REVIEW_REQUIRED documents
+- Blocked PENDING and PROCESSING documents with 409
+- Blocked retry when the document already has PENDING or PROCESSING TaskTracker rows
+- OCR retry clears ocr_markdown, summary, DocumentChunk, and DocumentEmbedding rows while preserving the original PDF/storage_path
+- SUMMARY retry requires ocr_markdown and clears summary, DocumentChunk, and DocumentEmbedding rows while preserving ocr_markdown and storage_path
+- Preserved existing TaskTracker rows and created new TaskTracker rows for retry attempts
+- Enqueued OCR retry through process_document_ocr.delay(document_id, retry_task_id)
+- Enqueued SUMMARY retry through process_document_summary.delay(document_id, retry_task_id)
+- Updated Document.status to PROCESSING after successful retry registration
+- Recorded DOCUMENT_REPROCESS_REQUESTED audit logs with previous status, retry stage, retry task id, reason, and cleared artifacts
+- No DB migration, Alembic change, schema migration, EMBEDDING retry, or RAG_INDEXING retry
+
 ### FE-024
 User Role Update UI Integration
 Status: DONE

@@ -28,6 +28,7 @@ from core.security import ALGORITHM
 from models.document import Document
 from models.document import DocumentStatus
 from models.document_chunk import DocumentChunk
+from models.document_embedding import DocumentEmbedding
 from models.audit_log import AuditAction
 from models.audit_log import AuditTargetType
 from models.task_tracker import TaskStatus
@@ -42,6 +43,7 @@ from schemas.admin import AdminDocumentDetailResponse
 from schemas.admin import AdminDocumentDeleteResponse
 from schemas.admin import AdminDocumentListItemResponse
 from schemas.admin import AdminDocumentListResponse
+from schemas.admin import AdminDocumentRetryResponse
 from schemas.admin import AdminQueueListResponse
 from schemas.admin import AdminQueueResponse
 from schemas.admin import AdminSystemHealthResponse
@@ -70,6 +72,7 @@ from schemas.admin import DocumentStatsResponse
 from schemas.admin import RecentEventResponse
 from schemas.admin import TaskStatsResponse
 from schemas.admin import UserStatsResponse
+from services.audit_service import record_document_reprocess_requested
 from services.audit_service import record_failed_task_retry
 from services.document_service import attach_celery_task_id
 from services.document_service import create_document_task
@@ -93,11 +96,23 @@ LOG_LEVEL_SUCCESS = "SUCCESS"
 LOG_SOURCE_TASK_TRACKER = "TaskTracker"
 LOG_QUERY_WARNING = "TaskTracker 기반 이벤트 로그를 사용했습니다. 파일 로그 위치가 명확하지 않습니다."
 RETRY_REGISTERED_MESSAGE = "재시도 작업을 등록했습니다."
+DOCUMENT_REPROCESS_REGISTERED_MESSAGE = "문서 재처리 작업을 등록했습니다."
 ROLE_UPDATE_SELF_DEMOTION = "SELF_DEMOTION"
 ROLE_UPDATE_LAST_ADMIN = "LAST_ADMIN"
 STATUS_UPDATE_SELF_SUSPEND = "SELF_SUSPEND"
 STATUS_UPDATE_LAST_ADMIN = "LAST_ADMIN"
 DOCUMENT_DELETE_MESSAGE = "문서가 삭제되었습니다."
+DOCUMENT_RETRY_STAGE_OCR = "OCR"
+DOCUMENT_RETRY_STAGE_SUMMARY = "SUMMARY"
+DOCUMENT_RETRY_FROM_STAGES = {
+    DOCUMENT_RETRY_STAGE_OCR,
+    DOCUMENT_RETRY_STAGE_SUMMARY,
+}
+DOCUMENT_RETRY_ALLOWED_STATUSES = {
+    DocumentStatus.FAILED,
+    DocumentStatus.COMPLETED,
+    DocumentStatus.REVIEW_REQUIRED,
+}
 
 SENSITIVE_VALUE_PATTERNS = [
     re.compile(
@@ -1888,6 +1903,162 @@ def delete_admin_document(
     db.commit()
 
     return response
+
+
+class AdminDocumentRetryError(Exception):
+    def __init__(self, status_code: int, detail: str):
+        self.status_code = status_code
+        self.detail = detail
+
+
+def _normalize_document_retry_stage(retry_from_stage: str) -> str:
+    return (retry_from_stage or "").strip().upper()
+
+
+def _document_has_running_task(db: Session, document_id: UUID) -> bool:
+    return (
+        db.query(TaskTracker.id)
+        .filter(
+            TaskTracker.document_id == document_id,
+            TaskTracker.status.in_([TaskStatus.PENDING, TaskStatus.PROCESSING]),
+        )
+        .first()
+        is not None
+    )
+
+
+def _clear_document_retry_artifacts(
+    db: Session,
+    document: Document,
+    retry_from_stage: str,
+) -> list[str]:
+    cleared_artifacts = []
+
+    if retry_from_stage == DOCUMENT_RETRY_STAGE_OCR:
+        document.ocr_markdown = None
+        cleared_artifacts.append("ocr_markdown")
+
+    document.summary = None
+    cleared_artifacts.append("summary")
+
+    db.query(DocumentEmbedding).filter(
+        DocumentEmbedding.document_id == document.id,
+    ).delete(synchronize_session=False)
+
+    db.query(DocumentChunk).filter(
+        DocumentChunk.document_id == document.id,
+    ).delete(synchronize_session=False)
+    cleared_artifacts.append("chunks")
+    cleared_artifacts.append("embeddings")
+
+    return cleared_artifacts
+
+
+def retry_admin_document_from_stage(
+    db: Session,
+    document_id: UUID,
+    retry_from_stage: str,
+    reason: str | None,
+    actor: User,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> AdminDocumentRetryResponse:
+    retry_stage = _normalize_document_retry_stage(retry_from_stage)
+    if retry_stage not in DOCUMENT_RETRY_FROM_STAGES:
+        raise AdminDocumentRetryError(400, "지원하지 않는 재처리 단계입니다.")
+
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if document is None:
+        raise AdminDocumentRetryError(404, "문서를 찾을 수 없습니다.")
+
+    previous_status = document.status
+    if previous_status not in DOCUMENT_RETRY_ALLOWED_STATUSES:
+        raise AdminDocumentRetryError(409, "재처리할 수 없는 문서 상태입니다.")
+
+    if _document_has_running_task(db=db, document_id=document.id):
+        raise AdminDocumentRetryError(409, "이미 실행 중인 문서 작업이 있습니다.")
+
+    if retry_stage == DOCUMENT_RETRY_STAGE_SUMMARY and not document.ocr_markdown:
+        raise AdminDocumentRetryError(400, "OCR Markdown 결과가 없습니다.")
+
+    cleared_artifacts = _clear_document_retry_artifacts(
+        db=db,
+        document=document,
+        retry_from_stage=retry_stage,
+    )
+    db.commit()
+
+    retry_task = None
+    try:
+        if retry_stage == DOCUMENT_RETRY_STAGE_OCR:
+            retry_task = create_document_task(
+                db=db,
+                document_id=document.id,
+                task_type=TaskType.OCR,
+                stage=TaskStage.OCR_PENDING,
+                message="문서 OCR 재처리 작업 대기 중입니다.",
+            )
+            async_result = process_document_ocr.delay(
+                str(document.id),
+                str(retry_task.id),
+            )
+        else:
+            retry_task = create_document_task(
+                db=db,
+                document_id=document.id,
+                task_type=TaskType.SUMMARY,
+                stage=TaskStage.SUMMARY_PENDING,
+                message="문서 요약 재처리 작업 대기 중입니다.",
+            )
+            async_result = process_document_summary.delay(
+                str(document.id),
+                str(retry_task.id),
+            )
+    except Exception as error:
+        if retry_task is not None:
+            retry_task.status = TaskStatus.FAILED
+            retry_task.stage = TaskStage.FAILED
+            retry_task.message = "문서 재처리 작업 등록 중 오류가 발생했습니다."
+            retry_task.error_message = str(error)
+            retry_task.completed_at = datetime.now(timezone.utc)
+            db.commit()
+        raise
+
+    attach_celery_task_id(
+        db=db,
+        task_id=retry_task.id,
+        celery_task_id=async_result.id,
+    )
+
+    document.status = DocumentStatus.PROCESSING
+    db.commit()
+    db.refresh(document)
+    db.refresh(retry_task)
+
+    record_document_reprocess_requested(
+        db=db,
+        actor=actor,
+        document_id=document.id,
+        previous_status=previous_status,
+        retry_task_id=retry_task.id,
+        retry_from_stage=retry_stage,
+        status=document.status,
+        cleared_artifacts=cleared_artifacts,
+        reason=reason,
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
+    db.commit()
+
+    return AdminDocumentRetryResponse(
+        document_id=document.id,
+        retry_task_id=retry_task.id,
+        retry_from_stage=retry_stage,
+        previous_status=previous_status,
+        status=document.status,
+        cleared_artifacts=cleared_artifacts,
+        message=DOCUMENT_REPROCESS_REGISTERED_MESSAGE,
+    )
 
 
 def _base_task_query(db: Session):

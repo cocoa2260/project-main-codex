@@ -25,6 +25,8 @@ from schemas.admin import AdminDashboardSummaryResponse
 from schemas.admin import AdminDocumentDetailResponse
 from schemas.admin import AdminDocumentDeleteResponse
 from schemas.admin import AdminDocumentListResponse
+from schemas.admin import AdminDocumentRetryRequest
+from schemas.admin import AdminDocumentRetryResponse
 from schemas.admin import AdminLogListResponse
 from schemas.admin import AdminLogSummaryResponse
 from schemas.admin import AdminQueueListResponse
@@ -59,6 +61,8 @@ from services.admin_service import list_admin_logs
 from services.admin_service import list_admin_tasks
 from services.admin_service import list_admin_users
 from services.admin_service import AdminTaskRetryError
+from services.admin_service import AdminDocumentRetryError
+from services.admin_service import retry_admin_document_from_stage
 from services.admin_service import retry_failed_task
 from services.admin_service import update_admin_user_role
 from services.admin_service import update_admin_user_status
@@ -148,6 +152,7 @@ AUDIT_ACTIONS = {
     AuditAction.USER_ROLE_CHANGED,
     AuditAction.USER_STATUS_CHANGED,
     AuditAction.DOCUMENT_DELETED,
+    AuditAction.DOCUMENT_REPROCESS_REQUESTED,
 }
 AUDIT_TARGET_TYPES = {
     AuditTargetType.USER,
@@ -483,6 +488,31 @@ def get_document(
         raise HTTPException(status_code=404, detail="문서를 찾을 수 없습니다.")
 
     return document
+
+
+@router.post(
+    "/documents/{document_id}/retry-from-stage",
+    response_model=AdminDocumentRetryResponse,
+)
+def retry_document_from_stage(
+    document_id: UUID,
+    req: AdminDocumentRetryRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    try:
+        return retry_admin_document_from_stage(
+            db=db,
+            document_id=document_id,
+            retry_from_stage=req.retry_from_stage,
+            reason=req.reason,
+            actor=current_user,
+            ip_address=_client_ip(request),
+            user_agent=_user_agent(request),
+        )
+    except AdminDocumentRetryError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail)
 
 
 @router.delete(
