@@ -131,6 +131,7 @@
 | FE-026 | Admin Audit Log UI Integration | Medium | DONE |
 | BE-ADMIN-016 | Admin Document Delete API | Medium | DONE |
 | FE-027 | Admin Document Delete UI Integration | Medium | DONE |
+| BE-ADMIN-017 | Admin Account Delete API | Medium | BLOCKED |
 
 ---
 
