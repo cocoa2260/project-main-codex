@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import { getAdminLogSummary, getAdminLogs, getAdminSystemHealth } from '../../api/admin';
+import { getAdminAuditLogs, getAdminLogSummary, getAdminLogs, getAdminSystemHealth } from '../../api/admin';
 import { Sidebar } from '../../components/common/Sidebar';
 import type {
+  AdminAuditAction,
+  AdminAuditLogItem,
   AdminHealthService,
   AdminHealthServiceStatus,
   AdminLogItem,
@@ -57,6 +59,8 @@ type LogLevelFilter = 'all' | AdminLogLevel;
 
 type ServiceFilter = 'all' | 'OCR' | 'Queue' | 'API' | 'Security';
 
+type AuditActionFilter = 'all' | AdminAuditAction;
+
 interface LogFilterOption {
   label: string;
   value: LogLevelFilter | ServiceFilter;
@@ -73,6 +77,12 @@ const logFilterOptions: LogFilterOption[] = [
   { label: 'Queue', value: 'Queue', type: 'service' },
   { label: 'API', value: 'API', type: 'service' },
   { label: 'Security', value: 'Security', type: 'service' },
+];
+
+const auditActionOptions: Array<{ label: string; value: AuditActionFilter }> = [
+  { label: 'All', value: 'all' },
+  { label: 'Role 변경', value: 'USER_ROLE_CHANGED' },
+  { label: 'Status 변경', value: 'USER_STATUS_CHANGED' },
 ];
 
 const emptySummary: AdminLogSummaryResponse = {
@@ -146,6 +156,27 @@ function formatDetails(details: AdminLogItem['details']): string {
     .join('\n');
 }
 
+function safeStringifyJson(value: unknown): string {
+  if (value == null) return '-';
+
+  if (typeof value === 'string') return value;
+
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function truncateText(value: string, maxLength = 420): string {
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, maxLength)}...`;
+}
+
+function formatAuditValue(value: unknown, maxLength?: number): string {
+  return truncateText(safeStringifyJson(value), maxLength);
+}
+
 export function AdminLogPage({ onLogout }: AdminLogPageProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -175,6 +206,20 @@ export function AdminLogPage({ onLogout }: AdminLogPageProps) {
   const [isHealthLoading, setIsHealthLoading] = useState(true);
   const [isHealthRefreshing, setIsHealthRefreshing] = useState(false);
   const [healthErrorMessage, setHealthErrorMessage] = useState<string | null>(null);
+  const [auditAction, setAuditAction] = useState<AuditActionFilter>('all');
+  const [auditFromDate, setAuditFromDate] = useState('');
+  const [auditToDate, setAuditToDate] = useState('');
+  const [auditLogs, setAuditLogs] = useState<AdminAuditLogItem[]>([]);
+  const [auditPagination, setAuditPagination] = useState({
+    page: 1,
+    limit: PAGE_LIMIT,
+    total: 0,
+    total_pages: 0,
+  });
+  const [selectedAuditLog, setSelectedAuditLog] = useState<AdminAuditLogItem | null>(null);
+  const [isAuditLoading, setIsAuditLoading] = useState(true);
+  const [isAuditRefreshing, setIsAuditRefreshing] = useState(false);
+  const [auditErrorMessage, setAuditErrorMessage] = useState<string | null>(null);
 
   const fetchLogs = useCallback(async (page: number, showLoading = false) => {
     if (showLoading) {
@@ -253,15 +298,46 @@ export function AdminLogPage({ onLogout }: AdminLogPageProps) {
     }
   }, []);
 
+  const fetchAuditLogs = useCallback(async (page: number, showLoading = false) => {
+    if (showLoading) {
+      setIsAuditLoading(true);
+    } else {
+      setIsAuditRefreshing(true);
+    }
+
+    setAuditErrorMessage(null);
+
+    try {
+      const response = await getAdminAuditLogs({
+        action: auditAction === 'all' ? undefined : auditAction,
+        from: auditFromDate || undefined,
+        to: auditToDate || undefined,
+        page,
+        limit: PAGE_LIMIT,
+      });
+
+      setAuditLogs(response.items);
+      setAuditPagination(response.pagination);
+    } catch (error) {
+      setAuditErrorMessage(getApiErrorMessage(error, '감사 로그를 불러오지 못했습니다.'));
+      setAuditLogs([]);
+      setAuditPagination((current) => ({ ...current, page, total: 0, total_pages: 0 }));
+    } finally {
+      setIsAuditLoading(false);
+      setIsAuditRefreshing(false);
+    }
+  }, [auditAction, auditFromDate, auditToDate]);
+
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       void fetchLogs(1, true);
       void fetchSummary(true);
       void fetchSystemHealth(true);
+      void fetchAuditLogs(1, true);
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
-  }, [fetchLogs, fetchSummary, fetchSystemHealth]);
+  }, [fetchAuditLogs, fetchLogs, fetchSummary, fetchSystemHealth]);
 
   useEffect(() => {
     if (!autoRefresh) return undefined;
@@ -270,10 +346,11 @@ export function AdminLogPage({ onLogout }: AdminLogPageProps) {
       void fetchLogs(pagination.page, false);
       void fetchSummary(false);
       void fetchSystemHealth(false);
+      void fetchAuditLogs(auditPagination.page, false);
     }, AUTO_REFRESH_INTERVAL_MS);
 
     return () => window.clearInterval(intervalId);
-  }, [autoRefresh, fetchLogs, fetchSummary, fetchSystemHealth, pagination.page]);
+  }, [auditPagination.page, autoRefresh, fetchAuditLogs, fetchLogs, fetchSummary, fetchSystemHealth, pagination.page]);
 
   const systemHealth: SystemHealthItem[] = useMemo(() => {
     const servicesByKey = new Map<typeof healthServiceOrder[number], AdminHealthService>();
@@ -344,6 +421,22 @@ export function AdminLogPage({ onLogout }: AdminLogPageProps) {
     }
   };
 
+  const getAuditActionLabel = (action: AdminAuditLogItem['action']) => {
+    switch (action) {
+      case 'USER_ROLE_CHANGED': return 'Role 변경';
+      case 'USER_STATUS_CHANGED': return 'Status 변경';
+      default: return action;
+    }
+  };
+
+  const getAuditActionColor = (action: AdminAuditLogItem['action']) => {
+    switch (action) {
+      case 'USER_ROLE_CHANGED': return 'border-blue-500/20 bg-blue-500/10 text-blue-300';
+      case 'USER_STATUS_CHANGED': return 'border-purple-500/20 bg-purple-500/10 text-purple-300';
+      default: return 'border-white/10 bg-white/5 text-gray-300';
+    }
+  };
+
   const getStatusColor = (status: AdminHealthServiceStatus) => {
     switch (status) {
       case 'HEALTHY': return 'bg-green-500/10 text-green-400 border-green-500/20';
@@ -366,11 +459,17 @@ export function AdminLogPage({ onLogout }: AdminLogPageProps) {
     void fetchLogs(pagination.page, false);
     void fetchSummary(false);
     void fetchSystemHealth(false);
+    void fetchAuditLogs(auditPagination.page, false);
   };
 
   const handlePageChange = (nextPage: number) => {
     if (nextPage < 1 || (pagination.total_pages > 0 && nextPage > pagination.total_pages)) return;
     void fetchLogs(nextPage, true);
+  };
+
+  const handleAuditPageChange = (nextPage: number) => {
+    if (nextPage < 1 || (auditPagination.total_pages > 0 && nextPage > auditPagination.total_pages)) return;
+    void fetchAuditLogs(nextPage, true);
   };
 
   const handleFilterChange = (option: LogFilterOption) => {
@@ -398,6 +497,17 @@ export function AdminLogPage({ onLogout }: AdminLogPageProps) {
 
   const handleCopyLog = (log: AdminLogItem) => {
     const logText = `[${log.timestamp}] [${log.level}] [${log.service ?? '-'}/${log.source}] ${log.message}`;
+    navigator.clipboard.writeText(logText);
+  };
+
+  const handleCopyAuditLog = (log: AdminAuditLogItem) => {
+    const logText = [
+      `[${log.created_at}] [${log.action}]`,
+      `actor=${log.actor_email_snapshot ?? '-'}`,
+      `target=${log.target_type}:${log.target_id ?? '-'}`,
+      `old=${safeStringifyJson(log.old_value)}`,
+      `new=${safeStringifyJson(log.new_value)}`,
+    ].join(' ');
     navigator.clipboard.writeText(logText);
   };
 
@@ -452,10 +562,10 @@ export function AdminLogPage({ onLogout }: AdminLogPageProps) {
             <button
               type="button"
               onClick={handleRefresh}
-              disabled={isLogsLoading || isSummaryLoading || isHealthLoading}
+              disabled={isLogsLoading || isSummaryLoading || isHealthLoading || isAuditLoading}
               className="flex items-center gap-2 px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <RefreshCw className={`w-4 h-4 text-gray-400 ${isLogsRefreshing || isSummaryRefreshing || isHealthRefreshing ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-4 h-4 text-gray-400 ${isLogsRefreshing || isSummaryRefreshing || isHealthRefreshing || isAuditRefreshing ? 'animate-spin' : ''}`} />
               <span className="text-gray-400 text-sm hidden sm:inline">Refresh</span>
             </button>
 
@@ -778,6 +888,235 @@ export function AdminLogPage({ onLogout }: AdminLogPageProps) {
                     >
                       다음
                     </button>
+                  </div>
+                </div>
+
+                {/* Audit logs */}
+                <div className="space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-lg font-semibold text-white">감사 로그</h3>
+                      <p className="text-sm text-gray-400">관리자 권한 변경과 계정 상태 변경 이력</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => fetchAuditLogs(auditPagination.page, false)}
+                      disabled={isAuditLoading || isAuditRefreshing}
+                      className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-gray-300 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${isAuditRefreshing ? 'animate-spin' : ''}`} />
+                      <span>감사 로그 새로고침</span>
+                    </button>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-[#111116] p-3">
+                    <Filter className="h-4 w-4 flex-shrink-0 text-gray-400" />
+                    {auditActionOptions.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setAuditAction(option.value)}
+                        className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
+                          auditAction === option.value
+                            ? 'bg-primary text-white'
+                            : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                    <div className="mx-1 hidden h-4 w-px bg-white/10 sm:block" />
+                    <span className="text-xs font-medium text-gray-400">기간</span>
+                    <input
+                      type="datetime-local"
+                      value={auditFromDate}
+                      onChange={(event) => setAuditFromDate(event.target.value)}
+                      className="min-w-0 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-gray-300 [color-scheme:dark] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary/50"
+                      aria-label="감사 로그 시작 일시"
+                    />
+                    <span className="text-xs text-gray-500">~</span>
+                    <input
+                      type="datetime-local"
+                      value={auditToDate}
+                      onChange={(event) => setAuditToDate(event.target.value)}
+                      className="min-w-0 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-gray-300 [color-scheme:dark] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary/50"
+                      aria-label="감사 로그 종료 일시"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuditAction('all');
+                        setAuditFromDate('');
+                        setAuditToDate('');
+                      }}
+                      disabled={auditAction === 'all' && !auditFromDate && !auditToDate}
+                      className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-gray-400 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      초기화
+                    </button>
+                  </div>
+
+                  <div className="overflow-hidden rounded-xl border border-white/10 bg-[#111116]">
+                    <div className="flex items-center gap-2 border-b border-white/10 bg-white/5 px-4 py-2">
+                      <FileCode className="h-4 w-4 text-primary" />
+                      <span className="text-sm font-medium text-white">Audit Logs</span>
+                      <span className="ml-auto text-xs text-gray-500">
+                        page {auditPagination.page} / {Math.max(1, auditPagination.total_pages)} · limit {auditPagination.limit} · total {auditPagination.total.toLocaleString()}
+                      </span>
+                    </div>
+
+                    {auditErrorMessage && (
+                      <div className="m-4 rounded-lg border border-red-500/20 bg-red-500/10 p-3">
+                        <div className="flex items-start gap-2">
+                          <AlertCircle className="mt-0.5 h-4 w-4 text-red-400" />
+                          <p className="text-sm text-red-400">{auditErrorMessage}</p>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="divide-y divide-white/5">
+                      {isAuditLoading && (
+                        <div className="flex items-center justify-center gap-2 p-8 text-gray-400">
+                          <RefreshCw className="h-4 w-4 animate-spin" />
+                          <span className="text-sm">감사 로그를 불러오는 중입니다.</span>
+                        </div>
+                      )}
+
+                      {!isAuditLoading && auditLogs.length === 0 && !auditErrorMessage && (
+                        <div className="p-8 text-center">
+                          <FileCode className="mx-auto mb-3 h-8 w-8 text-gray-600" />
+                          <p className="text-sm text-gray-400">조회된 감사 로그가 없습니다.</p>
+                        </div>
+                      )}
+
+                      {!isAuditLoading && auditLogs.map((log) => (
+                        <button
+                          key={log.id}
+                          type="button"
+                          onClick={() => setSelectedAuditLog(selectedAuditLog?.id === log.id ? null : log)}
+                          className={`block w-full p-4 text-left transition-colors hover:bg-white/5 ${
+                            selectedAuditLog?.id === log.id ? 'bg-primary/5' : ''
+                          }`}
+                        >
+                          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                            <div className="min-w-0 flex-1">
+                              <div className="mb-2 flex flex-wrap items-center gap-2">
+                                <code className="text-xs font-mono text-gray-400">{formatDateTime(log.created_at)}</code>
+                                <span className={`rounded border px-2 py-0.5 text-xs font-medium ${getAuditActionColor(log.action)}`}>
+                                  {getAuditActionLabel(log.action)}
+                                </span>
+                                <span className="rounded border border-white/10 bg-white/5 px-2 py-0.5 text-xs text-gray-300">
+                                  {log.target_type}
+                                </span>
+                              </div>
+                              <p className="truncate text-sm text-white">{log.actor_email_snapshot ?? 'Unknown admin'}</p>
+                              <p className="mt-1 truncate font-mono text-xs text-gray-500">Target: {log.target_id ?? '-'}</p>
+                            </div>
+                            <div className="grid gap-2 text-xs text-gray-400 sm:grid-cols-2 lg:w-[360px]">
+                              <div className="rounded-lg bg-black/20 p-2">
+                                <p className="mb-1 text-gray-500">Old</p>
+                                <pre className="max-h-20 overflow-hidden whitespace-pre-wrap break-words font-mono">{formatAuditValue(log.old_value, 180)}</pre>
+                              </div>
+                              <div className="rounded-lg bg-black/20 p-2">
+                                <p className="mb-1 text-gray-500">New</p>
+                                <pre className="max-h-20 overflow-hidden whitespace-pre-wrap break-words font-mono">{formatAuditValue(log.new_value, 180)}</pre>
+                              </div>
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {selectedAuditLog && (
+                    <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+                      <div className="mb-4 flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-white">감사 로그 상세</p>
+                          <p className="text-xs text-gray-400">{formatDateTime(selectedAuditLog.created_at)}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleCopyAuditLog(selectedAuditLog)}
+                            className="flex items-center gap-1.5 rounded-lg bg-white/5 px-2 py-1 text-xs text-gray-300 transition-colors hover:bg-white/10 hover:text-white"
+                          >
+                            <Copy className="h-3 w-3" />
+                            <span>복사</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedAuditLog(null)}
+                            className="rounded-lg bg-white/5 p-1.5 text-gray-400 transition-colors hover:bg-white/10 hover:text-white"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                          <p className="mb-1 text-xs text-gray-500">관리자</p>
+                          <p className="break-words text-sm text-white">{selectedAuditLog.actor_email_snapshot ?? '-'}</p>
+                          <p className="mt-1 break-all font-mono text-xs text-gray-500">{selectedAuditLog.actor_user_id ?? '-'}</p>
+                        </div>
+                        <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                          <p className="mb-1 text-xs text-gray-500">Action / Target</p>
+                          <p className="text-sm text-white">{getAuditActionLabel(selectedAuditLog.action)}</p>
+                          <p className="mt-1 break-all font-mono text-xs text-gray-500">
+                            {selectedAuditLog.target_type}:{selectedAuditLog.target_id ?? '-'}
+                          </p>
+                        </div>
+                        <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                          <p className="mb-1 text-xs text-gray-500">Old Value</p>
+                          <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-xs text-gray-300">{formatAuditValue(selectedAuditLog.old_value)}</pre>
+                        </div>
+                        <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                          <p className="mb-1 text-xs text-gray-500">New Value</p>
+                          <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-xs text-gray-300">{formatAuditValue(selectedAuditLog.new_value)}</pre>
+                        </div>
+                        <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                          <p className="mb-1 text-xs text-gray-500">Reason</p>
+                          <p className="whitespace-pre-wrap break-words text-sm text-gray-300">{selectedAuditLog.reason ?? '-'}</p>
+                        </div>
+                        <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                          <p className="mb-1 text-xs text-gray-500">IP / User Agent</p>
+                          <p className="font-mono text-xs text-gray-300">{selectedAuditLog.ip_address ?? '-'}</p>
+                          <p className="mt-1 break-words text-xs text-gray-500">{selectedAuditLog.user_agent ?? '-'}</p>
+                        </div>
+                        <div className="rounded-lg border border-white/10 bg-black/20 p-3 md:col-span-2">
+                          <p className="mb-1 text-xs text-gray-500">Metadata</p>
+                          <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words font-mono text-xs text-gray-300">{formatAuditValue(selectedAuditLog.metadata)}</pre>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between rounded-xl border border-white/10 bg-[#111116] px-4 py-3">
+                    <p className="text-sm text-gray-400">
+                      {auditPagination.total.toLocaleString()}개 중 {auditLogs.length.toLocaleString()}개 표시
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleAuditPageChange(auditPagination.page - 1)}
+                        disabled={auditPagination.page <= 1 || isAuditLoading}
+                        className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-gray-300 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        이전
+                      </button>
+                      <span className="min-w-24 text-center text-sm text-gray-400">
+                        {auditPagination.page} / {Math.max(1, auditPagination.total_pages)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleAuditPageChange(auditPagination.page + 1)}
+                        disabled={auditPagination.page >= auditPagination.total_pages || isAuditLoading || auditPagination.total_pages === 0}
+                        className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-gray-300 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        다음
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>

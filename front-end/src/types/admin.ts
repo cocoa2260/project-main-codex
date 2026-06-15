@@ -117,6 +117,48 @@ export interface AdminLogListParams {
   limit?: number;
 }
 
+export type AdminAuditAction = 'USER_ROLE_CHANGED' | 'USER_STATUS_CHANGED';
+
+export type AdminAuditValue =
+  | Record<string, unknown>
+  | unknown[]
+  | string
+  | number
+  | boolean
+  | null;
+
+export interface AdminAuditLogItem {
+  id: string;
+  actor_user_id: string | null;
+  actor_email_snapshot: string | null;
+  target_type: string;
+  target_id: string | null;
+  action: AdminAuditAction | string;
+  old_value: AdminAuditValue;
+  new_value: AdminAuditValue;
+  reason: string | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  metadata: AdminAuditValue;
+  created_at: string;
+}
+
+export interface AdminAuditLogsResponse {
+  items: AdminAuditLogItem[];
+  pagination: AdminPaginationResponse;
+}
+
+export interface AdminAuditLogListParams {
+  action?: AdminAuditAction;
+  actor_user_id?: string;
+  target_type?: string;
+  target_id?: string;
+  from?: string;
+  to?: string;
+  page?: number;
+  limit?: number;
+}
+
 export interface AdminUserStats {
   total_users: number;
   admin_users: number;

@@ -128,6 +128,7 @@
 | BE-ADMIN-011 | User Account Status API | Low | DONE |
 | FE-025 | User Account Status UI Integration | Low | DONE |
 | BE-ADMIN-015 | Admin Audit Log API | Medium | DONE |
+| FE-026 | Admin Audit Log UI Integration | Medium | DONE |
 
 ---
 
@@ -454,6 +455,23 @@ Status: DONE
 - Request context 기반 ip_address / user_agent 저장
 - 모든 endpoint require_admin 보호
 - Alembic migration 20260615_000001 추가
+
+Priority: Medium
+Status: DONE
+
+### FE-026 Admin Audit Log UI Integration
+
+- Admin audit log API client 추가
+- AdminAuditLogItem / AdminAuditLogsResponse / AdminAuditAction DTO 타입 추가
+- AdminLogPage에 GET /api/admin/audit-logs 연동
+- 기존 운영 로그 UI / 통계 카드 / 최근 에러 / 시스템 헬스 / disabled action 유지
+- 감사 로그를 운영 로그와 구분된 별도 섹션으로 표시
+- 감사 로그 action / from / to / page / limit 필터 연결
+- 감사 로그 loading / error / empty / pagination 상태 추가
+- 감사 로그 row 클릭 상세 표시 추가
+- 기존 Refresh 및 30초 polling에 감사 로그 갱신 포함
+- JSON 값은 compact stringify 및 길이 제한/스크롤 표시
+- Backend 변경 없음
 
 Priority: Medium
 Status: DONE
