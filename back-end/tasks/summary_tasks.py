@@ -6,6 +6,7 @@ from app.celery_app import celery_app
 from core.config import settings
 from db.database import SessionLocal
 from models.document import Document, DocumentStatus
+from models.document_chunk import DocumentChunk
 from models.task_tracker import TaskStage, TaskStatus, TaskTracker
 from tasks.ocr_tasks import update_task_progress
 from utils.text_chunk import split_text
@@ -26,6 +27,7 @@ def build_document_chunks(markdown: str) -> list[str]:
 
 def summarize_chunks(
     db,
+    document: Document,
     llm_provider,
     chunks: list[str],
     task: TaskTracker,
@@ -47,6 +49,28 @@ def summarize_chunks(
 
         keywords = llm_provider.extract_keywords(chunk)
         chunk_summary = llm_provider.summarize_chunk(chunk)
+
+        # summary 단계에서 LLM으로 추출한 키워드를 chunk row에 저장한다.
+        # embedding 단계가 먼저 만든 chunk가 있으면 keywords만 채우고, 없으면 fallback으로 생성한다.
+        chunk_index = index - 1
+        chunk_row = (
+            db.query(DocumentChunk)
+            .filter(
+                DocumentChunk.document_id == document.id,
+                DocumentChunk.chunk_index == chunk_index,
+            )
+            .first()
+        )
+
+        if chunk_row is None:
+            chunk_row = DocumentChunk(
+                document_id=document.id,
+                chunk_index=chunk_index,
+                content=chunk,
+            )
+            db.add(chunk_row)
+
+        chunk_row.keywords = keywords
 
         keyword_text = ", ".join(keywords) if keywords else "없음"
         chunk_summaries.append(
@@ -96,6 +120,7 @@ def process_document_summary(document_id: str, task_id: str):
 
         chunk_summaries, keyword_count = summarize_chunks(
             db=db,
+            document=document,
             llm_provider=llm_provider,
             chunks=chunks,
             task=task,
