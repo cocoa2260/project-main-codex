@@ -412,6 +412,20 @@ Summary:
 - Included audit logs in existing refresh and 30 second polling cleanup
 - Backend unchanged
 
+### FE-027
+Admin Document Delete UI Integration
+Status: DONE
+Summary:
+- Added admin document delete API client for DELETE /api/admin/documents/{document_id}
+- Added AdminDocumentDeleteResponse frontend DTO type
+- Enabled the existing AdminDocumentPage delete action for every document status
+- Added delete confirmation modal with target file name and irreversible deletion warning
+- Added delete request lockout, row spinner, backend error display, and success feedback
+- Refreshed the document list after successful deletion
+- Closed the open document detail panel when its document is deleted
+- Preserved disabled/prepared download, chat, retry, and other API-less document actions
+- Backend unchanged and DOCUMENT_DELETED audit logging remains backend-owned
+
 ---
 
 ### FE-011

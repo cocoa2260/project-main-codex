@@ -4,6 +4,7 @@ import type {
   AdminAuditLogsResponse,
   AdminDashboardSummaryResponse,
   AdminDocumentDetailResponse,
+  AdminDocumentDeleteResponse,
   AdminDocumentListParams,
   AdminDocumentListResponse,
   AdminLogListParams,
@@ -75,6 +76,11 @@ export async function getAdminDocuments(params?: AdminDocumentListParams): Promi
 
 export async function getAdminDocumentDetail(documentId: string): Promise<AdminDocumentDetailResponse> {
   const response = await apiClient.get<AdminDocumentDetailResponse>(`/api/admin/documents/${documentId}`);
+  return response.data;
+}
+
+export async function deleteAdminDocument(documentId: string): Promise<AdminDocumentDeleteResponse> {
+  const response = await apiClient.delete<AdminDocumentDeleteResponse>(`/api/admin/documents/${documentId}`);
   return response.data;
 }
 

@@ -130,6 +130,7 @@
 | BE-ADMIN-015 | Admin Audit Log API | Medium | DONE |
 | FE-026 | Admin Audit Log UI Integration | Medium | DONE |
 | BE-ADMIN-016 | Admin Document Delete API | Medium | DONE |
+| FE-027 | Admin Document Delete UI Integration | Medium | DONE |
 
 ---
 
@@ -507,6 +508,22 @@ Status: DONE
 - 기존 Refresh 및 30초 polling에 감사 로그 갱신 포함
 - JSON 값은 compact stringify 및 길이 제한/스크롤 표시
 - Backend 변경 없음
+
+Priority: Medium
+Status: DONE
+
+### FE-027 Admin Document Delete UI Integration
+
+- Admin document delete API client 추가
+- AdminDocumentDeleteResponse DTO 타입 추가
+- AdminDocumentPage 기존 삭제 action 활성화
+- 삭제 전 확인 모달 / 삭제 대상 문서명 / 되돌릴 수 없음 경고 표시
+- 삭제 요청 중 중복 클릭 방지
+- 삭제 성공 후 문서 목록 refresh 및 열린 상세 패널 닫기
+- 삭제 성공 메시지 및 backend error message 표시
+- 다운로드 / 채팅 / 재시도 등 API 없는 action은 기존 준비중/비활성 정책 유지
+- Frontend 변경만 수행
+- Backend / API contract 변경 없음
 
 Priority: Medium
 Status: DONE

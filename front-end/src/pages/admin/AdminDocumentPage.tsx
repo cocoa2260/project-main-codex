@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { getAdminDocumentDetail, getAdminDocuments } from '../../api/admin';
+import { deleteAdminDocument, getAdminDocumentDetail, getAdminDocuments } from '../../api/admin';
 import { Sidebar } from '../../components/common/Sidebar';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import type { AdminDocumentDetailResponse, AdminDocumentItem } from '../../types/admin';
@@ -31,6 +31,7 @@ import {
   FileType,
   TrendingUp,
   AlertTriangle,
+  Trash2,
 } from 'lucide-react';
 
 type FilterStatus = 'all' | 'processing' | 'review_required' | 'completed' | 'failed';
@@ -62,9 +63,36 @@ const taskTypeColors: Record<TaskType, string> = {
   RAG_INDEXING: 'text-green-400',
 };
 
-function getApiErrorMessage(error: unknown): string {
-  const response = (error as { response?: { data?: { detail?: string; message?: string } } }).response;
-  return response?.data?.detail ?? response?.data?.message ?? (error instanceof Error ? error.message : '문서 목록을 불러오지 못했습니다.');
+function getApiErrorMessage(error: unknown, fallbackMessage = '문서 목록을 불러오지 못했습니다.'): string {
+  const response = (error as { response?: { status?: number; data?: { detail?: unknown; message?: string } } }).response;
+  const detail = response?.data?.detail;
+
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        if (typeof item === 'string') return item;
+        if (item && typeof item === 'object' && 'msg' in item) return String((item as { msg: unknown }).msg);
+        return null;
+      })
+      .filter(Boolean)
+      .join(', ') || fallbackMessage;
+  }
+
+  if (response?.data?.message) return response.data.message;
+
+  switch (response?.status) {
+    case 401:
+      return '인증이 필요합니다. 다시 로그인해 주세요.';
+    case 403:
+      return '이 작업을 수행할 권한이 없습니다.';
+    case 404:
+      return '문서를 찾을 수 없습니다.';
+    case 500:
+      return fallbackMessage;
+    default:
+      return error instanceof Error ? error.message : fallbackMessage;
+  }
 }
 
 function formatDateTime(value?: string | null): string {
@@ -131,6 +159,10 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
   const [selectedDocument, setSelectedDocument] = useState<AdminDocumentDetailResponse | null>(null);
   const [detailErrorMessage, setDetailErrorMessage] = useState<string | null>(null);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<AdminDocumentItem | null>(null);
+  const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(null);
+  const [deleteErrorMessage, setDeleteErrorMessage] = useState<string | null>(null);
+  const [deleteSuccessMessage, setDeleteSuccessMessage] = useState<string | null>(null);
 
   const fetchDocuments = useCallback(async (page: number, showLoading = false) => {
     if (showLoading) {
@@ -191,6 +223,39 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
       setDetailErrorMessage(getApiErrorMessage(error));
     } finally {
       setIsDetailLoading(false);
+    }
+  };
+
+  const handleOpenDeleteConfirm = (document: AdminDocumentItem) => {
+    if (deletingDocumentId) return;
+
+    setDeleteTarget(document);
+    setDeleteErrorMessage(null);
+    setDeleteSuccessMessage(null);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget || deletingDocumentId) return;
+
+    setDeletingDocumentId(deleteTarget.id);
+    setDeleteErrorMessage(null);
+    setDeleteSuccessMessage(null);
+
+    try {
+      const response = await deleteAdminDocument(deleteTarget.id);
+      setDeleteSuccessMessage(response.message || `${response.file_name} 문서를 삭제했습니다.`);
+      setDeleteTarget(null);
+
+      if (selectedDocument?.id === deleteTarget.id) {
+        setSelectedDocument(null);
+        setDetailErrorMessage(null);
+      }
+
+      await fetchDocuments(pagination.page, false);
+    } catch (error) {
+      setDeleteErrorMessage(getApiErrorMessage(error, '문서를 삭제하지 못했습니다.'));
+    } finally {
+      setDeletingDocumentId(null);
     }
   };
 
@@ -416,6 +481,13 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
                   </div>
                 )}
 
+                {deleteSuccessMessage && (
+                  <div className="flex items-center gap-3 rounded-xl border border-green-500/20 bg-green-500/10 p-4 text-green-300">
+                    <CheckCircle2 className="h-5 w-5 shrink-0" />
+                    <span className="text-sm">{deleteSuccessMessage}</span>
+                  </div>
+                )}
+
                 <div className="bg-[#111116] border border-white/10 rounded-xl overflow-hidden">
                   <div className="overflow-x-auto">
                     <table className="w-full">
@@ -564,6 +636,19 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
                                     disabled
                                   >
                                     <Download className="w-4 h-4 text-gray-400" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenDeleteConfirm(doc)}
+                                    disabled={deletingDocumentId !== null}
+                                    className="p-2 rounded-lg transition-colors hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+                                    title="문서 삭제"
+                                  >
+                                    {deletingDocumentId === doc.id ? (
+                                      <Loader2 className="w-4 h-4 animate-spin text-red-400" />
+                                    ) : (
+                                      <Trash2 className="w-4 h-4 text-red-400" />
+                                    )}
                                   </button>
                                   <button
                                     type="button"
@@ -792,6 +877,65 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
           </div>
         </main>
       </div>
+
+      {deleteTarget && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center px-4">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => !deletingDocumentId && setDeleteTarget(null)}
+          />
+          <div className="relative w-full max-w-md rounded-xl border border-red-500/20 bg-[#111116] p-6 shadow-2xl">
+            <div className="mb-4 flex items-start gap-3">
+              <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-2">
+                <Trash2 className="h-5 w-5 text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-white">문서 삭제 확인</h3>
+                <p className="mt-1 text-sm text-gray-400">삭제 대상 문서를 확인해 주세요.</p>
+              </div>
+            </div>
+
+            <div className="mb-4 rounded-lg border border-white/10 bg-white/5 p-3">
+              <p className="text-xs text-gray-500">문서명</p>
+              <p className="mt-1 break-words text-sm font-medium text-white">{deleteTarget.file_name}</p>
+            </div>
+
+            <div className="mb-4 rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200">
+              <p className="font-medium">이 작업은 되돌릴 수 없습니다.</p>
+              <p className="mt-1 text-red-200/80">
+                문서, 페이지, 청크, 임베딩, 작업 이력, 저장 파일이 삭제됩니다.
+              </p>
+            </div>
+
+            {deleteErrorMessage && (
+              <div className="mb-4 flex items-start gap-2 rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-300">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>{deleteErrorMessage}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                disabled={deletingDocumentId !== null}
+                className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-gray-300 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleConfirmDelete()}
+                disabled={deletingDocumentId !== null}
+                className="inline-flex items-center gap-2 rounded-lg bg-red-500 px-4 py-2 text-white transition-colors hover:bg-red-500/90 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {deletingDocumentId && <Loader2 className="h-4 w-4 animate-spin" />}
+                삭제
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

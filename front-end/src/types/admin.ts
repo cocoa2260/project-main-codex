@@ -253,6 +253,13 @@ export interface AdminDocumentDetailResponse extends AdminDocumentItem {
   keywords: string[];
 }
 
+export interface AdminDocumentDeleteResponse {
+  document_id: string;
+  file_name: string;
+  deleted: boolean;
+  message: string;
+}
+
 export interface AdminDocumentListParams {
   page?: number;
   limit?: number;
