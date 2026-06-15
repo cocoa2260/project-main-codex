@@ -261,6 +261,38 @@ Summary:
 - Added DOCUMENT_DELETED and DOCUMENT audit constants/filter support
 - No DB migration, table, column, frontend, or Docker changes
 
+### BE-ADMIN-017
+Admin Account Delete API
+Status: BLOCKED
+Analysis Result:
+- DELETE /api/admin/users/{user_id} is technically possible
+- Immediate implementation is not recommended
+- User deletion affects documents, pages, chunks, embeddings, task trackers, chat sessions, chat messages, storage files and audit logs
+- Hard delete is irreversible
+- Soft delete would require DB migration
+- Storage cleanup policy is required
+- Running task policy is required
+- Audit log policy is required
+
+Recommended Policy:
+- Use SUSPENDED for immediate access blocking
+- Defer actual account deletion until deletion policy is finalized
+- Block self delete
+- Block last ADMIN delete
+- Block delete when running tasks exist
+- Record USER_DELETED audit event when implemented
+- Clean up user-owned document storage files when hard delete is implemented
+
+No Changes:
+- No code changes
+- No migration
+- No commit
+- No push
+
+Next:
+- Define account deletion policy
+- Implement hard delete API only after policy confirmation
+
 ### FE-017
 Admin User Management API Integration
 Status: DONE
