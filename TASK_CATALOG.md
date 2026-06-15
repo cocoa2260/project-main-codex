@@ -122,7 +122,7 @@
 | BE-ADMIN-012 | Failed Task Retry API | Medium | DONE |
 | FE-022 | Failed Task Retry UI Integration | Medium | DONE |
 | BE-ADMIN-009 | Document Retry API | Medium | DONE |
-| FE-023 | Document Retry UI Integration | Medium | TODO |
+| FE-023 | Document Retry UI Integration | Medium | DONE |
 | BE-ADMIN-014 | User Role Update API | Medium | DONE |
 | FE-024 | User Role Update UI Integration | Medium | DONE |
 | BE-ADMIN-011 | User Account Status API | Low | DONE |

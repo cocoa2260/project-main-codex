@@ -416,6 +416,20 @@ Summary:
 - Recorded DOCUMENT_REPROCESS_REQUESTED audit logs with previous status, retry stage, retry task id, reason, and cleared artifacts
 - No DB migration, Alembic change, schema migration, EMBEDDING retry, or RAG_INDEXING retry
 
+### FE-023
+Document Retry UI Integration
+Status: DONE
+Summary:
+- Added admin document retry API client for POST /api/admin/documents/{document_id}/retry-from-stage
+- Added AdminDocumentRetryStage, AdminDocumentRetryRequest, and AdminDocumentRetryResponse frontend DTOs
+- Enabled AdminDocumentPage document retry actions for FAILED, COMPLETED, and REVIEW_REQUIRED documents
+- Kept PENDING and PROCESSING retry actions disabled in the UI while relying on backend policy for final validation
+- Added retry confirmation modal with target document name, OCR/SUMMARY stage selection, optional reason input, and artifact reset warning copy
+- Prevented duplicate retry clicks during requests
+- Displayed backend retry errors without breaking the page
+- Refreshed the document list after successful retry registration and closed the detail panel for the retried document
+- Preserved delete integration and kept download/chat/prepared actions disabled where APIs do not exist
+
 ### FE-024
 User Role Update UI Integration
 Status: DONE
