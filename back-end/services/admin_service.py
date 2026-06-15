@@ -2297,57 +2297,30 @@ def retry_failed_task(
     if running_task is not None:
         raise AdminTaskRetryError(409, "이미 실행 중인 동일 유형 작업이 있습니다.")
 
-    retry_task = None
-    try:
-        if original_task.task_type == TaskType.OCR:
-            retry_task = create_document_task(
-                db=db,
-                document_id=document.id,
-                task_type=TaskType.OCR,
-                stage=TaskStage.OCR_PENDING,
-                message="OCR 재시도 작업 대기 중입니다.",
-            )
-            async_result = process_document_ocr.delay(
-                str(document.id),
-                str(retry_task.id),
-            )
-        else:
-            if not document.ocr_markdown:
-                raise AdminTaskRetryError(400, "OCR Markdown 결과가 없습니다.")
+    if original_task.task_type == TaskType.OCR:
+        retry_task = TaskTracker(
+            document_id=document.id,
+            task_type=TaskType.OCR,
+            status=TaskStatus.PENDING,
+            progress=0,
+            stage=TaskStage.OCR_PENDING,
+            message="OCR 재시도 작업 대기 중입니다.",
+        )
+    else:
+        if not document.ocr_markdown:
+            raise AdminTaskRetryError(400, "OCR Markdown 결과가 없습니다.")
 
-            retry_task = create_document_task(
-                db=db,
-                document_id=document.id,
-                task_type=TaskType.SUMMARY,
-                stage=TaskStage.SUMMARY_PENDING,
-                message="요약 재시도 작업 대기 중입니다.",
-            )
-            async_result = process_document_summary.delay(
-                str(document.id),
-                str(retry_task.id),
-            )
-    except AdminTaskRetryError:
-        raise
-    except Exception as error:
-        if retry_task is not None:
-            retry_task.status = TaskStatus.FAILED
-            retry_task.stage = TaskStage.FAILED
-            retry_task.message = "재시도 작업 등록 중 오류가 발생했습니다."
-            retry_task.error_message = str(error)
-            retry_task.completed_at = datetime.now(timezone.utc)
-            db.commit()
-        raise
+        retry_task = TaskTracker(
+            document_id=document.id,
+            task_type=TaskType.SUMMARY,
+            status=TaskStatus.PENDING,
+            progress=0,
+            stage=TaskStage.SUMMARY_PENDING,
+            message="요약 재시도 작업 대기 중입니다.",
+        )
 
-    attach_celery_task_id(
-        db=db,
-        task_id=retry_task.id,
-        celery_task_id=async_result.id,
-    )
-
-    document.status = DocumentStatus.PROCESSING
-    db.commit()
-    db.refresh(retry_task)
-
+    db.add(retry_task)
+    db.flush()
     record_failed_task_retry(
         db=db,
         actor=actor,
@@ -2358,6 +2331,37 @@ def retry_failed_task(
         ip_address=ip_address,
         user_agent=user_agent,
     )
+    document.status = DocumentStatus.PROCESSING
+    db.commit()
+    db.refresh(retry_task)
+
+    try:
+        if retry_task.task_type == TaskType.OCR:
+            async_result = process_document_ocr.delay(
+                str(document.id),
+                str(retry_task.id),
+            )
+        else:
+            async_result = process_document_summary.delay(
+                str(document.id),
+                str(retry_task.id),
+            )
+
+        attach_celery_task_id(
+            db=db,
+            task_id=retry_task.id,
+            celery_task_id=async_result.id,
+        )
+    except Exception as error:
+        retry_task.status = TaskStatus.FAILED
+        retry_task.stage = TaskStage.FAILED
+        retry_task.message = "재시도 작업 등록 중 오류가 발생했습니다."
+        retry_task.error_message = str(error)
+        retry_task.completed_at = datetime.now(timezone.utc)
+        db.commit()
+        raise
+
+    db.refresh(retry_task)
 
     return AdminTaskRetryResponse(
         original_task_id=original_task.id,

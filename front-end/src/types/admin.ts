@@ -117,7 +117,15 @@ export interface AdminLogListParams {
   limit?: number;
 }
 
-export type AdminAuditAction = 'USER_ROLE_CHANGED' | 'USER_STATUS_CHANGED';
+export type AdminAuditAction =
+  | 'USER_ROLE_CHANGED'
+  | 'USER_STATUS_CHANGED'
+  | 'FAILED_TASK_RETRY'
+  | 'DOCUMENT_REPROCESS_REQUESTED'
+  | 'DOCUMENT_DELETED'
+  | 'DOCUMENT_EXPORTED';
+
+export type AdminAuditTargetType = 'USER' | 'DOCUMENT' | 'TASK';
 
 export type AdminAuditValue =
   | Record<string, unknown>
@@ -131,7 +139,7 @@ export interface AdminAuditLogItem {
   id: string;
   actor_user_id: string | null;
   actor_email_snapshot: string | null;
-  target_type: string;
+  target_type: AdminAuditTargetType | string;
   target_id: string | null;
   action: AdminAuditAction | string;
   old_value: AdminAuditValue;
@@ -151,7 +159,7 @@ export interface AdminAuditLogsResponse {
 export interface AdminAuditLogListParams {
   action?: AdminAuditAction;
   actor_user_id?: string;
-  target_type?: string;
+  target_type?: AdminAuditTargetType;
   target_id?: string;
   from?: string;
   to?: string;

@@ -324,6 +324,18 @@ Summary:
 - Did not export OCR Markdown, Summary, Metadata, Chunk, Embedding, or ZIP
 - No DB migration or schema changes
 
+### BE-ADMIN-020
+Audit Log Consistency Fix
+Status: DONE
+Summary:
+- Added FAILED_TASK_RETRY to AuditAction constants and admin audit action allowlist
+- Added TASK to AuditTargetType constants and admin audit target_type allowlist
+- Updated record_failed_task_retry to use shared AuditAction / AuditTargetType constants
+- Persisted retry TaskTracker and FAILED_TASK_RETRY audit log in the same DB commit before returning retry success
+- Kept USER_ROLE_CHANGED, USER_STATUS_CHANGED, DOCUMENT_REPROCESS_REQUESTED, DOCUMENT_DELETED, and DOCUMENT_EXPORTED filters available
+- Added minimal frontend AdminAuditAction / AdminAuditTargetType type coverage for the expanded backend contract
+- No DB migration, schema changes, AuditLog table changes, or OCR/Summary/Embedding/RAG logic changes
+
 ### FE-017
 Admin User Management API Integration
 Status: DONE
