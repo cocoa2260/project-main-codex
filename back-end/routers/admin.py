@@ -22,8 +22,8 @@ from models.user import UserStatus
 from routers.deps import require_admin
 from schemas.admin import AdminAuditLogListResponse
 from schemas.admin import AdminDashboardSummaryResponse
-from schemas.admin import AdminAuditLogListResponse
 from schemas.admin import AdminDocumentDetailResponse
+from schemas.admin import AdminDocumentDeleteResponse
 from schemas.admin import AdminDocumentListResponse
 from schemas.admin import AdminLogListResponse
 from schemas.admin import AdminLogSummaryResponse
@@ -40,6 +40,7 @@ from schemas.admin import AdminUserRoleUpdateRequest
 from schemas.admin import AdminUserStatusUpdateRequest
 from schemas.admin import AdminWorkerListResponse
 from services.audit_service import list_admin_audit_logs
+from services.admin_service import delete_admin_document
 from services.admin_service import get_admin_document_detail
 from services.admin_service import get_admin_logs_summary
 from services.admin_service import get_admin_queues
@@ -59,7 +60,6 @@ from services.admin_service import list_admin_tasks
 from services.admin_service import list_admin_users
 from services.admin_service import AdminTaskRetryError
 from services.admin_service import retry_failed_task
-from services.audit_service import list_audit_logs as list_admin_audit_logs
 from services.admin_service import update_admin_user_role
 from services.admin_service import update_admin_user_status
 
@@ -147,9 +147,11 @@ LOG_LEVELS = {
 AUDIT_ACTIONS = {
     AuditAction.USER_ROLE_CHANGED,
     AuditAction.USER_STATUS_CHANGED,
+    AuditAction.DOCUMENT_DELETED,
 }
 AUDIT_TARGET_TYPES = {
     AuditTargetType.USER,
+    AuditTargetType.DOCUMENT,
 }
 SORT_ORDERS = {"asc", "desc"}
 
@@ -481,6 +483,30 @@ def get_document(
         raise HTTPException(status_code=404, detail="문서를 찾을 수 없습니다.")
 
     return document
+
+
+@router.delete(
+    "/documents/{document_id}",
+    response_model=AdminDocumentDeleteResponse,
+)
+def delete_document(
+    document_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    result = delete_admin_document(
+        db=db,
+        document_id=document_id,
+        actor=current_user,
+        ip_address=_client_ip(request),
+        user_agent=_user_agent(request),
+    )
+
+    if result is None:
+        raise HTTPException(status_code=404, detail="문서를 찾을 수 없습니다.")
+
+    return result
 
 
 @router.get(

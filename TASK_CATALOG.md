@@ -129,6 +129,7 @@
 | FE-025 | User Account Status UI Integration | Low | DONE |
 | BE-ADMIN-015 | Admin Audit Log API | Medium | DONE |
 | FE-026 | Admin Audit Log UI Integration | Medium | DONE |
+| BE-ADMIN-016 | Admin Document Delete API | Medium | DONE |
 
 ---
 
@@ -473,6 +474,22 @@ Status: DONE
 - Request context 기반 ip_address / user_agent 저장
 - 모든 endpoint require_admin 보호
 - Alembic migration 20260615_000001 추가
+
+Priority: Medium
+Status: DONE
+
+### BE-ADMIN-016 Admin Document Delete API
+
+- Admin 문서 삭제 API 추가
+- DELETE /api/admin/documents/{document_id}
+- Document 기준 cascade로 DocumentPage / DocumentChunk / DocumentEmbedding / TaskTracker 삭제
+- 저장된 원본 PDF 및 OCR sidecar 후보 파일 존재 시 삭제
+- 파일이 없으면 오류 없이 삭제 진행
+- DOCUMENT_DELETED audit log 기록
+- old_value / new_value / reason / ip_address / user_agent 저장
+- 모든 endpoint require_admin 보호
+- DB model 변경 및 migration 없음
+- Frontend 변경 없음
 
 Priority: Medium
 Status: DONE

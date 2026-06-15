@@ -247,6 +247,20 @@ Summary:
 - Added action, actor_user_id, target_type, target_id, from, to, page, and limit filters
 - Preserved existing Admin Logs TaskTracker fallback API unchanged
 
+### BE-ADMIN-016
+Admin Document Delete API
+Status: DONE
+Summary:
+- Added admin document delete API at DELETE /api/admin/documents/{document_id}
+- Added AdminDocumentDeleteResponse DTO
+- Protected the endpoint with require_admin
+- Deleted Document rows using existing Document relationship cascade for DocumentPage, DocumentChunk, DocumentEmbedding, and TaskTracker children
+- Deleted stored original PDF and OCR sidecar candidate files when present
+- Ignored missing storage files during deletion
+- Recorded DOCUMENT_DELETED audit logs with document id, file name, status, deleted=true, reason, IP address, and user agent
+- Added DOCUMENT_DELETED and DOCUMENT audit constants/filter support
+- No DB migration, table, column, frontend, or Docker changes
+
 ### FE-017
 Admin User Management API Integration
 Status: DONE

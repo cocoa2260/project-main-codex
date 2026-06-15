@@ -220,6 +220,13 @@ class AdminDocumentDetailResponse(AdminDocumentListItemResponse):
     keywords: list[str]
 
 
+class AdminDocumentDeleteResponse(BaseModel):
+    document_id: UUID
+    file_name: str
+    deleted: bool
+    message: str
+
+
 class AdminTaskDocumentResponse(BaseModel):
     id: UUID
     file_name: str
