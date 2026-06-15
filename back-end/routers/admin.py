@@ -154,6 +154,7 @@ LOG_LEVELS = {
 AUDIT_ACTIONS = {
     AuditAction.USER_ROLE_CHANGED,
     AuditAction.USER_STATUS_CHANGED,
+    AuditAction.FAILED_TASK_RETRY,
     AuditAction.DOCUMENT_DELETED,
     AuditAction.DOCUMENT_REPROCESS_REQUESTED,
     AuditAction.DOCUMENT_EXPORTED,
@@ -161,6 +162,7 @@ AUDIT_ACTIONS = {
 AUDIT_TARGET_TYPES = {
     AuditTargetType.USER,
     AuditTargetType.DOCUMENT,
+    AuditTargetType.TASK,
 }
 SORT_ORDERS = {"asc", "desc"}
 

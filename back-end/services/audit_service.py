@@ -15,9 +15,6 @@ from schemas.admin import AdminAuditLogListResponse
 from schemas.admin import AdminPaginationResponse
 
 
-AUDIT_ACTION_FAILED_TASK_RETRY = "FAILED_TASK_RETRY"
-AUDIT_TARGET_TASK = "TASK"
-
 SENSITIVE_KEYS = {
     "password",
     "password_hash",
@@ -134,8 +131,8 @@ def record_failed_task_retry(
     return record_admin_action(
         db=db,
         actor_user=actor,
-        action=AUDIT_ACTION_FAILED_TASK_RETRY,
-        target_type=AUDIT_TARGET_TASK,
+        action=AuditAction.FAILED_TASK_RETRY,
+        target_type=AuditTargetType.TASK,
         target_id=target_task_id,
         old_value={
             "task_id": str(target_task_id),

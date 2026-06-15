@@ -134,6 +134,7 @@
 | FE-028 | Admin Document Original Export UI Integration | Medium | DONE |
 | BE-ADMIN-017 | Admin Account Delete API | Medium | BLOCKED |
 | BE-ADMIN-018 | Admin Document Original Export API | Medium | DONE |
+| BE-ADMIN-020 | Audit Log Consistency Fix | Medium | DONE |
 
 ---
 
@@ -575,6 +576,20 @@ Status: DONE
 - storage_path 및 파일 경로를 응답 body와 감사 로그에 노출하지 않음
 - 성공한 original export에 대해서만 DOCUMENT_EXPORTED audit log 기록
 - OCR Markdown / Summary / Metadata / Chunk / Embedding / ZIP export 미구현
+- DB schema 변경 및 migration 없음
+
+Priority: Medium
+Status: DONE
+
+### BE-ADMIN-020 Audit Log Consistency Fix
+
+- FAILED_TASK_RETRY audit action 상수 추가
+- Audit target type TASK 상수 추가
+- GET /api/admin/audit-logs action filter에서 FAILED_TASK_RETRY 허용
+- GET /api/admin/audit-logs target_type filter에서 TASK 허용
+- 실패 작업 재시도 시 retry task와 FAILED_TASK_RETRY audit log를 같은 DB commit에 포함
+- 기존 USER_ROLE_CHANGED / USER_STATUS_CHANGED / DOCUMENT_REPROCESS_REQUESTED / DOCUMENT_DELETED / DOCUMENT_EXPORTED action 필터 유지
+- Frontend AdminAuditAction / AdminAuditTargetType 타입 최소 보정
 - DB schema 변경 및 migration 없음
 
 Priority: Medium
