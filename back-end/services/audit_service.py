@@ -6,7 +6,9 @@ from uuid import UUID
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from models.audit_log import AuditAction
 from models.audit_log import AuditLog
+from models.audit_log import AuditTargetType
 from models.user import User
 from schemas.admin import AdminAuditLogItemResponse
 from schemas.admin import AdminAuditLogListResponse
@@ -152,6 +154,43 @@ def record_failed_task_retry(
         metadata={
             "document_id": str(document_id),
             "retry_task_id": str(retry_task_id),
+        },
+    )
+
+
+def record_document_reprocess_requested(
+    db: Session,
+    actor: User,
+    document_id: UUID,
+    previous_status: str,
+    retry_task_id: UUID,
+    retry_from_stage: str,
+    status: str,
+    cleared_artifacts: list[str],
+    reason: str | None = None,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> AuditLog:
+    return record_admin_action(
+        db=db,
+        actor_user=actor,
+        action=AuditAction.DOCUMENT_REPROCESS_REQUESTED,
+        target_type=AuditTargetType.DOCUMENT,
+        target_id=document_id,
+        old_value={
+            "document_id": str(document_id),
+            "status": previous_status,
+        },
+        new_value={
+            "retry_task_id": str(retry_task_id),
+            "retry_from_stage": retry_from_stage,
+            "status": status,
+        },
+        reason=reason,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        metadata={
+            "cleared_artifacts": cleared_artifacts,
         },
     )
 

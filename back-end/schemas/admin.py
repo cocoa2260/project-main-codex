@@ -227,6 +227,21 @@ class AdminDocumentDeleteResponse(BaseModel):
     message: str
 
 
+class AdminDocumentRetryRequest(BaseModel):
+    retry_from_stage: str
+    reason: str | None = None
+
+
+class AdminDocumentRetryResponse(BaseModel):
+    document_id: UUID
+    retry_task_id: UUID
+    retry_from_stage: str
+    previous_status: str
+    status: str
+    cleared_artifacts: list[str]
+    message: str
+
+
 class AdminTaskDocumentResponse(BaseModel):
     id: UUID
     file_name: str

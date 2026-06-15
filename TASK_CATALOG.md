@@ -121,7 +121,7 @@
 |------|------|------|------|
 | BE-ADMIN-012 | Failed Task Retry API | Medium | DONE |
 | FE-022 | Failed Task Retry UI Integration | Medium | DONE |
-| BE-ADMIN-009 | Document Retry API | Medium | TODO |
+| BE-ADMIN-009 | Document Retry API | Medium | DONE |
 | FE-023 | Document Retry UI Integration | Medium | TODO |
 | BE-ADMIN-014 | User Role Update API | Medium | DONE |
 | FE-024 | User Role Update UI Integration | Medium | DONE |
@@ -330,6 +330,26 @@ Status: DONE
 - FAILED_TASK_RETRY audit log 기록
 - EMBEDDING / RAG_INDEXING retry 미지원
 - DB model 변경 및 migration 없음
+
+Priority: Medium
+Status: DONE
+
+### BE-ADMIN-009 Document Retry API
+
+- Admin 문서 단계별 재처리 API 추가
+- POST /api/admin/documents/{document_id}/retry-from-stage
+- retry_from_stage OCR / SUMMARY만 지원
+- FAILED / COMPLETED / REVIEW_REQUIRED 문서만 재처리 허용
+- PENDING / PROCESSING 문서 재처리 차단
+- 동일 document에 PENDING 또는 PROCESSING TaskTracker 존재 시 409 반환
+- OCR 재처리는 ocr_markdown / summary / DocumentChunk / DocumentEmbedding 삭제 후 OCR TaskTracker 생성
+- SUMMARY 재처리는 summary / DocumentChunk / DocumentEmbedding 삭제 후 SUMMARY TaskTracker 생성
+- 기존 TaskTracker는 삭제하거나 수정하지 않고 새 TaskTracker 생성
+- 원본 PDF 및 storage_path 유지
+- 재처리 enqueue 성공 후 Document.status를 PROCESSING으로 변경
+- DOCUMENT_REPROCESS_REQUESTED audit log 기록
+- EMBEDDING / RAG_INDEXING 재처리 미지원
+- DB schema 변경 및 migration 없음
 
 Priority: Medium
 Status: DONE
