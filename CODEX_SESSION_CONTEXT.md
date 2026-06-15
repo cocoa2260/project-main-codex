@@ -318,6 +318,23 @@ Summary:
 - Displayed sensitive settings only through masked API values without adding reveal controls
 - Backend unchanged
 
+
+### BE-ADMIN-012
+Failed Task Retry API
+Status: DONE
+Summary:
+- Added admin failed task retry API at POST /api/admin/tasks/{task_id}/retry
+- Supported OCR and SUMMARY retries only
+- Preserved existing FAILED TaskTracker rows and created new TaskTracker rows for retry attempts
+- Enqueued OCR retry through process_document_ocr.delay(document_id, retry_task_id)
+- Enqueued SUMMARY retry through process_document_summary.delay(document_id, retry_task_id)
+- Rejected non-FAILED retry targets with 409
+- Rejected duplicate PENDING/PROCESSING task for the same document/task_type with 409
+- Required ocr_markdown for SUMMARY retry
+- Updated Document.status to PROCESSING after successful retry registration
+- Added FAILED_TASK_RETRY audit log output
+- No DB migration, model schema changes, EMBEDDING retry, or RAG_INDEXING retry
+
 ### FE-024
 User Role Update UI Integration
 Status: DONE
@@ -452,34 +469,6 @@ Endpoint
 
 Next Recommended Task
 - FE-015 Admin Document Management API Integration
-
-### BE-ADMIN-012
-
-Failed Task Retry API
-
-Status: BLOCKED
-
-Analysis Result:
-- Retry API is partially feasible
-- OCR retry can be implemented with a new TaskTracker and new Celery task
-- SUMMARY retry is conditionally feasible if ocr_markdown exists
-- EMBEDDING retry is not safe yet because summary and embedding currently share the same TaskTracker
-- RAG_INDEXING retry is not feasible yet because the RAG indexing task is not fully defined
-- Retry history is not currently tracked
-
-Decision:
-- Do not implement Failed Task Retry API yet
-- Wait until SUMMARY and EMBEDDING task tracking are separated
-- Ask embedding/summary owner to separate TaskTracker handling and failure reporting
-
-Next Required Backend Work:
-- Split SUMMARY and EMBEDDING TaskTracker handling
-- Ensure embedding failures update TaskTracker and Document status consistently
-- Remove ad-hoc EMBEDDING stage strings
-- Define RAG_INDEXING task lifecycle before adding retry support
-
-Related Future Task:
-- BE-ADMIN-012 Failed Task Retry API
 
 ---
 

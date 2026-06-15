@@ -30,7 +30,6 @@ class AuditLog(Base):
         primary_key=True,
         default=uuid.uuid4,
     )
-
     actor_user_id = Column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
@@ -96,6 +95,7 @@ class AuditLog(Base):
         DateTime(timezone=True),
         server_default=func.now(),
         nullable=False,
+
         index=True,
     )
 

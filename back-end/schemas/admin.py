@@ -144,7 +144,6 @@ class AdminLogSummaryResponse(BaseModel):
 
 AuditValue = dict[str, object] | list[object] | str | int | bool | None
 
-
 class AdminAuditLogItemResponse(BaseModel):
     id: UUID
     actor_user_id: UUID | None = None
@@ -253,6 +252,15 @@ class AdminTaskListResponse(BaseModel):
 
 class AdminTaskDetailResponse(AdminTaskListItemResponse):
     pass
+
+
+class AdminTaskRetryResponse(BaseModel):
+    original_task_id: UUID
+    retry_task_id: UUID
+    document_id: UUID
+    task_type: str
+    status: str
+    message: str
 
 
 class AdminUserListItemResponse(BaseModel):

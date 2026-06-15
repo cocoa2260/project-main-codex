@@ -13,6 +13,9 @@ from schemas.admin import AdminAuditLogListResponse
 from schemas.admin import AdminPaginationResponse
 
 
+AUDIT_ACTION_FAILED_TASK_RETRY = "FAILED_TASK_RETRY"
+AUDIT_TARGET_TASK = "TASK"
+
 SENSITIVE_KEYS = {
     "password",
     "password_hash",
@@ -114,6 +117,43 @@ def record_admin_action(
     )
     db.add(audit_log)
     return audit_log
+
+
+def record_failed_task_retry(
+    db: Session,
+    actor: User,
+    target_task_id: UUID,
+    retry_task_id: UUID,
+    document_id: UUID,
+    task_type: str,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> AuditLog:
+    return record_admin_action(
+        db=db,
+        actor_user=actor,
+        action=AUDIT_ACTION_FAILED_TASK_RETRY,
+        target_type=AUDIT_TARGET_TASK,
+        target_id=target_task_id,
+        old_value={
+            "task_id": str(target_task_id),
+            "task_type": task_type,
+            "status": "FAILED",
+        },
+        new_value={
+            "retry_task_id": str(retry_task_id),
+            "document_id": str(document_id),
+            "task_type": task_type,
+            "status": "PENDING",
+        },
+        reason="Admin requested failed task retry.",
+        ip_address=ip_address,
+        user_agent=user_agent,
+        metadata={
+            "document_id": str(document_id),
+            "retry_task_id": str(retry_task_id),
+        },
+    )
 
 
 def _audit_log_response(audit_log: AuditLog) -> AdminAuditLogItemResponse:

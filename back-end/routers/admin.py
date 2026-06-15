@@ -22,6 +22,7 @@ from models.user import UserStatus
 from routers.deps import require_admin
 from schemas.admin import AdminAuditLogListResponse
 from schemas.admin import AdminDashboardSummaryResponse
+from schemas.admin import AdminAuditLogListResponse
 from schemas.admin import AdminDocumentDetailResponse
 from schemas.admin import AdminDocumentListResponse
 from schemas.admin import AdminLogListResponse
@@ -31,6 +32,7 @@ from schemas.admin import AdminSettingsResponse
 from schemas.admin import AdminSystemHealthResponse
 from schemas.admin import AdminTaskDetailResponse
 from schemas.admin import AdminTaskListResponse
+from schemas.admin import AdminTaskRetryResponse
 from schemas.admin import AdminUserDetailResponse
 from schemas.admin import AdminUserListItemResponse
 from schemas.admin import AdminUserListResponse
@@ -55,6 +57,9 @@ from services.admin_service import list_admin_documents
 from services.admin_service import list_admin_logs
 from services.admin_service import list_admin_tasks
 from services.admin_service import list_admin_users
+from services.admin_service import AdminTaskRetryError
+from services.admin_service import retry_failed_task
+from services.audit_service import list_audit_logs as list_admin_audit_logs
 from services.admin_service import update_admin_user_role
 from services.admin_service import update_admin_user_status
 
@@ -545,3 +550,25 @@ def get_task(
         raise HTTPException(status_code=404, detail="작업을 찾을 수 없습니다.")
 
     return task
+
+
+@router.post(
+    "/tasks/{task_id}/retry",
+    response_model=AdminTaskRetryResponse,
+)
+def retry_task(
+    task_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    try:
+        return retry_failed_task(
+            db=db,
+            task_id=task_id,
+            actor=current_user,
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+        )
+    except AdminTaskRetryError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail)
