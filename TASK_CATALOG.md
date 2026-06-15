@@ -135,6 +135,7 @@
 | BE-ADMIN-017 | Admin Account Delete API | Medium | BLOCKED |
 | BE-ADMIN-018 | Admin Document Original Export API | Medium | DONE |
 | BE-ADMIN-020 | Audit Log Consistency Fix | Medium | DONE |
+| BE-ADMIN-021 | Audit Log Regression Tests | Medium | DONE |
 
 ---
 
@@ -165,6 +166,18 @@ Review API
 - Backend TaskStageCode 표준화 검토
 - Ad-hoc Stage 문자열 제거 여부 검토
 - Frontend/Backend 계약 정리
+
+### BE-ADMIN-021 Audit Log Regression Tests
+
+- Added backend regression tests for admin audit log action filters
+- Added backend regression tests for admin audit log target_type filters
+- Verified invalid action and target_type values return 400
+- Verified USER token returns 403 and unauthenticated access returns 401
+- Verified FAILED_TASK_RETRY audit rows are filterable by action and TASK target_type
+- Verified sensitive audit old_value / new_value / metadata keys are masked
+
+Priority: Medium
+Status: DONE
 
 # DONE
 

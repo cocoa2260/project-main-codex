@@ -261,6 +261,18 @@ Summary:
 - Added DOCUMENT_DELETED and DOCUMENT audit constants/filter support
 - No DB migration, table, column, frontend, or Docker changes
 
+### BE-ADMIN-021
+Audit Log Regression Tests
+Status: DONE
+Summary:
+- Added pytest regression coverage for GET /api/admin/audit-logs action allowlist filters
+- Added pytest regression coverage for target_type allowlist filters
+- Verified invalid action and target_type filters return 400
+- Verified USER token access returns 403 and unauthenticated access returns 401
+- Verified FAILED_TASK_RETRY rows are returned by action and TASK target_type filters
+- Verified sensitive audit old_value, new_value, and metadata keys remain masked
+- No API contract, DB schema, migration, frontend, or admin logic changes
+
 ### FE-028
 Admin Document Original Export UI Integration
 Status: DONE
