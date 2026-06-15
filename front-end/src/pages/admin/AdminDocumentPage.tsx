@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { deleteAdminDocument, getAdminDocumentDetail, getAdminDocuments } from '../../api/admin';
+import {
+  deleteAdminDocument,
+  getAdminDocumentDetail,
+  getAdminDocuments,
+  retryAdminDocumentFromStage,
+} from '../../api/admin';
 import { Sidebar } from '../../components/common/Sidebar';
 import { StatusBadge } from '../../components/common/StatusBadge';
-import type { AdminDocumentDetailResponse, AdminDocumentItem } from '../../types/admin';
+import type { AdminDocumentDetailResponse, AdminDocumentItem, AdminDocumentRetryStage } from '../../types/admin';
 import type { DocumentStatus, TaskType } from '../../types/document';
 import {
   getDocumentStatusPresentation,
@@ -62,6 +67,26 @@ const taskTypeColors: Record<TaskType, string> = {
   EMBEDDING: 'text-yellow-400',
   RAG_INDEXING: 'text-green-400',
 };
+
+const retryStageOptions: Array<{
+  value: AdminDocumentRetryStage;
+  label: string;
+  description: string;
+  warning: string;
+}> = [
+  {
+    value: 'OCR',
+    label: 'OCR부터 재처리',
+    description: 'OCR 단계부터 다시 실행합니다.',
+    warning: 'OCR부터 재처리하면 기존 OCR 결과, 요약, 청크, 임베딩 결과가 초기화됩니다.',
+  },
+  {
+    value: 'SUMMARY',
+    label: 'SUMMARY부터 재처리',
+    description: 'OCR 결과는 유지하고 요약 단계부터 다시 실행합니다.',
+    warning: 'SUMMARY부터 재처리하면 기존 요약, 청크, 임베딩 결과가 초기화됩니다.',
+  },
+];
 
 function getApiErrorMessage(error: unknown, fallbackMessage = '문서 목록을 불러오지 못했습니다.'): string {
   const response = (error as { response?: { status?: number; data?: { detail?: unknown; message?: string } } }).response;
@@ -141,6 +166,11 @@ function getOwnerLabel(doc: AdminDocumentItem): string {
   return doc.owner.name || doc.owner.email;
 }
 
+function canRetryDocument(status?: string | null): boolean {
+  const normalizedStatus = normalizeDocumentStatus(status);
+  return normalizedStatus === 'FAILED' || normalizedStatus === 'COMPLETED' || normalizedStatus === 'REVIEW_REQUIRED';
+}
+
 export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -163,6 +193,12 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
   const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(null);
   const [deleteErrorMessage, setDeleteErrorMessage] = useState<string | null>(null);
   const [deleteSuccessMessage, setDeleteSuccessMessage] = useState<string | null>(null);
+  const [retryTarget, setRetryTarget] = useState<AdminDocumentItem | null>(null);
+  const [retryStage, setRetryStage] = useState<AdminDocumentRetryStage>('OCR');
+  const [retryReason, setRetryReason] = useState('');
+  const [retryingDocumentId, setRetryingDocumentId] = useState<string | null>(null);
+  const [retryErrorMessage, setRetryErrorMessage] = useState<string | null>(null);
+  const [retrySuccessMessage, setRetrySuccessMessage] = useState<string | null>(null);
 
   const fetchDocuments = useCallback(async (page: number, showLoading = false) => {
     if (showLoading) {
@@ -234,6 +270,17 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
     setDeleteSuccessMessage(null);
   };
 
+  const handleOpenRetryConfirm = (document: AdminDocumentItem) => {
+    if (retryingDocumentId || !canRetryDocument(document.status)) return;
+
+    setRetryTarget(document);
+    setRetryStage('OCR');
+    setRetryReason('');
+    setRetryErrorMessage(null);
+    setRetrySuccessMessage(null);
+    setDeleteSuccessMessage(null);
+  };
+
   const handleConfirmDelete = async () => {
     if (!deleteTarget || deletingDocumentId) return;
 
@@ -256,6 +303,33 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
       setDeleteErrorMessage(getApiErrorMessage(error, '문서를 삭제하지 못했습니다.'));
     } finally {
       setDeletingDocumentId(null);
+    }
+  };
+
+  const handleConfirmRetry = async () => {
+    if (!retryTarget || retryingDocumentId) return;
+
+    setRetryingDocumentId(retryTarget.id);
+    setRetryErrorMessage(null);
+    setRetrySuccessMessage(null);
+
+    try {
+      const response = await retryAdminDocumentFromStage(retryTarget.id, retryStage, retryReason);
+      const stageLabel = retryStageOptions.find((option) => option.value === response.retry_from_stage)?.label ?? response.retry_from_stage;
+      setRetrySuccessMessage(response.message || `${retryTarget.file_name} 문서의 ${stageLabel} 요청을 등록했습니다.`);
+      setRetryTarget(null);
+      setRetryReason('');
+
+      if (selectedDocument?.id === retryTarget.id) {
+        setSelectedDocument(null);
+        setDetailErrorMessage(null);
+      }
+
+      await fetchDocuments(pagination.page, false);
+    } catch (error) {
+      setRetryErrorMessage(getApiErrorMessage(error, '문서 재처리를 요청하지 못했습니다.'));
+    } finally {
+      setRetryingDocumentId(null);
     }
   };
 
@@ -488,6 +562,13 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
                   </div>
                 )}
 
+                {retrySuccessMessage && (
+                  <div className="flex items-center gap-3 rounded-xl border border-green-500/20 bg-green-500/10 p-4 text-green-300">
+                    <CheckCircle2 className="h-5 w-5 shrink-0" />
+                    <span className="text-sm">{retrySuccessMessage}</span>
+                  </div>
+                )}
+
                 <div className="bg-[#111116] border border-white/10 rounded-xl overflow-hidden">
                   <div className="overflow-x-auto">
                     <table className="w-full">
@@ -524,6 +605,7 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
                           const progress = getDocumentProgress(doc);
                           const taskType = normalizeTaskType(doc.latest_task?.task_type);
                           const statusPresentation = getDocumentStatusPresentation(doc.status, doc.latest_task?.stage);
+                          const retryAllowed = canRetryDocument(doc.status);
 
                           return (
                             <tr key={doc.id} className="hover:bg-white/5 transition-colors">
@@ -619,16 +701,19 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
                                       </button>
                                     </>
                                   )}
-                                  {normalizedStatus === 'FAILED' && (
-                                    <button
-                                      type="button"
-                                      className="p-2 rounded-lg transition-colors opacity-50 cursor-not-allowed"
-                                      title="준비 중"
-                                      disabled
-                                    >
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenRetryConfirm(doc)}
+                                    disabled={!retryAllowed || retryingDocumentId !== null}
+                                    className="p-2 rounded-lg transition-colors hover:bg-yellow-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+                                    title={retryAllowed ? '문서 재처리' : '대기/처리 중 문서는 재처리할 수 없습니다'}
+                                  >
+                                    {retryingDocumentId === doc.id ? (
+                                      <Loader2 className="w-4 h-4 animate-spin text-yellow-400" />
+                                    ) : (
                                       <RefreshCw className="w-4 h-4 text-yellow-400" />
-                                    </button>
-                                  )}
+                                    )}
+                                  </button>
                                   <button
                                     type="button"
                                     className="p-2 rounded-lg transition-colors opacity-50 cursor-not-allowed"
@@ -809,11 +894,16 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
                           <p className="text-red-400/80 text-xs mb-2">{doc.latest_task?.error_message ?? doc.latest_task?.message ?? '-'}</p>
                           <button
                             type="button"
-                            className="w-full py-1.5 px-3 bg-red-500/20 border border-red-500/30 rounded text-red-400 text-xs transition-colors flex items-center justify-center gap-1.5 opacity-50 cursor-not-allowed"
-                            title="준비 중"
-                            disabled
+                            onClick={() => handleOpenRetryConfirm(doc)}
+                            disabled={!canRetryDocument(doc.status) || retryingDocumentId !== null}
+                            className="w-full py-1.5 px-3 bg-red-500/20 border border-red-500/30 rounded text-red-400 text-xs transition-colors flex items-center justify-center gap-1.5 hover:bg-red-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+                            title="문서 재처리"
                           >
-                            <RefreshCw className="w-3 h-3" />
+                            {retryingDocumentId === doc.id ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <RefreshCw className="w-3 h-3" />
+                            )}
                             재시도
                           </button>
                         </div>
@@ -931,6 +1021,102 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
               >
                 {deletingDocumentId && <Loader2 className="h-4 w-4 animate-spin" />}
                 삭제
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {retryTarget && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center px-4">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => !retryingDocumentId && setRetryTarget(null)}
+          />
+          <div className="relative w-full max-w-lg rounded-xl border border-yellow-500/20 bg-[#111116] p-6 shadow-2xl">
+            <div className="mb-4 flex items-start gap-3">
+              <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/10 p-2">
+                <RefreshCw className="h-5 w-5 text-yellow-400" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-white">문서 재처리 확인</h3>
+                <p className="mt-1 text-sm text-gray-400">재처리 대상과 시작 단계를 확인해 주세요.</p>
+              </div>
+            </div>
+
+            <div className="mb-4 rounded-lg border border-white/10 bg-white/5 p-3">
+              <p className="text-xs text-gray-500">문서명</p>
+              <p className="mt-1 break-words text-sm font-medium text-white">{retryTarget.file_name}</p>
+            </div>
+
+            <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {retryStageOptions.map((option) => (
+                <label
+                  key={option.value}
+                  className={`cursor-pointer rounded-lg border p-3 transition-colors ${
+                    retryStage === option.value
+                      ? 'border-yellow-500/50 bg-yellow-500/10'
+                      : 'border-white/10 bg-white/5 hover:bg-white/10'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="retry-stage"
+                    value={option.value}
+                    checked={retryStage === option.value}
+                    onChange={() => setRetryStage(option.value)}
+                    disabled={retryingDocumentId !== null}
+                    className="sr-only"
+                  />
+                  <span className="text-sm font-medium text-white">{option.label}</span>
+                  <span className="mt-1 block text-xs text-gray-400">{option.description}</span>
+                </label>
+              ))}
+            </div>
+
+            <label className="mb-4 block">
+              <span className="mb-2 block text-sm font-medium text-gray-300">재처리 사유</span>
+              <textarea
+                value={retryReason}
+                onChange={(event) => setRetryReason(event.target.value)}
+                disabled={retryingDocumentId !== null}
+                rows={3}
+                placeholder="예: OCR 결과 품질 문제"
+                className="w-full resize-none rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-yellow-500/50 disabled:cursor-not-allowed disabled:opacity-60"
+              />
+            </label>
+
+            <div className="mb-4 rounded-lg border border-yellow-500/20 bg-yellow-500/10 p-3 text-sm text-yellow-100">
+              <p className="font-medium">재처리 시 기존 산출물이 초기화됩니다.</p>
+              <p className="mt-1 text-yellow-100/80">
+                {retryStageOptions.find((option) => option.value === retryStage)?.warning}
+              </p>
+            </div>
+
+            {retryErrorMessage && (
+              <div className="mb-4 flex items-start gap-2 rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-300">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>{retryErrorMessage}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setRetryTarget(null)}
+                disabled={retryingDocumentId !== null}
+                className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-gray-300 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleConfirmRetry()}
+                disabled={retryingDocumentId !== null}
+                className="inline-flex items-center gap-2 rounded-lg bg-yellow-500 px-4 py-2 text-black transition-colors hover:bg-yellow-400 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {retryingDocumentId && <Loader2 className="h-4 w-4 animate-spin" />}
+                재처리 요청
               </button>
             </div>
           </div>

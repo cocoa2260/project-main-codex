@@ -7,6 +7,9 @@ import type {
   AdminDocumentDeleteResponse,
   AdminDocumentListParams,
   AdminDocumentListResponse,
+  AdminDocumentRetryRequest,
+  AdminDocumentRetryResponse,
+  AdminDocumentRetryStage,
   AdminLogListParams,
   AdminLogsResponse,
   AdminLogSummaryResponse,
@@ -81,6 +84,22 @@ export async function getAdminDocumentDetail(documentId: string): Promise<AdminD
 
 export async function deleteAdminDocument(documentId: string): Promise<AdminDocumentDeleteResponse> {
   const response = await apiClient.delete<AdminDocumentDeleteResponse>(`/api/admin/documents/${documentId}`);
+  return response.data;
+}
+
+export async function retryAdminDocumentFromStage(
+  documentId: string,
+  retryFromStage: AdminDocumentRetryStage,
+  reason?: string,
+): Promise<AdminDocumentRetryResponse> {
+  const payload: AdminDocumentRetryRequest = {
+    retry_from_stage: retryFromStage,
+    ...(reason?.trim() ? { reason: reason.trim() } : {}),
+  };
+  const response = await apiClient.post<AdminDocumentRetryResponse>(
+    `/api/admin/documents/${documentId}/retry-from-stage`,
+    payload,
+  );
   return response.data;
 }
 

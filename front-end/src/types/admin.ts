@@ -260,6 +260,23 @@ export interface AdminDocumentDeleteResponse {
   message: string;
 }
 
+export type AdminDocumentRetryStage = 'OCR' | 'SUMMARY';
+
+export interface AdminDocumentRetryRequest {
+  retry_from_stage: AdminDocumentRetryStage;
+  reason?: string;
+}
+
+export interface AdminDocumentRetryResponse {
+  document_id: string;
+  retry_task_id: string;
+  retry_from_stage: AdminDocumentRetryStage;
+  previous_status: DocumentStatus | string;
+  status: DocumentStatus | string;
+  cleared_artifacts: string[];
+  message: string;
+}
+
 export interface AdminDocumentListParams {
   page?: number;
   limit?: number;
