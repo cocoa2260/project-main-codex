@@ -131,6 +131,7 @@
 | FE-026 | Admin Audit Log UI Integration | Medium | DONE |
 | BE-ADMIN-016 | Admin Document Delete API | Medium | DONE |
 | FE-027 | Admin Document Delete UI Integration | Medium | DONE |
+| FE-028 | Admin Document Original Export UI Integration | Medium | DONE |
 | BE-ADMIN-017 | Admin Account Delete API | Medium | BLOCKED |
 | BE-ADMIN-018 | Admin Document Original Export API | Medium | DONE |
 
@@ -550,6 +551,19 @@ Status: DONE
 Priority: Medium
 Status: DONE
 
+### FE-028 Admin Document Original Export UI Integration
+
+- Admin original document export API client 추가
+- GET /api/admin/documents/{document_id}/export?format=original 연동
+- AdminDocumentPage 기존 다운로드 action을 원본 다운로드로 활성화
+- responseType blob 기반 다운로드 trigger 추가
+- Content-Disposition filename 우선 사용 및 document.file_name fallback 처리
+- Blob URL revoke 처리 추가
+- 다운로드 요청 중 중복 클릭 방지 및 진행 상태 표시
+- 성공 메시지 및 backend error message 표시
+- OCR Markdown / Summary / Metadata / Chunk / Embedding / ZIP export UI는 준비중/비활성 유지
+- Frontend 변경만 수행
+- Backend / API contract 변경 없음
 ### BE-ADMIN-018 Admin Document Original Export API
 
 - Admin 문서 원본 PDF 다운로드 API 추가

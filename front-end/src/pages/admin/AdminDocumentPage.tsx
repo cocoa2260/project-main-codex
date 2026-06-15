@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   deleteAdminDocument,
+  downloadAdminDocumentOriginal,
   getAdminDocumentDetail,
   getAdminDocuments,
   retryAdminDocumentFromStage,
@@ -199,6 +200,9 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
   const [retryingDocumentId, setRetryingDocumentId] = useState<string | null>(null);
   const [retryErrorMessage, setRetryErrorMessage] = useState<string | null>(null);
   const [retrySuccessMessage, setRetrySuccessMessage] = useState<string | null>(null);
+  const [downloadingDocumentId, setDownloadingDocumentId] = useState<string | null>(null);
+  const [downloadErrorMessage, setDownloadErrorMessage] = useState<string | null>(null);
+  const [downloadSuccessMessage, setDownloadSuccessMessage] = useState<string | null>(null);
 
   const fetchDocuments = useCallback(async (page: number, showLoading = false) => {
     if (showLoading) {
@@ -330,6 +334,25 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
       setRetryErrorMessage(getApiErrorMessage(error, '문서 재처리를 요청하지 못했습니다.'));
     } finally {
       setRetryingDocumentId(null);
+    }
+  };
+
+  const handleDownloadOriginal = async (document: AdminDocumentItem) => {
+    if (downloadingDocumentId) return;
+
+    setDownloadingDocumentId(document.id);
+    setDownloadErrorMessage(null);
+    setDownloadSuccessMessage(null);
+    setDeleteSuccessMessage(null);
+    setRetrySuccessMessage(null);
+
+    try {
+      const downloadedFileName = await downloadAdminDocumentOriginal(document.id, document.file_name);
+      setDownloadSuccessMessage(`${downloadedFileName} 원본 다운로드를 시작했습니다.`);
+    } catch (error) {
+      setDownloadErrorMessage(getApiErrorMessage(error, '원본 문서를 다운로드하지 못했습니다.'));
+    } finally {
+      setDownloadingDocumentId(null);
     }
   };
 
@@ -569,6 +592,23 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
                   </div>
                 )}
 
+                {downloadSuccessMessage && (
+                  <div className="flex items-center gap-3 rounded-xl border border-green-500/20 bg-green-500/10 p-4 text-green-300">
+                    <CheckCircle2 className="h-5 w-5 shrink-0" />
+                    <span className="text-sm">{downloadSuccessMessage}</span>
+                  </div>
+                )}
+
+                {downloadErrorMessage && (
+                  <div className="flex items-start gap-3 rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-red-300">
+                    <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">원본 다운로드 오류</p>
+                      <p className="mt-1 text-sm text-red-300/80">{downloadErrorMessage}</p>
+                    </div>
+                  </div>
+                )}
+
                 <div className="bg-[#111116] border border-white/10 rounded-xl overflow-hidden">
                   <div className="overflow-x-auto">
                     <table className="w-full">
@@ -716,11 +756,18 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
                                   </button>
                                   <button
                                     type="button"
-                                    className="p-2 rounded-lg transition-colors opacity-50 cursor-not-allowed"
-                                    title="준비 중"
-                                    disabled
+                                    onClick={() => void handleDownloadOriginal(doc)}
+                                    disabled={downloadingDocumentId !== null}
+                                    className="inline-flex min-w-[112px] items-center justify-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-medium text-gray-300 transition-colors hover:bg-primary/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                                    title="원본 다운로드"
+                                    aria-label={`${doc.file_name} 원본 다운로드`}
                                   >
-                                    <Download className="w-4 h-4 text-gray-400" />
+                                    {downloadingDocumentId === doc.id ? (
+                                      <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                                    ) : (
+                                      <Download className="w-4 h-4 text-primary" />
+                                    )}
+                                    <span>원본 다운로드</span>
                                   </button>
                                   <button
                                     type="button"
