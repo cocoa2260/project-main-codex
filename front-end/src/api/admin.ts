@@ -15,6 +15,7 @@ import type {
   AdminTaskDetailResponse,
   AdminTaskListParams,
   AdminTaskListResponse,
+  AdminTaskRetryResponse,
   AdminUserDetail,
   AdminUserListParams,
   AdminUserRoleUpdateRequest,
@@ -84,6 +85,11 @@ export async function getAdminTasks(params?: AdminTaskListParams): Promise<Admin
 
 export async function getAdminTaskDetail(taskId: string): Promise<AdminTaskDetailResponse> {
   const response = await apiClient.get<AdminTaskDetailResponse>(`/api/admin/tasks/${taskId}`);
+  return response.data;
+}
+
+export async function retryAdminTask(taskId: string): Promise<AdminTaskRetryResponse> {
+  const response = await apiClient.post<AdminTaskRetryResponse>(`/api/admin/tasks/${taskId}/retry`);
   return response.data;
 }
 

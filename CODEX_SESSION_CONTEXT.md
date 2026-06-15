@@ -259,6 +259,21 @@ Summary:
 - Preserved existing user management layout, status/action UI, right panels, and disabled future account actions where backend APIs do not exist
 - Build passed
 
+### FE-022
+Failed Task Retry UI Integration
+Status: DONE
+Summary:
+- Added admin task retry API client for POST /api/admin/tasks/{task_id}/retry
+- Added AdminTaskRetryResponse DTO reusing TaskType and TaskStatus
+- Enabled Retry action for FAILED OCR and FAILED SUMMARY tasks in AdminJobPage
+- Kept EMBEDDING, RAG_INDEXING, PENDING, PROCESSING, and COMPLETED retry actions disabled
+- Added confirmation before retry and request-in-flight duplicate click protection
+- Displayed retry success and backend error messages without breaking the page
+- Refreshed the task list after successful retry
+- Preserved existing Queue, Worker, Task polling, detail, and monitoring UI behavior
+- Backend unchanged and audit log creation remains backend-owned
+- Build and touched frontend file eslint passed
+
 ### FE-018
 Admin System Health API Integration
 Status: DONE
