@@ -195,6 +195,43 @@ def record_document_reprocess_requested(
     )
 
 
+def record_document_exported(
+    db: Session,
+    actor: User,
+    document_id: UUID,
+    file_name: str,
+    status: str,
+    export_format: str,
+    content_type: str,
+    file_size: int,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> AuditLog:
+    return record_admin_action(
+        db=db,
+        actor_user=actor,
+        action=AuditAction.DOCUMENT_EXPORTED,
+        target_type=AuditTargetType.DOCUMENT,
+        target_id=document_id,
+        old_value={
+            "document_id": str(document_id),
+            "file_name": file_name,
+            "status": status,
+        },
+        new_value={
+            "exported": True,
+            "format": export_format,
+        },
+        ip_address=ip_address,
+        user_agent=user_agent,
+        metadata={
+            "format": export_format,
+            "content_type": content_type,
+            "file_size": file_size,
+        },
+    )
+
+
 def _audit_log_response(audit_log: AuditLog) -> AdminAuditLogItemResponse:
     return AdminAuditLogItemResponse(
         id=audit_log.id,

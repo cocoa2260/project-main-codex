@@ -73,6 +73,7 @@ from schemas.admin import RecentEventResponse
 from schemas.admin import TaskStatsResponse
 from schemas.admin import UserStatsResponse
 from services.audit_service import record_document_reprocess_requested
+from services.audit_service import record_document_exported
 from services.audit_service import record_failed_task_retry
 from services.document_service import attach_celery_task_id
 from services.document_service import create_document_task
@@ -102,6 +103,8 @@ ROLE_UPDATE_LAST_ADMIN = "LAST_ADMIN"
 STATUS_UPDATE_SELF_SUSPEND = "SELF_SUSPEND"
 STATUS_UPDATE_LAST_ADMIN = "LAST_ADMIN"
 DOCUMENT_DELETE_MESSAGE = "문서가 삭제되었습니다."
+DOCUMENT_EXPORT_FORMAT_ORIGINAL = "original"
+DOCUMENT_EXPORT_CONTENT_TYPE_PDF = "application/pdf"
 DOCUMENT_RETRY_STAGE_OCR = "OCR"
 DOCUMENT_RETRY_STAGE_SUMMARY = "SUMMARY"
 DOCUMENT_RETRY_FROM_STAGES = {
@@ -1903,6 +1906,81 @@ def delete_admin_document(
     db.commit()
 
     return response
+
+
+class AdminDocumentExportError(Exception):
+    def __init__(self, status_code: int, detail: str):
+        self.status_code = status_code
+        self.detail = detail
+
+
+class AdminDocumentOriginalExport:
+    def __init__(
+        self,
+        path: Path,
+        file_name: str,
+        content_type: str,
+    ):
+        self.path = path
+        self.file_name = file_name
+        self.content_type = content_type
+
+
+def prepare_admin_document_original_export(
+    db: Session,
+    document_id: UUID,
+    export_format: str,
+    actor: User,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> AdminDocumentOriginalExport:
+    normalized_format = (export_format or DOCUMENT_EXPORT_FORMAT_ORIGINAL).strip().lower()
+    if normalized_format != DOCUMENT_EXPORT_FORMAT_ORIGINAL:
+        raise AdminDocumentExportError(
+            status_code=400,
+            detail="지원하지 않는 export format입니다.",
+        )
+
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if document is None:
+        raise AdminDocumentExportError(
+            status_code=404,
+            detail="문서를 찾을 수 없습니다.",
+        )
+
+    if not document.storage_path:
+        raise AdminDocumentExportError(
+            status_code=404,
+            detail="원본 파일을 찾을 수 없습니다.",
+        )
+
+    storage_path = Path(document.storage_path)
+    if not storage_path.exists() or not storage_path.is_file():
+        raise AdminDocumentExportError(
+            status_code=404,
+            detail="원본 파일을 찾을 수 없습니다.",
+        )
+
+    file_size = storage_path.stat().st_size
+    record_document_exported(
+        db=db,
+        actor=actor,
+        document_id=document.id,
+        file_name=document.file_name,
+        status=document.status,
+        export_format=DOCUMENT_EXPORT_FORMAT_ORIGINAL,
+        content_type=DOCUMENT_EXPORT_CONTENT_TYPE_PDF,
+        file_size=file_size,
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
+    db.commit()
+
+    return AdminDocumentOriginalExport(
+        path=storage_path,
+        file_name=document.file_name,
+        content_type=DOCUMENT_EXPORT_CONTENT_TYPE_PDF,
+    )
 
 
 class AdminDocumentRetryError(Exception):
