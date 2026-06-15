@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from core.config import settings
 from core.security import ALGORITHM
 from db.session import get_db
-from models.user import User, UserRole
+from models.user import User, UserRole, UserStatus
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
@@ -41,6 +41,9 @@ def get_current_user(
 
     user = db.query(User).filter(User.id == user_uuid).first()
     if user is None:
+        raise credentials_exception
+
+    if user.status == UserStatus.SUSPENDED:
         raise credentials_exception
 
     return user

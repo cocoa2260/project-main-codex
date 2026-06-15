@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { getAdminUserDetail, getAdminUsers } from '../../api/admin';
+import { getAdminUserDetail, getAdminUsers, updateAdminUserRole, updateAdminUserStatus } from '../../api/admin';
 import { Sidebar } from '../../components/common/Sidebar';
-import type { AdminUserDetail, AdminUserItem, AdminUserRecentTask } from '../../types/admin';
+import type { AdminUserDetail, AdminUserItem, AdminUserRecentTask, AdminUserStatus } from '../../types/admin';
 import type { TaskStatus } from '../../types/document';
 import type { UserRole } from '../../utils/auth';
 import { getDocumentStatusPresentation, normalizeDocumentStatus } from '../../utils/documentStatus';
@@ -32,8 +32,7 @@ import {
   XCircle,
 } from 'lucide-react';
 
-type FilterStatus = 'all' | 'user' | 'admin' | 'active' | 'suspended';
-type UserDisplayStatus = 'active' | 'suspended' | 'inactive';
+type FilterStatus = 'all' | 'user' | 'admin' | 'active' | 'suspended' | 'inactive';
 
 interface AdminUserPageProps {
   onLogout?: () => void;
@@ -46,9 +45,44 @@ const roleFilterMap: Partial<Record<FilterStatus, UserRole>> = {
   admin: 'ADMIN',
 };
 
+const statusFilterMap: Partial<Record<FilterStatus, AdminUserStatus>> = {
+  active: 'ACTIVE',
+  suspended: 'SUSPENDED',
+  inactive: 'INACTIVE',
+};
+
+const USER_STATUS_OPTIONS: AdminUserStatus[] = ['ACTIVE', 'SUSPENDED', 'INACTIVE'];
+
 function getApiErrorMessage(error: unknown): string {
-  const response = (error as { response?: { data?: { detail?: string; message?: string } } }).response;
-  return response?.data?.detail ?? response?.data?.message ?? (error instanceof Error ? error.message : '사용자 목록을 불러오지 못했습니다.');
+  const response = (error as { response?: { status?: number; data?: { detail?: unknown; message?: string } } }).response;
+  const detail = response?.data?.detail;
+
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        if (typeof item === 'string') return item;
+        if (item && typeof item === 'object' && 'msg' in item) return String((item as { msg: unknown }).msg);
+        return null;
+      })
+      .filter(Boolean)
+      .join(', ') || '요청을 처리하지 못했습니다.';
+  }
+
+  if (response?.data?.message) return response.data.message;
+
+  switch (response?.status) {
+    case 401:
+      return '인증이 필요합니다. 다시 로그인해 주세요.';
+    case 403:
+      return '이 작업을 수행할 권한이 없습니다.';
+    case 404:
+      return '사용자를 찾을 수 없습니다.';
+    case 409:
+      return '현재 정책상 요청을 처리할 수 없습니다.';
+    default:
+      return error instanceof Error ? error.message : '요청을 처리하지 못했습니다.';
+  }
 }
 
 function formatDateTime(value?: string | null): string {
@@ -77,32 +111,68 @@ function getRoleColor(role: string) {
   }
 }
 
-function getStatusColor(status: UserDisplayStatus) {
+function normalizeUserRole(role: string): UserRole | null {
+  const normalized = role.toUpperCase();
+  if (normalized === 'ADMIN' || normalized === 'USER') return normalized;
+  return null;
+}
+
+function getNextRole(role: string): UserRole | null {
+  const currentRole = normalizeUserRole(role);
+  if (currentRole === 'ADMIN') return 'USER';
+  if (currentRole === 'USER') return 'ADMIN';
+  return null;
+}
+
+function getRoleConfirmMessage(user: AdminUserItem, nextRole: UserRole): string {
+  if (nextRole === 'ADMIN') return `${user.name} 사용자를 ADMIN으로 승격하시겠습니까?`;
+  return `${user.name} 관리자를 USER로 강등하시겠습니까?`;
+}
+
+function normalizeUserStatus(status: string): AdminUserStatus {
+  const normalized = status.toUpperCase();
+  if (normalized === 'ACTIVE' || normalized === 'SUSPENDED' || normalized === 'INACTIVE') return normalized;
+  return 'INACTIVE';
+}
+
+function getStatusColor(status: AdminUserStatus) {
   switch (status) {
-    case 'active':
+    case 'ACTIVE':
       return 'bg-green-500/10 text-green-400 border-green-500/20';
-    case 'suspended':
+    case 'SUSPENDED':
       return 'bg-red-500/10 text-red-400 border-red-500/20';
     default:
       return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20';
   }
 }
 
-function getStatusLabel(status: UserDisplayStatus) {
+function getStatusLabel(status: AdminUserStatus) {
   switch (status) {
-    case 'active':
+    case 'ACTIVE':
       return '활성';
-    case 'suspended':
+    case 'SUSPENDED':
       return '중지됨';
     default:
       return '비활성';
   }
 }
 
-function getStatusIcon(status: UserDisplayStatus) {
-  if (status === 'active') return <CheckCircle2 className="w-3 h-3" />;
-  if (status === 'suspended') return <Ban className="w-3 h-3" />;
+function getStatusIcon(status: AdminUserStatus) {
+  if (status === 'ACTIVE') return <CheckCircle2 className="w-3 h-3" />;
+  if (status === 'SUSPENDED') return <Ban className="w-3 h-3" />;
   return <XCircle className="w-3 h-3" />;
+}
+
+function getDefaultNextStatus(status: string): AdminUserStatus {
+  const currentStatus = normalizeUserStatus(status);
+  if (currentStatus === 'SUSPENDED') return 'ACTIVE';
+  return 'SUSPENDED';
+}
+
+function getStatusConfirmMessage(user: AdminUserItem, nextStatus: AdminUserStatus): string {
+  if (nextStatus === 'SUSPENDED') return `${user.name} 사용자를 정지하시겠습니까?`;
+  if (nextStatus === 'ACTIVE') return `${user.name} 사용자의 정지를 해제하고 활성 상태로 변경하시겠습니까?`;
+  return `${user.name} 사용자를 비활성 상태로 변경하시겠습니까?`;
 }
 
 function getTaskStatusLabel(status: string) {
@@ -139,6 +209,16 @@ export function AdminUserPage({ onLogout }: AdminUserPageProps) {
   const [showUserDetail, setShowUserDetail] = useState(false);
   const [detailErrorMessage, setDetailErrorMessage] = useState<string | null>(null);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
+  const [roleActionUser, setRoleActionUser] = useState<AdminUserItem | null>(null);
+  const [roleActionError, setRoleActionError] = useState<string | null>(null);
+  const [roleActionSuccess, setRoleActionSuccess] = useState<string | null>(null);
+  const [isUpdatingRole, setIsUpdatingRole] = useState(false);
+  const [statusActionUser, setStatusActionUser] = useState<AdminUserItem | null>(null);
+  const [statusActionTarget, setStatusActionTarget] = useState<AdminUserStatus>('SUSPENDED');
+  const [statusActionReason, setStatusActionReason] = useState('');
+  const [statusActionError, setStatusActionError] = useState<string | null>(null);
+  const [statusActionSuccess, setStatusActionSuccess] = useState<string | null>(null);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
   const fetchUsers = useCallback(async (page: number, showLoading = false) => {
     if (showLoading) {
@@ -155,6 +235,7 @@ export function AdminUserPage({ onLogout }: AdminUserPageProps) {
         limit: PAGE_LIMIT,
         q: searchQuery.trim() || undefined,
         role: roleFilterMap[filterStatus],
+        status: statusFilterMap[filterStatus],
         sort_by: 'created_at',
         sort_order: 'desc',
       });
@@ -205,8 +286,116 @@ export function AdminUserPage({ onLogout }: AdminUserPageProps) {
     }
   };
 
+  const handleOpenRoleAction = (user: AdminUserItem) => {
+    setRoleActionUser(user);
+    setRoleActionError(null);
+    setRoleActionSuccess(null);
+  };
+
+  const handleOpenStatusAction = (user: AdminUserItem) => {
+    setStatusActionUser(user);
+    setStatusActionTarget(getDefaultNextStatus(user.status));
+    setStatusActionReason('');
+    setStatusActionError(null);
+    setStatusActionSuccess(null);
+  };
+
+  const handleConfirmRoleUpdate = async () => {
+    if (!roleActionUser || isUpdatingRole) return;
+
+    const nextRole = getNextRole(roleActionUser.role);
+    if (!nextRole) {
+      setRoleActionError('지원하지 않는 역할 값입니다.');
+      return;
+    }
+
+    setIsUpdatingRole(true);
+    setRoleActionError(null);
+    setRoleActionSuccess(null);
+
+    try {
+      const updatedUser = await updateAdminUserRole(roleActionUser.id, nextRole);
+
+      setUsers((currentUsers) => currentUsers.map((user) => (user.id === updatedUser.id ? updatedUser : user)));
+      setSelectedUser((currentUser) => (currentUser?.id === updatedUser.id ? updatedUser : currentUser));
+      setRoleActionUser(null);
+      setRoleActionSuccess(`${updatedUser.name} 사용자의 역할을 ${updatedUser.role}로 변경했습니다.`);
+
+      await fetchUsers(pagination.page, false);
+
+      if (showUserDetail && selectedUser?.id === updatedUser.id) {
+        setIsDetailLoading(true);
+        setDetailErrorMessage(null);
+
+        try {
+          const detail = await getAdminUserDetail(updatedUser.id);
+          setSelectedUserDetail(detail);
+          setSelectedUser(detail);
+        } catch (detailError) {
+          setDetailErrorMessage(getApiErrorMessage(detailError));
+        } finally {
+          setIsDetailLoading(false);
+        }
+      }
+    } catch (error) {
+      setRoleActionError(getApiErrorMessage(error));
+    } finally {
+      setIsUpdatingRole(false);
+    }
+  };
+
+  const handleConfirmStatusUpdate = async () => {
+    if (!statusActionUser || isUpdatingStatus) return;
+
+    const currentStatus = normalizeUserStatus(statusActionUser.status);
+    if (currentStatus === statusActionTarget) {
+      setStatusActionError('현재 상태와 동일한 값입니다.');
+      return;
+    }
+
+    setIsUpdatingStatus(true);
+    setStatusActionError(null);
+    setStatusActionSuccess(null);
+
+    try {
+      const updatedUser = await updateAdminUserStatus(
+        statusActionUser.id,
+        statusActionTarget,
+        statusActionReason,
+      );
+
+      setUsers((currentUsers) => currentUsers.map((user) => (user.id === updatedUser.id ? updatedUser : user)));
+      setSelectedUser((currentUser) => (currentUser?.id === updatedUser.id ? updatedUser : currentUser));
+      setStatusActionUser(null);
+      setStatusActionSuccess(`${updatedUser.name} 사용자의 상태를 ${getStatusLabel(normalizeUserStatus(updatedUser.status))}(으)로 변경했습니다.`);
+
+      await fetchUsers(pagination.page, false);
+
+      if (showUserDetail && selectedUser?.id === updatedUser.id) {
+        setIsDetailLoading(true);
+        setDetailErrorMessage(null);
+
+        try {
+          const detail = await getAdminUserDetail(updatedUser.id);
+          setSelectedUserDetail(detail);
+          setSelectedUser(detail);
+        } catch (detailError) {
+          setDetailErrorMessage(getApiErrorMessage(detailError));
+        } finally {
+          setIsDetailLoading(false);
+        }
+      }
+    } catch (error) {
+      setStatusActionError(getApiErrorMessage(error));
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
+
   const stats = useMemo(() => {
     const adminCount = users.filter((user) => user.role === 'ADMIN').length;
+    const activeCount = users.filter((user) => normalizeUserStatus(user.status) === 'ACTIVE').length;
+    const suspendedCount = users.filter((user) => normalizeUserStatus(user.status) === 'SUSPENDED').length;
     const totalUploads = users.reduce((sum, user) => sum + user.upload_count, 0);
     const totalDocuments = users.reduce((sum, user) => sum + user.document_count, 0);
     const today = new Date().toDateString();
@@ -217,10 +406,10 @@ export function AdminUserPage({ onLogout }: AdminUserPageProps) {
 
     return [
       { label: '전체 사용자', value: pagination.total.toLocaleString(), change: `page ${pagination.page}`, icon: Users, color: 'primary' },
-      { label: '활성 사용자', value: '-', change: 'API 준비중', icon: UserCheck, color: 'green' },
+      { label: '활성 사용자', value: activeCount.toLocaleString(), change: '현재 페이지', icon: UserCheck, color: 'green' },
       { label: '관리자', value: adminCount.toLocaleString(), change: '현재 페이지', icon: Shield, color: 'red' },
       { label: '오늘 신규', value: todayUsers.toLocaleString(), change: '현재 페이지', icon: UserPlus, color: 'blue' },
-      { label: '중지된 계정', value: '-', change: 'API 준비중', icon: UserX, color: 'yellow' },
+      { label: '중지된 계정', value: suspendedCount.toLocaleString(), change: '현재 페이지', icon: UserX, color: 'yellow' },
       { label: '업로드 활동', value: totalUploads.toLocaleString(), change: `${totalDocuments.toLocaleString()} 문서`, icon: Upload, color: 'purple' },
     ];
   }, [pagination.page, pagination.total, users]);
@@ -228,13 +417,15 @@ export function AdminUserPage({ onLogout }: AdminUserPageProps) {
   const recentUsers = useMemo(() => users.slice(0, 3), [users]);
   const topUsers = useMemo(() => [...users].sort((a, b) => b.upload_count - a.upload_count).slice(0, 3), [users]);
   const detailUser = selectedUserDetail ?? selectedUser;
+  const roleActionNextRole = roleActionUser ? getNextRole(roleActionUser.role) : null;
+  const statusActionCurrentStatus = statusActionUser ? normalizeUserStatus(statusActionUser.status) : null;
 
   const renderFilterButton = (filter: FilterStatus, label: string, disabled = false) => (
     <button
       type="button"
       onClick={() => !disabled && setFilterStatus(filter)}
       disabled={disabled}
-      title={disabled ? '계정 상태 API 준비중' : undefined}
+      title={disabled ? 'API 준비중' : undefined}
       className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
         filterStatus === filter
           ? 'bg-primary text-white'
@@ -355,8 +546,9 @@ export function AdminUserPage({ onLogout }: AdminUserPageProps) {
                   {renderFilterButton('all', '전체')}
                   {renderFilterButton('user', '일반 사용자')}
                   {renderFilterButton('admin', '관리자')}
-                  {renderFilterButton('active', '활성', true)}
-                  {renderFilterButton('suspended', '중지됨', true)}
+                  {renderFilterButton('active', '활성')}
+                  {renderFilterButton('suspended', '중지됨')}
+                  {renderFilterButton('inactive', '비활성')}
 
                   <div className="flex-1" />
 
@@ -383,6 +575,13 @@ export function AdminUserPage({ onLogout }: AdminUserPageProps) {
                   <div className="flex items-center gap-2 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-300 text-sm">
                     <AlertCircle className="w-4 h-4 flex-shrink-0" />
                     <span>{errorMessage}</span>
+                  </div>
+                )}
+
+                {statusActionSuccess && (
+                  <div className="flex items-center gap-2 p-4 bg-green-500/10 border border-green-500/20 rounded-xl text-green-300 text-sm">
+                    <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                    <span>{statusActionSuccess}</span>
                   </div>
                 )}
 
@@ -421,7 +620,7 @@ export function AdminUserPage({ onLogout }: AdminUserPageProps) {
                         )}
 
                         {!isLoading && users.map((user) => {
-                          const displayStatus: UserDisplayStatus = 'inactive';
+                          const displayStatus = normalizeUserStatus(user.status);
 
                           return (
                             <tr
@@ -450,7 +649,6 @@ export function AdminUserPage({ onLogout }: AdminUserPageProps) {
                                 <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 border rounded-lg text-xs font-medium ${getStatusColor(displayStatus)}`}>
                                   {getStatusIcon(displayStatus)}
                                   {getStatusLabel(displayStatus)}
-                                  <span className="text-[10px] opacity-70">(준비중)</span>
                                 </span>
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{user.upload_count}</td>
@@ -469,12 +667,19 @@ export function AdminUserPage({ onLogout }: AdminUserPageProps) {
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={(event) => event.stopPropagation()}
-                                    disabled
-                                    className="p-2 rounded-lg opacity-50 cursor-not-allowed"
-                                    title="계정 상태 API 준비중"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      handleOpenStatusAction(user);
+                                    }}
+                                    disabled={isUpdatingStatus && statusActionUser?.id === user.id}
+                                    className="p-2 rounded-lg hover:bg-white/10 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                                    title="계정 상태 변경"
                                   >
-                                    <Ban className="w-4 h-4 text-yellow-400" />
+                                    {isUpdatingStatus && statusActionUser?.id === user.id ? (
+                                      <Loader2 className="w-4 h-4 text-yellow-400 animate-spin" />
+                                    ) : (
+                                      <Ban className="w-4 h-4 text-yellow-400" />
+                                    )}
                                   </button>
                                   <button
                                     type="button"
@@ -640,6 +845,20 @@ export function AdminUserPage({ onLogout }: AdminUserPageProps) {
                 </div>
               )}
 
+              {roleActionSuccess && (
+                <div className="flex items-center gap-2 p-4 bg-green-500/10 border border-green-500/20 rounded-xl text-green-300 text-sm">
+                  <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                  <span>{roleActionSuccess}</span>
+                </div>
+              )}
+
+              {statusActionSuccess && (
+                <div className="flex items-center gap-2 p-4 bg-green-500/10 border border-green-500/20 rounded-xl text-green-300 text-sm">
+                  <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                  <span>{statusActionSuccess}</span>
+                </div>
+              )}
+
               <div>
                 <h4 className="text-white font-medium mb-3">기본 정보</h4>
                 <div className="space-y-3">
@@ -651,17 +870,26 @@ export function AdminUserPage({ onLogout }: AdminUserPageProps) {
                   </div>
                   <div className="flex items-center justify-between py-2 border-b border-white/5">
                     <span className="text-gray-400 text-sm">상태</span>
-                    <span className={`px-2.5 py-1 border rounded-lg text-xs font-medium ${getStatusColor('inactive')}`}>
-                      {getStatusLabel('inactive')} · API 준비중
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 border rounded-lg text-xs font-medium ${getStatusColor(normalizeUserStatus(detailUser.status))}`}>
+                      {getStatusIcon(normalizeUserStatus(detailUser.status))}
+                      {getStatusLabel(normalizeUserStatus(detailUser.status))}
                     </span>
                   </div>
                   <div className="flex items-center justify-between py-2 border-b border-white/5">
                     <span className="text-gray-400 text-sm">가입일</span>
                     <span className="text-white text-sm">{formatDateTime(detailUser.created_at)}</span>
                   </div>
-                  <div className="flex items-center justify-between py-2">
+                  <div className="flex items-center justify-between py-2 border-b border-white/5">
                     <span className="text-gray-400 text-sm">마지막 활동</span>
-                    <span className="text-gray-500 text-sm">API 준비중</span>
+                    <span className="text-white text-sm">{formatDateTime(detailUser.last_active_at)}</span>
+                  </div>
+                  <div className="flex items-center justify-between py-2 border-b border-white/5">
+                    <span className="text-gray-400 text-sm">정지 일시</span>
+                    <span className="text-white text-sm">{formatDateTime(detailUser.suspended_at)}</span>
+                  </div>
+                  <div className="flex items-start justify-between gap-4 py-2">
+                    <span className="text-gray-400 text-sm">정지 사유</span>
+                    <span className="text-white text-sm text-right break-words">{detailUser.suspended_reason || '-'}</span>
                   </div>
                 </div>
               </div>
@@ -737,11 +965,21 @@ export function AdminUserPage({ onLogout }: AdminUserPageProps) {
               <div>
                 <h4 className="text-white font-medium mb-3">액션</h4>
                 <div className="space-y-2">
-                  <button type="button" disabled className="w-full py-3 px-4 bg-primary/10 border border-primary/20 text-primary/60 rounded-lg cursor-not-allowed font-medium">
-                    역할 변경 · API 준비중
+                  <button
+                    type="button"
+                    onClick={() => handleOpenRoleAction(detailUser)}
+                    disabled={isUpdatingRole || !getNextRole(detailUser.role)}
+                    className="w-full py-3 px-4 bg-primary/10 hover:bg-primary/20 border border-primary/20 text-primary rounded-lg disabled:opacity-60 disabled:cursor-not-allowed font-medium transition-colors"
+                  >
+                    {isUpdatingRole && roleActionUser?.id === detailUser.id ? '역할 변경 중...' : `역할 변경 · ${getNextRole(detailUser.role) ?? '지원 불가'}`}
                   </button>
-                  <button type="button" disabled className="w-full py-3 px-4 bg-yellow-500/10 border border-yellow-500/20 text-yellow-400/60 rounded-lg cursor-not-allowed font-medium">
-                    계정 중지 · API 준비중
+                  <button
+                    type="button"
+                    onClick={() => handleOpenStatusAction(detailUser)}
+                    disabled={isUpdatingStatus}
+                    className="w-full py-3 px-4 bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-500/20 text-yellow-400 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed font-medium transition-colors"
+                  >
+                    {isUpdatingStatus && statusActionUser?.id === detailUser.id ? '상태 변경 중...' : `계정 상태 변경 · ${getStatusLabel(getDefaultNextStatus(detailUser.status))}`}
                   </button>
                   <button type="button" disabled className="w-full py-3 px-4 bg-white/5 border border-white/10 text-gray-500 rounded-lg cursor-not-allowed font-medium">
                     비밀번호 재설정 · API 준비중
@@ -751,6 +989,157 @@ export function AdminUserPage({ onLogout }: AdminUserPageProps) {
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {roleActionUser && roleActionNextRole && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center px-4">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => !isUpdatingRole && setRoleActionUser(null)}
+          />
+          <div className="relative w-full max-w-md bg-[#111116] border border-white/10 rounded-xl p-6 shadow-2xl">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="p-2 bg-primary/10 border border-primary/20 rounded-lg">
+                <Shield className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <h3 className="text-white font-semibold text-lg">역할 변경 확인</h3>
+                <p className="text-gray-400 text-sm mt-1">{getRoleConfirmMessage(roleActionUser, roleActionNextRole)}</p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-white/5 border border-white/10 rounded-lg text-sm mb-4">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-gray-400">현재 역할</span>
+                <span className={`px-2.5 py-1 border rounded-lg text-xs font-medium ${getRoleColor(roleActionUser.role)}`}>
+                  {roleActionUser.role}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-3 mt-3">
+                <span className="text-gray-400">변경 역할</span>
+                <span className={`px-2.5 py-1 border rounded-lg text-xs font-medium ${getRoleColor(roleActionNextRole)}`}>
+                  {roleActionNextRole}
+                </span>
+              </div>
+            </div>
+
+            {roleActionError && (
+              <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-300 text-sm mb-4">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{roleActionError}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setRoleActionUser(null)}
+                disabled={isUpdatingRole}
+                className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleConfirmRoleUpdate()}
+                disabled={isUpdatingRole}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+              >
+                {isUpdatingRole && <Loader2 className="w-4 h-4 animate-spin" />}
+                변경
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {statusActionUser && statusActionCurrentStatus && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center px-4">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => !isUpdatingStatus && setStatusActionUser(null)}
+          />
+          <div className="relative w-full max-w-md bg-[#111116] border border-white/10 rounded-xl p-6 shadow-2xl">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="p-2 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+                <Ban className="w-5 h-5 text-yellow-400" />
+              </div>
+              <div>
+                <h3 className="text-white font-semibold text-lg">계정 상태 변경 확인</h3>
+                <p className="text-gray-400 text-sm mt-1">{getStatusConfirmMessage(statusActionUser, statusActionTarget)}</p>
+              </div>
+            </div>
+
+            <div className="space-y-4 mb-4">
+              <div className="p-3 bg-white/5 border border-white/10 rounded-lg text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-gray-400">현재 상태</span>
+                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 border rounded-lg text-xs font-medium ${getStatusColor(statusActionCurrentStatus)}`}>
+                    {getStatusIcon(statusActionCurrentStatus)}
+                    {getStatusLabel(statusActionCurrentStatus)}
+                  </span>
+                </div>
+              </div>
+
+              <label className="block">
+                <span className="block text-gray-400 text-sm mb-2">변경 상태</span>
+                <select
+                  value={statusActionTarget}
+                  onChange={(event) => setStatusActionTarget(event.target.value as AdminUserStatus)}
+                  disabled={isUpdatingStatus}
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-60"
+                >
+                  {USER_STATUS_OPTIONS.map((status) => (
+                    <option key={status} value={status} className="bg-[#111116] text-white">
+                      {getStatusLabel(status)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block">
+                <span className="block text-gray-400 text-sm mb-2">
+                  사유 {statusActionTarget === 'SUSPENDED' ? <span className="text-yellow-400">(권장)</span> : <span className="text-gray-500">(선택)</span>}
+                </span>
+                <textarea
+                  value={statusActionReason}
+                  onChange={(event) => setStatusActionReason(event.target.value)}
+                  disabled={isUpdatingStatus}
+                  rows={3}
+                  placeholder={statusActionTarget === 'SUSPENDED' ? '정지 사유를 입력해 주세요.' : '상태 변경 사유를 입력할 수 있습니다.'}
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-60"
+                />
+              </label>
+            </div>
+
+            {statusActionError && (
+              <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-300 text-sm mb-4">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{statusActionError}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setStatusActionUser(null)}
+                disabled={isUpdatingStatus}
+                className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleConfirmStatusUpdate()}
+                disabled={isUpdatingStatus || statusActionCurrentStatus === statusActionTarget}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-yellow-500 hover:bg-yellow-400 text-black rounded-lg disabled:opacity-60 disabled:cursor-not-allowed transition-colors font-medium"
+              >
+                {isUpdatingStatus && <Loader2 className="w-4 h-4 animate-spin" />}
+                변경
+              </button>
             </div>
           </div>
         </div>

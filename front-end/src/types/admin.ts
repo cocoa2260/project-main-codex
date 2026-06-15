@@ -117,6 +117,48 @@ export interface AdminLogListParams {
   limit?: number;
 }
 
+export type AdminAuditAction = 'USER_ROLE_CHANGED' | 'USER_STATUS_CHANGED';
+
+export type AdminAuditValue =
+  | Record<string, unknown>
+  | unknown[]
+  | string
+  | number
+  | boolean
+  | null;
+
+export interface AdminAuditLogItem {
+  id: string;
+  actor_user_id: string | null;
+  actor_email_snapshot: string | null;
+  target_type: string;
+  target_id: string | null;
+  action: AdminAuditAction | string;
+  old_value: AdminAuditValue;
+  new_value: AdminAuditValue;
+  reason: string | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  metadata: AdminAuditValue;
+  created_at: string;
+}
+
+export interface AdminAuditLogsResponse {
+  items: AdminAuditLogItem[];
+  pagination: AdminPaginationResponse;
+}
+
+export interface AdminAuditLogListParams {
+  action?: AdminAuditAction;
+  actor_user_id?: string;
+  target_type?: string;
+  target_id?: string;
+  from?: string;
+  to?: string;
+  page?: number;
+  limit?: number;
+}
+
 export interface AdminUserStats {
   total_users: number;
   admin_users: number;
@@ -270,11 +312,17 @@ export interface AdminTaskListParams {
   sort_order?: 'asc' | 'desc';
 }
 
+export type AdminUserStatus = 'ACTIVE' | 'SUSPENDED' | 'INACTIVE';
+
 export interface AdminUserItem {
   id: string;
   name: string;
   email: string;
   role: UserRole | string;
+  status: AdminUserStatus | string;
+  last_active_at: string | null;
+  suspended_at: string | null;
+  suspended_reason: string | null;
   document_count: number;
   upload_count: number;
   created_at: string;
@@ -300,11 +348,25 @@ export interface AdminUserDetail extends AdminUserItem {
   recent_tasks: AdminUserRecentTask[];
 }
 
+export interface AdminUserRoleUpdateRequest {
+  role: UserRole;
+}
+
+export type AdminUserRoleUpdateResponse = AdminUserItem;
+
+export interface AdminUserStatusUpdateRequest {
+  status: AdminUserStatus;
+  reason?: string;
+}
+
+export type AdminUserStatusUpdateResponse = AdminUserItem;
+
 export interface AdminUserListParams {
   page?: number;
   limit?: number;
   q?: string;
   role?: UserRole;
-  sort_by?: 'created_at' | 'updated_at' | 'name' | 'email' | 'role' | 'document_count' | 'upload_count';
+  status?: AdminUserStatus;
+  sort_by?: 'created_at' | 'updated_at' | 'name' | 'email' | 'role' | 'status' | 'last_active_at' | 'document_count' | 'upload_count';
   sort_order?: 'asc' | 'desc';
 }

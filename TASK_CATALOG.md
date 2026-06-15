@@ -123,10 +123,12 @@
 | FE-022 | Failed Task Retry UI Integration | Medium | TODO |
 | BE-ADMIN-009 | Document Retry API | Medium | TODO |
 | FE-023 | Document Retry UI Integration | Medium | TODO |
-| BE-ADMIN-010 | User Role Update API | Medium | TODO |
-| FE-024 | User Role Update UI Integration | Medium | TODO |
-| BE-ADMIN-011 | User Account Status API | Low | TODO |
-| FE-025 | User Account Status UI Integration | Low | TODO |
+| BE-ADMIN-014 | User Role Update API | Medium | DONE |
+| FE-024 | User Role Update UI Integration | Medium | DONE |
+| BE-ADMIN-011 | User Account Status API | Low | DONE |
+| FE-025 | User Account Status UI Integration | Low | DONE |
+| BE-ADMIN-015 | Admin Audit Log API | Medium | DONE |
+| FE-026 | Admin Audit Log UI Integration | Medium | DONE |
 
 ---
 
@@ -178,6 +180,24 @@ Status: DONE
 - celery_task_id 및 내부 경로 미노출
 
 Priority: High
+Status: DONE
+
+### BE-ADMIN-011 User Account Status API
+
+- Admin 사용자 계정 상태 변경 API 추가
+- PATCH /api/admin/users/{user_id}/status
+- UserStatus ACTIVE / SUSPENDED / INACTIVE 추가
+- User 모델에 status / last_active_at / suspended_at / suspended_reason 추가
+- Admin 사용자 목록/상세 응답에 계정 상태 필드 포함
+- Admin 사용자 목록 status 필터 지원
+- SUSPENDED 계정 로그인 차단
+- get_current_user에서 SUSPENDED 계정 기존 JWT 즉시 차단
+- 자기 자신 SUSPENDED 차단
+- 마지막 ADMIN SUSPENDED 차단
+- INACTIVE는 로그인 허용 및 상태 표시용으로 유지
+- Alembic migration 추가
+
+Priority: Low
 Status: DONE
 
 ### FE-016 Admin Task Monitoring API Integration
@@ -277,6 +297,19 @@ Status: DONE
 - DB model 변경 및 migration 없음
 - Docker / Celery task 로직 변경 없음
 - Read-only monitoring API only
+
+### BE-ADMIN-014 User Role Update API
+
+- Admin 사용자 Role 변경 API 추가
+- PATCH /api/admin/users/{user_id}/role
+- USER / ADMIN role 변경 지원
+- 자기 자신을 USER로 강등하는 요청 차단
+- 마지막 남은 ADMIN을 USER로 강등하는 요청 차단
+- 동일 role 요청은 200 idempotent 처리
+- 모든 endpoint require_admin 보호
+- DB model 변경 및 migration 없음
+- Auth / JWT 구조 변경 없음
+- Audit log는 후속 task로 분리
 
 Priority: Medium
 Status: DONE
@@ -388,6 +421,75 @@ Status: DONE
 - Loading / Error / Refresh 상태 추가
 - 30초 Auto Refresh 및 useEffect cleanup 적용
 - 기존 Admin Dashboard / Logs UI 섹션 유지
+
+Priority: Medium
+Status: DONE
+
+### FE-024 User Role Update UI Integration
+
+- Admin user role update API client 추가
+- Admin user role update DTO 타입 추가
+- AdminUserPage 기존 역할 변경 액션을 PATCH /api/admin/users/{user_id}/role에 연결
+- USER → ADMIN 승격 및 ADMIN → USER 강등 전 확인 모달 추가
+- Role update 중 중복 클릭 방지 및 진행 상태 표시
+- Backend 정책 에러/self-demotion/last-admin/권한/404/409 오류 메시지 표시
+- 성공 후 사용자 목록 재조회 및 상세 drawer가 열려 있으면 상세 정보 재조회
+- localStorage auth_user 직접 수정 없음
+- 계정 중지, 비밀번호 재설정, 계정 삭제 등 API 없는 action은 준비중/비활성 유지
+- Backend 변경 없음
+
+Priority: Medium
+Status: DONE
+
+### FE-025 User Account Status UI Integration
+
+- Admin user status update API client 추가
+- AdminUserStatus / AdminUserStatusUpdateRequest / AdminUserStatusUpdateResponse DTO 타입 추가
+- AdminUserPage 사용자 목록/상세 상태 표시를 API 응답 status 기반으로 변경
+- Admin 사용자 목록 status 필터를 ACTIVE / SUSPENDED / INACTIVE에 연결
+- 기존 계정 상태 action을 PATCH /api/admin/users/{user_id}/status에 연결
+- 상태 변경 전 확인 모달 및 SUSPENDED 변경 사유 입력 필드 추가
+- Status update 중 중복 클릭 방지 및 진행 상태 표시
+- Backend 정책 에러/self-suspend/last-admin/권한/404/409 오류 메시지 표시
+- 성공 후 사용자 목록 재조회 및 상세 drawer가 열려 있으면 상세 정보 재조회
+- last_active_at / suspended_at / suspended_reason 상세 정보 표시
+- localStorage auth_user 직접 수정 없음
+- 비밀번호 재설정, 계정 삭제 등 API 없는 action은 준비중/비활성 유지
+- Backend 변경 없음
+
+Priority: Low
+Status: DONE
+
+### BE-ADMIN-015 Admin Audit Log API
+
+- audit_logs 테이블 추가
+- AuditLog 모델 추가
+- Admin action 감사 기록용 audit_service 추가
+- User Role 변경 성공 시 USER_ROLE_CHANGED 감사 로그 기록
+- User Status 변경 성공 시 USER_STATUS_CHANGED 감사 로그 기록
+- GET /api/admin/audit-logs 조회 API 추가
+- action / actor_user_id / target_type / target_id / from / to / page / limit 필터 지원
+- old_value / new_value / metadata 저장 전 민감정보 sanitization 적용
+- Request context 기반 ip_address / user_agent 저장
+- 모든 endpoint require_admin 보호
+- Alembic migration 20260615_000001 추가
+
+Priority: Medium
+Status: DONE
+
+### FE-026 Admin Audit Log UI Integration
+
+- Admin audit log API client 추가
+- AdminAuditLogItem / AdminAuditLogsResponse / AdminAuditAction DTO 타입 추가
+- AdminLogPage에 GET /api/admin/audit-logs 연동
+- 기존 운영 로그 UI / 통계 카드 / 최근 에러 / 시스템 헬스 / disabled action 유지
+- 감사 로그를 운영 로그와 구분된 별도 섹션으로 표시
+- 감사 로그 action / from / to / page / limit 필터 연결
+- 감사 로그 loading / error / empty / pagination 상태 추가
+- 감사 로그 row 클릭 상세 표시 추가
+- 기존 Refresh 및 30초 polling에 감사 로그 갱신 포함
+- JSON 값은 compact stringify 및 길이 제한/스크롤 표시
+- Backend 변경 없음
 
 Priority: Medium
 Status: DONE

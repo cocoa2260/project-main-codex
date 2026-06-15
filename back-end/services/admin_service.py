@@ -27,12 +27,15 @@ from core.security import ALGORITHM
 from models.document import Document
 from models.document import DocumentStatus
 from models.document_chunk import DocumentChunk
+from models.audit_log import AuditAction
+from models.audit_log import AuditTargetType
 from models.task_tracker import TaskStatus
 from models.task_tracker import TaskStage
 from models.task_tracker import TaskTracker
 from models.task_tracker import TaskType
 from models.user import User
 from models.user import UserRole
+from models.user import UserStatus
 from schemas.admin import AdminDashboardSummaryResponse
 from schemas.admin import AdminDocumentDetailResponse
 from schemas.admin import AdminDocumentListItemResponse
@@ -70,6 +73,7 @@ from services.document_service import attach_celery_task_id
 from services.document_service import create_document_task
 from tasks.ocr_tasks import process_document_ocr
 from tasks.summary_tasks import process_document_summary
+from services.audit_service import record_admin_action
 
 
 HEALTHY = "HEALTHY"
@@ -87,6 +91,10 @@ LOG_LEVEL_SUCCESS = "SUCCESS"
 LOG_SOURCE_TASK_TRACKER = "TaskTracker"
 LOG_QUERY_WARNING = "TaskTracker 기반 이벤트 로그를 사용했습니다. 파일 로그 위치가 명확하지 않습니다."
 RETRY_REGISTERED_MESSAGE = "재시도 작업을 등록했습니다."
+ROLE_UPDATE_SELF_DEMOTION = "SELF_DEMOTION"
+ROLE_UPDATE_LAST_ADMIN = "LAST_ADMIN"
+STATUS_UPDATE_SELF_SUSPEND = "SELF_SUSPEND"
+STATUS_UPDATE_LAST_ADMIN = "LAST_ADMIN"
 
 SENSITIVE_VALUE_PATTERNS = [
     re.compile(
@@ -872,10 +880,31 @@ def _user_list_item_response(row) -> AdminUserListItemResponse:
         name=row.name,
         email=row.email,
         role=row.role,
+        status=row.status,
+        last_active_at=row.last_active_at,
+        suspended_at=row.suspended_at,
+        suspended_reason=row.suspended_reason,
         document_count=document_count,
         upload_count=document_count,
         created_at=row.created_at,
         updated_at=row.updated_at,
+    )
+
+
+def _admin_user_item_response(user: User, document_count: int) -> AdminUserListItemResponse:
+    return AdminUserListItemResponse(
+        id=user.id,
+        name=user.name,
+        email=user.email,
+        role=user.role,
+        status=user.status,
+        last_active_at=user.last_active_at,
+        suspended_at=user.suspended_at,
+        suspended_reason=user.suspended_reason,
+        document_count=document_count,
+        upload_count=document_count,
+        created_at=user.created_at,
+        updated_at=user.updated_at,
     )
 
 
@@ -973,6 +1002,7 @@ def _apply_user_filters(
     query,
     q: str | None,
     role: str | None,
+    status: str | None,
 ):
     if q:
         search_text = q.strip()
@@ -987,6 +1017,9 @@ def _apply_user_filters(
 
     if role:
         query = query.filter(User.role == role)
+
+    if status:
+        query = query.filter(User.status == status)
 
     return query
 
@@ -1033,6 +1066,8 @@ def _user_sort_expression(sort_by: str, sort_order: str, document_count_column):
         "name": User.name,
         "email": User.email,
         "role": User.role,
+        "status": User.status,
+        "last_active_at": User.last_active_at,
         "document_count": document_count_column,
         "upload_count": document_count_column,
     }
@@ -1365,6 +1400,7 @@ def list_admin_users(
     db: Session,
     q: str | None = None,
     role: str | None = None,
+    status: str | None = None,
     page: int = 1,
     limit: int = 20,
     sort_by: str = "created_at",
@@ -1378,6 +1414,7 @@ def list_admin_users(
         count_query,
         q=q,
         role=role,
+        status=status,
     )
     total = count_query.scalar() or 0
 
@@ -1389,6 +1426,10 @@ def list_admin_users(
             User.name.label("name"),
             User.email.label("email"),
             User.role.label("role"),
+            User.status.label("status"),
+            User.last_active_at.label("last_active_at"),
+            User.suspended_at.label("suspended_at"),
+            User.suspended_reason.label("suspended_reason"),
             User.created_at.label("created_at"),
             User.updated_at.label("updated_at"),
             document_count_column.label("document_count"),
@@ -1399,6 +1440,7 @@ def list_admin_users(
         query,
         q=q,
         role=role,
+        status=status,
     )
     rows = (
         query.order_by(_user_sort_expression(sort_by, sort_order, document_count_column), User.id.desc())
@@ -1447,6 +1489,10 @@ def get_admin_user_detail(
         name=user.name,
         email=user.email,
         role=user.role,
+        status=user.status,
+        last_active_at=user.last_active_at,
+        suspended_at=user.suspended_at,
+        suspended_reason=user.suspended_reason,
         document_count=document_count,
         upload_count=document_count,
         created_at=user.created_at,
@@ -1454,6 +1500,137 @@ def get_admin_user_detail(
         documents=[_user_document_response(document) for document in documents],
         recent_tasks=[_task_list_item_response(row) for row in recent_task_rows],
     )
+
+
+def update_admin_user_role(
+    db: Session,
+    user_id: UUID,
+    new_role: str,
+    current_user: User,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> tuple[AdminUserListItemResponse | None, str | None]:
+    user = db.query(User).filter(User.id == user_id).first()
+
+    if user is None:
+        return None, None
+
+    if user.role == UserRole.ADMIN and new_role == UserRole.USER:
+        admin_count = (
+            db.query(func.count(User.id))
+            .filter(User.role == UserRole.ADMIN)
+            .scalar()
+            or 0
+        )
+
+        if admin_count <= 1:
+            return None, ROLE_UPDATE_LAST_ADMIN
+
+        if user.id == current_user.id:
+            return None, ROLE_UPDATE_SELF_DEMOTION
+
+    if user.role != new_role:
+        old_role = user.role
+        user.role = new_role
+        record_admin_action(
+            db=db,
+            actor_user=current_user,
+            action=AuditAction.USER_ROLE_CHANGED,
+            target_type=AuditTargetType.USER,
+            target_id=user.id,
+            old_value={"role": old_role},
+            new_value={"role": new_role},
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
+        db.commit()
+        db.refresh(user)
+
+    document_count = (
+        db.query(func.count(Document.id))
+        .filter(Document.user_id == user.id)
+        .scalar()
+        or 0
+    )
+
+    return _admin_user_item_response(user, document_count), None
+
+
+def update_admin_user_status(
+    db: Session,
+    user_id: UUID,
+    new_status: str,
+    reason: str | None,
+    current_user: User,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> tuple[AdminUserListItemResponse | None, str | None]:
+    user = db.query(User).filter(User.id == user_id).first()
+
+    if user is None:
+        return None, None
+
+    if new_status == UserStatus.SUSPENDED:
+        if user.role == UserRole.ADMIN:
+            active_admin_count = (
+                db.query(func.count(User.id))
+                .filter(
+                    User.role == UserRole.ADMIN,
+                    User.status != UserStatus.SUSPENDED,
+                )
+                .scalar()
+                or 0
+            )
+
+            if user.status != UserStatus.SUSPENDED and active_admin_count <= 1:
+                return None, STATUS_UPDATE_LAST_ADMIN
+
+        if user.id == current_user.id:
+            return None, STATUS_UPDATE_SELF_SUSPEND
+
+    old_status = user.status
+    old_suspended_reason = user.suspended_reason
+    new_suspended_reason = reason.strip() if reason and reason.strip() else None
+
+    if user.status != new_status:
+        user.status = new_status
+
+    if new_status == UserStatus.SUSPENDED:
+        user.suspended_at = func.now()
+        user.suspended_reason = new_suspended_reason
+    else:
+        user.suspended_at = None
+        user.suspended_reason = None
+
+    if old_status != new_status or old_suspended_reason != user.suspended_reason:
+        new_value = {"status": new_status}
+        if new_status == UserStatus.SUSPENDED:
+            new_value["suspended_reason"] = user.suspended_reason
+
+        record_admin_action(
+            db=db,
+            actor_user=current_user,
+            action=AuditAction.USER_STATUS_CHANGED,
+            target_type=AuditTargetType.USER,
+            target_id=user.id,
+            old_value={"status": old_status},
+            new_value=new_value,
+            reason=user.suspended_reason,
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
+
+    db.commit()
+    db.refresh(user)
+
+    document_count = (
+        db.query(func.count(Document.id))
+        .filter(Document.user_id == user.id)
+        .scalar()
+        or 0
+    )
+
+    return _admin_user_item_response(user, document_count), None
 
 
 def list_admin_documents(

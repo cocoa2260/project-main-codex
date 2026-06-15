@@ -10,13 +10,17 @@ from fastapi import Request
 from sqlalchemy.orm import Session
 
 from db.session import get_db
+from models.audit_log import AuditAction
+from models.audit_log import AuditTargetType
 from models.document import DocumentStatus
 from models.task_tracker import TaskStage
 from models.task_tracker import TaskStatus
 from models.task_tracker import TaskType
 from models.user import User
 from models.user import UserRole
+from models.user import UserStatus
 from routers.deps import require_admin
+from schemas.admin import AdminAuditLogListResponse
 from schemas.admin import AdminDashboardSummaryResponse
 from schemas.admin import AdminAuditLogListResponse
 from schemas.admin import AdminDocumentDetailResponse
@@ -30,8 +34,12 @@ from schemas.admin import AdminTaskDetailResponse
 from schemas.admin import AdminTaskListResponse
 from schemas.admin import AdminTaskRetryResponse
 from schemas.admin import AdminUserDetailResponse
+from schemas.admin import AdminUserListItemResponse
 from schemas.admin import AdminUserListResponse
+from schemas.admin import AdminUserRoleUpdateRequest
+from schemas.admin import AdminUserStatusUpdateRequest
 from schemas.admin import AdminWorkerListResponse
+from services.audit_service import list_admin_audit_logs
 from services.admin_service import get_admin_document_detail
 from services.admin_service import get_admin_logs_summary
 from services.admin_service import get_admin_queues
@@ -41,6 +49,10 @@ from services.admin_service import get_admin_user_detail
 from services.admin_service import get_admin_workers
 from services.admin_service import get_dashboard_summary
 from services.admin_service import get_system_health
+from services.admin_service import ROLE_UPDATE_LAST_ADMIN
+from services.admin_service import ROLE_UPDATE_SELF_DEMOTION
+from services.admin_service import STATUS_UPDATE_LAST_ADMIN
+from services.admin_service import STATUS_UPDATE_SELF_SUSPEND
 from services.admin_service import list_admin_documents
 from services.admin_service import list_admin_logs
 from services.admin_service import list_admin_tasks
@@ -48,6 +60,8 @@ from services.admin_service import list_admin_users
 from services.admin_service import AdminTaskRetryError
 from services.admin_service import retry_failed_task
 from services.audit_service import list_audit_logs as list_admin_audit_logs
+from services.admin_service import update_admin_user_role
+from services.admin_service import update_admin_user_status
 
 
 router = APIRouter()
@@ -108,12 +122,19 @@ USER_ROLES = {
     UserRole.USER,
     UserRole.ADMIN,
 }
+USER_STATUSES = {
+    UserStatus.ACTIVE,
+    UserStatus.SUSPENDED,
+    UserStatus.INACTIVE,
+}
 USER_SORT_FIELDS = {
     "created_at",
     "updated_at",
     "name",
     "email",
     "role",
+    "status",
+    "last_active_at",
     "document_count",
     "upload_count",
 }
@@ -123,7 +144,26 @@ LOG_LEVELS = {
     "ERROR",
     "SUCCESS",
 }
+AUDIT_ACTIONS = {
+    AuditAction.USER_ROLE_CHANGED,
+    AuditAction.USER_STATUS_CHANGED,
+}
+AUDIT_TARGET_TYPES = {
+    AuditTargetType.USER,
+}
 SORT_ORDERS = {"asc", "desc"}
+
+
+def _client_ip(request: Request) -> str | None:
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        return forwarded_for.split(",", 1)[0].strip() or None
+
+    return request.client.host if request.client else None
+
+
+def _user_agent(request: Request) -> str | None:
+    return request.headers.get("user-agent")
 
 
 @router.get(
@@ -226,21 +266,36 @@ def list_logs(
 @router.get(
     "/audit-logs",
     response_model=AdminAuditLogListResponse,
+    response_model_exclude_none=True,
 )
 def list_audit_logs(
+    action: str | None = None,
+    actor_user_id: UUID | None = None,
+    target_type: str | None = None,
+    target_id: UUID | None = None,
+    from_datetime: datetime | None = Query(default=None, alias="from"),
+    to_datetime: datetime | None = Query(default=None, alias="to"),
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=50, ge=1, le=100),
-    action: str | None = None,
-    target_type: str | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
+    if action and action not in AUDIT_ACTIONS:
+        raise HTTPException(status_code=400, detail="지원하지 않는 감사 로그 액션입니다.")
+
+    if target_type and target_type not in AUDIT_TARGET_TYPES:
+        raise HTTPException(status_code=400, detail="지원하지 않는 감사 로그 대상 유형입니다.")
+
     return list_admin_audit_logs(
         db=db,
+        action=action,
+        actor_user_id=actor_user_id,
+        target_type=target_type,
+        target_id=target_id,
+        from_datetime=from_datetime,
+        to_datetime=to_datetime,
         page=page,
         limit=limit,
-        action=action,
-        target_type=target_type,
     )
 
 
@@ -251,6 +306,7 @@ def list_audit_logs(
 def list_users(
     q: str | None = None,
     role: str | None = None,
+    status: str | None = None,
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=20, ge=1, le=100),
     sort_by: str = Query(default="created_at"),
@@ -260,6 +316,9 @@ def list_users(
 ):
     if role and role not in USER_ROLES:
         raise HTTPException(status_code=400, detail="지원하지 않는 사용자 역할입니다.")
+
+    if status and status not in USER_STATUSES:
+        raise HTTPException(status_code=400, detail="지원하지 않는 사용자 상태입니다.")
 
     if sort_by not in USER_SORT_FIELDS:
         raise HTTPException(status_code=400, detail="지원하지 않는 정렬 필드입니다.")
@@ -271,11 +330,83 @@ def list_users(
         db=db,
         q=q,
         role=role,
+        status=status,
         page=page,
         limit=limit,
         sort_by=sort_by,
         sort_order=sort_order,
     )
+
+
+@router.patch(
+    "/users/{user_id}/role",
+    response_model=AdminUserListItemResponse,
+)
+def update_user_role(
+    user_id: UUID,
+    req: AdminUserRoleUpdateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    if req.role not in USER_ROLES:
+        raise HTTPException(status_code=400, detail="지원하지 않는 사용자 역할입니다.")
+
+    user, error_code = update_admin_user_role(
+        db=db,
+        user_id=user_id,
+        new_role=req.role,
+        current_user=current_user,
+        ip_address=_client_ip(request),
+        user_agent=_user_agent(request),
+    )
+
+    if error_code == ROLE_UPDATE_SELF_DEMOTION:
+        raise HTTPException(status_code=400, detail="자기 자신의 관리자 권한은 해제할 수 없습니다.")
+
+    if error_code == ROLE_UPDATE_LAST_ADMIN:
+        raise HTTPException(status_code=409, detail="마지막 관리자 계정은 일반 사용자로 변경할 수 없습니다.")
+
+    if user is None:
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+
+    return user
+
+
+@router.patch(
+    "/users/{user_id}/status",
+    response_model=AdminUserListItemResponse,
+)
+def update_user_status(
+    user_id: UUID,
+    req: AdminUserStatusUpdateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    if req.status not in USER_STATUSES:
+        raise HTTPException(status_code=400, detail="지원하지 않는 사용자 상태입니다.")
+
+    user, error_code = update_admin_user_status(
+        db=db,
+        user_id=user_id,
+        new_status=req.status,
+        reason=req.reason,
+        current_user=current_user,
+        ip_address=_client_ip(request),
+        user_agent=_user_agent(request),
+    )
+
+    if error_code == STATUS_UPDATE_SELF_SUSPEND:
+        raise HTTPException(status_code=400, detail="자기 자신의 계정은 정지할 수 없습니다.")
+
+    if error_code == STATUS_UPDATE_LAST_ADMIN:
+        raise HTTPException(status_code=409, detail="마지막 관리자 계정은 정지할 수 없습니다.")
+
+    if user is None:
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+
+    return user
 
 
 @router.get(

@@ -1,5 +1,7 @@
 import { apiClient } from './client';
 import type {
+  AdminAuditLogListParams,
+  AdminAuditLogsResponse,
   AdminDashboardSummaryResponse,
   AdminDocumentDetailResponse,
   AdminDocumentListParams,
@@ -15,9 +17,15 @@ import type {
   AdminTaskListResponse,
   AdminUserDetail,
   AdminUserListParams,
+  AdminUserRoleUpdateRequest,
+  AdminUserRoleUpdateResponse,
+  AdminUserStatus,
+  AdminUserStatusUpdateRequest,
+  AdminUserStatusUpdateResponse,
   AdminUsersResponse,
   AdminWorkerListResponse,
 } from '@/types/admin';
+import type { UserRole } from '@/utils/auth';
 
 export async function getAdminDashboardSummary(): Promise<AdminDashboardSummaryResponse> {
   const response = await apiClient.get<AdminDashboardSummaryResponse>('/api/admin/dashboard/summary');
@@ -54,6 +62,11 @@ export async function getAdminLogSummary(): Promise<AdminLogSummaryResponse> {
   return response.data;
 }
 
+export async function getAdminAuditLogs(params?: AdminAuditLogListParams): Promise<AdminAuditLogsResponse> {
+  const response = await apiClient.get<AdminAuditLogsResponse>('/api/admin/audit-logs', { params });
+  return response.data;
+}
+
 export async function getAdminDocuments(params?: AdminDocumentListParams): Promise<AdminDocumentListResponse> {
   const response = await apiClient.get<AdminDocumentListResponse>('/api/admin/documents', { params });
   return response.data;
@@ -81,5 +94,24 @@ export async function getAdminUsers(params?: AdminUserListParams): Promise<Admin
 
 export async function getAdminUserDetail(userId: string): Promise<AdminUserDetail> {
   const response = await apiClient.get<AdminUserDetail>(`/api/admin/users/${userId}`);
+  return response.data;
+}
+
+export async function updateAdminUserRole(userId: string, role: UserRole): Promise<AdminUserRoleUpdateResponse> {
+  const payload: AdminUserRoleUpdateRequest = { role };
+  const response = await apiClient.patch<AdminUserRoleUpdateResponse>(`/api/admin/users/${userId}/role`, payload);
+  return response.data;
+}
+
+export async function updateAdminUserStatus(
+  userId: string,
+  status: AdminUserStatus,
+  reason?: string,
+): Promise<AdminUserStatusUpdateResponse> {
+  const payload: AdminUserStatusUpdateRequest = {
+    status,
+    ...(reason?.trim() ? { reason: reason.trim() } : {}),
+  };
+  const response = await apiClient.patch<AdminUserStatusUpdateResponse>(`/api/admin/users/${userId}/status`, payload);
   return response.data;
 }

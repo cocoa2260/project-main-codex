@@ -16,13 +16,12 @@ class OllamaLLMProvider(BaseLLMProvider):
             temperature=0.2,
         )
 
+    # 이전 프롬프트: 문서 전문을 한 번에 요약하던 방식입니다.
     def summarize(self, markdown: str) -> str:
         response = self.client.invoke(
             [
                 SystemMessage(
                     content=(
-                        # LLM이 요약 본문과 핵심 키워드를 같은 응답 안에서 만들도록 지시한다.
-                        # summary_tasks.py에서 "## 핵심 키워드" 섹션만 파싱해 document_chunks.keywords에 저장한다.
                         "당신은 OCR Markdown 문서를 분석해 한국어 요약문을 작성하는 전문가입니다. "
                         "최종 출력은 반드시 자연스러운 한국어로만 작성합니다. "
                         "원문에 영어가 포함되어 있어도 그대로 복사하지 말고, 의미를 보존해 한국어로 번역해서 정리합니다. "
@@ -40,7 +39,6 @@ class OllamaLLMProvider(BaseLLMProvider):
                 ),
                 HumanMessage(
                     content=(
-                        # 아래 출력 형식의 제목은 파싱 기준이므로, 특히 "## 핵심 키워드" 제목이 중요하다.
                         "아래 Markdown 문서를 분석하여 상세 요약을 작성하세요.\n\n"
                         "반드시 지켜야 할 규칙:\n"
                         "1. 최종 답변은 한국어만 사용합니다.\n"

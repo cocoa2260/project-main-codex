@@ -199,6 +199,54 @@ Summary:
 - No DB migration, model changes, environment variable changes, Docker changes, or settings save API
 - py_compile and API auth checks passed
 
+### BE-ADMIN-014
+User Role Update API
+Status: DONE
+Summary:
+- Added admin user role update API at PATCH /api/admin/users/{user_id}/role
+- Added AdminUserRoleUpdateRequest DTO
+- Reused AdminUserListItemResponse shape for role update response
+- Allowed USER to ADMIN promotion
+- Allowed ADMIN to USER demotion when policy checks pass
+- Blocked self-demotion from ADMIN to USER
+- Blocked demotion of the last remaining ADMIN
+- Kept same-role requests idempotent with 200 response
+- Protected endpoint with require_admin
+- No DB migration, model changes, UserRole changes, Auth/JWT changes, or audit log table
+- Audit log is deferred to a later task
+
+### BE-ADMIN-011
+User Account Status API
+Status: DONE
+Summary:
+- Added UserStatus values ACTIVE, SUSPENDED, and INACTIVE
+- Added User.status, User.last_active_at, User.suspended_at, and User.suspended_reason
+- Added Alembic migration 20260614_000001_add_user_account_status
+- Added admin user status update API at PATCH /api/admin/users/{user_id}/status
+- Added status filter to GET /api/admin/users
+- Added account status fields to admin user list and detail responses
+- Blocked self-suspension for admin users
+- Blocked suspension of the last active ADMIN account
+- Blocked SUSPENDED users during login
+- Blocked existing JWT access for SUSPENDED users in get_current_user
+- Kept INACTIVE login allowed as display/status metadata
+- Updated last_active_at on successful login
+
+### BE-ADMIN-015
+Admin Audit Log API
+Status: DONE
+Summary:
+- Added AuditLog model backed by the audit_logs table
+- Added Alembic migration 20260615_000001_create_audit_logs
+- Added audit_service with record_admin_action and list_admin_audit_logs
+- Sanitized audit old_value, new_value, reason, metadata, ip_address, and user_agent before persistence
+- Recorded USER_ROLE_CHANGED on successful admin role changes
+- Recorded USER_STATUS_CHANGED on successful admin status changes
+- Captured actor_user_id, actor_email_snapshot, target_type, target_id, action, old/new values, reason, ip_address, user_agent, metadata, and created_at
+- Added GET /api/admin/audit-logs protected by require_admin
+- Added action, actor_user_id, target_type, target_id, from, to, page, and limit filters
+- Preserved existing Admin Logs TaskTracker fallback API unchanged
+
 ### FE-017
 Admin User Management API Integration
 Status: DONE
@@ -270,6 +318,7 @@ Summary:
 - Displayed sensitive settings only through masked API values without adding reveal controls
 - Backend unchanged
 
+
 ### BE-ADMIN-012
 Failed Task Retry API
 Status: DONE
@@ -285,6 +334,54 @@ Summary:
 - Updated Document.status to PROCESSING after successful retry registration
 - Added FAILED_TASK_RETRY audit log output
 - No DB migration, model schema changes, EMBEDDING retry, or RAG_INDEXING retry
+
+### FE-024
+User Role Update UI Integration
+Status: DONE
+Summary:
+- Added admin user role update API client for PATCH /api/admin/users/{user_id}/role
+- Added AdminUserRoleUpdateRequest and AdminUserRoleUpdateResponse frontend DTOs reusing UserRole
+- Enabled the existing AdminUserPage role change action in the detail drawer
+- Added confirmation modal for USER to ADMIN promotion and ADMIN to USER demotion
+- Added role update loading lockout, success feedback, and backend policy error display
+- Refreshed the user list after successful role updates
+- Refreshed open user detail drawer data after successful role updates
+- Kept account status, password reset, delete, export, and user creation actions disabled/prepared
+- Did not modify localStorage auth_user directly
+- Backend unchanged
+
+### FE-025
+User Account Status UI Integration
+Status: DONE
+Summary:
+- Added admin user status update API client for PATCH /api/admin/users/{user_id}/status
+- Added AdminUserStatus, AdminUserStatusUpdateRequest, and AdminUserStatusUpdateResponse frontend DTOs
+- Added status, last_active_at, suspended_at, and suspended_reason to admin user list/detail DTOs
+- Connected AdminUserPage account status badges and status filters to API response fields
+- Enabled the existing account status action in the user table and detail drawer
+- Added confirmation modal with target status select and reason input for SUSPENDED changes
+- Added status update loading lockout, success feedback, and backend policy error display
+- Refreshed the user list after successful status updates
+- Refreshed open user detail drawer data after successful status updates
+- Displayed last active time, suspended time, and suspended reason in the detail drawer
+- Kept password reset, delete, export, and user creation actions disabled/prepared
+- Did not modify localStorage auth_user directly
+- Backend unchanged
+
+### FE-026
+Admin Audit Log UI Integration
+Status: DONE
+Summary:
+- Added admin audit log API client for GET /api/admin/audit-logs
+- Added AdminAuditLogItem, AdminAuditLogsResponse, AdminAuditAction, and filter DTO types
+- Integrated audit logs into AdminLogPage as a separate section from operational logs
+- Preserved existing operational logs, log stats, recent errors, system health, export, copy, retry, and document action UI
+- Added audit action, from, to, page, and limit query support in the UI flow
+- Added audit log loading, error, empty, refresh, polling, and pagination states
+- Added audit row click detail display for actor, action, target, old/new values, reason, IP, user agent, metadata, and created_at
+- Added safe compact JSON rendering with truncation/scrolling for audit old_value, new_value, and metadata
+- Included audit logs in existing refresh and 30 second polling cleanup
+- Backend unchanged
 
 ---
 
@@ -372,34 +469,6 @@ Endpoint
 
 Next Recommended Task
 - FE-015 Admin Document Management API Integration
-
-### BE-ADMIN-012
-
-Failed Task Retry API
-
-Status: BLOCKED
-
-Analysis Result:
-- Retry API is partially feasible
-- OCR retry can be implemented with a new TaskTracker and new Celery task
-- SUMMARY retry is conditionally feasible if ocr_markdown exists
-- EMBEDDING retry is not safe yet because summary and embedding currently share the same TaskTracker
-- RAG_INDEXING retry is not feasible yet because the RAG indexing task is not fully defined
-- Retry history is not currently tracked
-
-Decision:
-- Do not implement Failed Task Retry API yet
-- Wait until SUMMARY and EMBEDDING task tracking are separated
-- Ask embedding/summary owner to separate TaskTracker handling and failure reporting
-
-Next Required Backend Work:
-- Split SUMMARY and EMBEDDING TaskTracker handling
-- Ensure embedding failures update TaskTracker and Document status consistently
-- Remove ad-hoc EMBEDDING stage strings
-- Define RAG_INDEXING task lifecycle before adding retry support
-
-Related Future Task:
-- BE-ADMIN-012 Failed Task Retry API
 
 ---
 

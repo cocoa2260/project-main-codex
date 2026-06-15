@@ -142,6 +142,8 @@ class AdminLogSummaryResponse(BaseModel):
     warning_message: str | None = None
 
 
+AuditValue = dict[str, object] | list[object] | str | int | bool | None
+
 class AdminAuditLogItemResponse(BaseModel):
     id: UUID
     actor_user_id: UUID | None = None
@@ -149,12 +151,12 @@ class AdminAuditLogItemResponse(BaseModel):
     target_type: str
     target_id: UUID | None = None
     action: str
-    old_value: dict | None = None
-    new_value: dict | None = None
+    old_value: AuditValue = None
+    new_value: AuditValue = None
     reason: str | None = None
     ip_address: str | None = None
     user_agent: str | None = None
-    metadata: dict | None = None
+    metadata: AuditValue = None
     created_at: datetime
 
 
@@ -266,10 +268,23 @@ class AdminUserListItemResponse(BaseModel):
     name: str
     email: str
     role: str
+    status: str
+    last_active_at: datetime | None = None
+    suspended_at: datetime | None = None
+    suspended_reason: str | None = None
     document_count: int
     upload_count: int
     created_at: datetime
     updated_at: datetime
+
+
+class AdminUserRoleUpdateRequest(BaseModel):
+    role: str
+
+
+class AdminUserStatusUpdateRequest(BaseModel):
+    status: str
+    reason: str | None = None
 
 
 class AdminUserDocumentResponse(BaseModel):
