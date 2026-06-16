@@ -1,10 +1,3 @@
-# import os
-# from langchain_community.document_loaders import PyPDFLoader
-# from langchain_text_splitters import RecursiveCharacterTextSplitter
-
-# from langchain_huggingface import HuggingFaceEmbeddings
-# from langchain_community.vectorstores import FAISS
-
 from datetime import datetime
 from uuid import UUID
 
@@ -18,6 +11,7 @@ from models.document_embedding import (DocumentEmbedding)
 
 from services.document_service import (
     save_embeddings,
+    get_chunks
 )
 
 from utils.text_chunk import (split_text)
@@ -110,7 +104,6 @@ def process_document_embedding(document_id:str, task_id:str, embedding_model:str
     try:
         # 1. Document 조회
         # 2. TaskTracer 조회
-
         document_uuid = UUID(document_id)
         task_uuid = UUID(task_id)
 
@@ -128,26 +121,8 @@ def process_document_embedding(document_id:str, task_id:str, embedding_model:str
             message="문서를 chunk 단위로 분할하는 중입니다."
         )
 
-        # 4. DocumentChunk 조회 (input : document_id, output: list[DocumentChunk])
-        chunks = split_text(
-            document.ocr_markdown
-        )
-
-        chunk_rows = []
-
-        for idx, chunk_text in enumerate(chunks):
-
-            chunk_rows.append(
-                DocumentChunk(
-                    document_id=document.id,
-                    chunk_index=idx,
-                    content=chunk_text,
-                )
-            )
-
-        db.add_all(chunk_rows)
-        db.commit()
-        db.flush()
+        # 4. DocumentChunk 조회
+        chunk_rows = get_chunks(db=db, document_id=document_id)
 
         # 5. embedding_model 값 확인
         if embedding_model not in EMBEDDING_REGISTRY:
