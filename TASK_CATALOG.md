@@ -65,6 +65,7 @@
 | FE-USER-001 | User Feature Gap Implementation | High | DONE |
 | USER-CHAT-001 | User Chat API and UI Integration | High | DONE |
 | FE-USER-002 | User Document Actions Finalization | High | DONE |
+| FE-USER-003 | User Settings Finalization | High | DONE |
 
 ---
 
@@ -543,6 +544,23 @@ Status: DONE
 - Backend 변경 없음
 
 Priority: Low
+Status: DONE
+
+### FE-USER-003 User Settings Finalization
+
+- UserSettingsPage를 현재 로그인 사용자 정보 기반 설정 화면으로 정리
+- `/api/auth/me` 응답을 우선 사용하고 실패 시 `localStorage auth_user` fallback 표시
+- AuthUser / auth API normalization에 status 필드 보존 추가
+- name / email / role / status 표시 추가
+- 프로필 수정 입력은 read-only/disabled 처리하고 저장은 prepared 안내만 표시
+- 비밀번호 변경 form submit은 API 호출 없이 차단하고 준비 중 안내 표시
+- 알림 / 테마 / 언어 설정은 API 미존재 상태로 disabled/prepared 처리
+- 기존 logout flow 연결 유지
+- mock 저장 성공 메시지 추가 없음
+- 다크 테마 설정/사이드바 표면에서 black/near-black 텍스트 hardcoding 재확인
+- Admin / Chat / RAG / QA / Backend 변경 없음
+
+Priority: High
 Status: DONE
 
 ### BE-ADMIN-015 Admin Audit Log API

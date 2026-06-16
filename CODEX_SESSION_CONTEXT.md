@@ -855,3 +855,35 @@ Verification:
 
 위 기능들은 모두 최종 제품 범위에 포함된다.
 삭제 대상이 아니다.
+
+## 2026-06-17 FE-USER-003 User Settings Finalization
+
+Branch: feature/fe-user-003-settings-finalization
+
+Implemented:
+
+- Finalized `UserSettingsPage` as a usable account settings surface.
+- Preserved the existing `/settings` sidebar route and logout flow.
+- Displayed authenticated user name, email, role, and status when available.
+- Kept `/api/auth/me` as the preferred user source and added intentional `localStorage auth_user` fallback display.
+- Extended frontend auth user normalization to preserve account status from login/me responses.
+- Kept profile fields read-only/disabled because no user profile update API exists.
+- Blocked profile/password prepared form submits without calling nonexistent APIs.
+- Kept notification, theme, and language settings disabled/prepared because no preference APIs exist.
+- Removed misleading mock-save behavior by showing only prepared guidance, not success.
+- Rechecked User settings/sidebar dark-theme classes for black or near-black text/icon hardcoding.
+
+Verification:
+
+- `npm run lint` in `front-end` passed.
+- `npm run build` in `front-end` passed.
+- `git diff --check` passed.
+- Direct `POST /api/auth/login` and `GET /api/auth/me` check returned the expected current user payload.
+- Dark-theme hardcoding scan for user settings/sidebar found no `text-black`, `text-gray-900`, `text-slate-900`, `fill-black`, or `stroke-black` matches.
+- Browser smoke was attempted with the in-app browser, but protected-route session setup could not be completed because the automation page context does not expose `localStorage`.
+
+Scope notes:
+
+- Admin settings unchanged.
+- Chat / RAG / QA unchanged.
+- No backend schema, migration, or API changes.
