@@ -1,13 +1,11 @@
 from datetime import datetime
 from uuid import UUID
 
-from ai.embeddings.embedding_factory import EMBEDDING_REGISTRY
-from ai.embeddings.embedding_factory import get_embedding_provider
 from app.celery_app import celery_app
 from db.database import SessionLocal
 
 from models.document import (Document, DocumentStatus)
-from models.task_tracker import (TaskStage, TaskTracker, TaskStatus)
+from models.task_tracker import (TaskStage, TaskTracker, TaskStatus, TaskType)
 from models.document_chunk import (DocumentChunk)
 from models.document_embedding import (DocumentEmbedding)
 
@@ -16,15 +14,11 @@ from services.document_service import (
     get_chunks
 )
 
-from utils.text_chunk import (split_text)
-
 # 임베딩 모델 호출
 from ai.embeddings.embedding_factory import (
     get_embedding_provider,
     EMBEDDING_REGISTRY
 )
-
-from ai.rerankers.reranking_factory import ( get_reranker_provider, RERANKING_REGISTRY )
 
 def update_embedding_progress(db, task, progress, stage, message):
     task.status = TaskStatus.PROCESSING
@@ -123,11 +117,13 @@ def process_document_embedding(
             stage=TaskStage.EMBEDDING_PROCESSING,
             message="임베딩 결과를 저장하는 중입니다.",
         )
-
+        
+        # TODO : DELETE 따로빼기 -> 같은이름 문서
         db.query(DocumentEmbedding).filter(
             DocumentEmbedding.document_id == document.id,
             DocumentEmbedding.embedding_model == embedding_model,
         ).delete(synchronize_session=False)
+
         save_embeddings(db, embeddings)
 
         task.progress = 100
