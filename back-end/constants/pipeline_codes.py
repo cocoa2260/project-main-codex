@@ -44,6 +44,7 @@ class TaskStageCode:
     SUMMARY_PENDING = "SUMMARY_PENDING"
     CHUNKING_PROCESSING = "CHUNKING_PROCESSING"
     CHUNKING_COMPLETED = "CHUNKING_COMPLETED"
+    EMBEDDING_PENDING = "EMBEDDING_PENDING"
     EMBEDDING_PROCESSING = "EMBEDDING_PROCESSING"
     EMBEDDING_COMPLETED = "EMBEDDING_COMPLETED"
     SUMMARY_PROCESSING = "SUMMARY_PROCESSING"
@@ -76,14 +77,15 @@ COMMON_CODE_SEEDS = [
     (CodeGroup.TASK_STAGE, TaskStageCode.OCR_PROCESSING, "OCR 처리 중", "OCR로 텍스트를 추출하고 있습니다.", 30),
     (CodeGroup.TASK_STAGE, TaskStageCode.OCR_COMPLETED, "OCR 완료", "OCR/Markdown 변환이 완료되었습니다.", 40),
     (CodeGroup.TASK_STAGE, TaskStageCode.MARKDOWN_REVIEW, "Markdown 리뷰", "사용자 Markdown 검토가 필요합니다.", 50),
-    (CodeGroup.TASK_STAGE, TaskStageCode.SUMMARY_PENDING, "요약 대기", "요약/임베딩 작업 대기 중입니다.", 60),
+    (CodeGroup.TASK_STAGE, TaskStageCode.SUMMARY_PENDING, "요약 대기", "요약 작업 대기 중입니다.", 60),
     (CodeGroup.TASK_STAGE, TaskStageCode.CHUNKING_PROCESSING, "Chunking 처리 중", "Markdown 문서를 chunk 단위로 분할하고 있습니다.", 70),
     (CodeGroup.TASK_STAGE, TaskStageCode.CHUNKING_COMPLETED, "Chunking 완료", "Chunking 작업이 완료되었습니다.", 80),
-    (CodeGroup.TASK_STAGE, TaskStageCode.EMBEDDING_PROCESSING, "Embedding 처리 중", "문서 임베딩을 생성하고 있습니다.", 90),
-    (CodeGroup.TASK_STAGE, TaskStageCode.EMBEDDING_COMPLETED, "Embedding 완료", "문서 임베딩 생성이 완료되었습니다.", 100),
-    (CodeGroup.TASK_STAGE, TaskStageCode.SUMMARY_PROCESSING, "요약 처리 중", "AI 요약을 생성하고 있습니다.", 110),
-    (CodeGroup.TASK_STAGE, TaskStageCode.SUMMARY_COMPLETED, "요약 완료", "AI 요약 생성이 완료되었습니다.", 120),
-    (CodeGroup.TASK_STAGE, TaskStageCode.RAG_INDEXING, "RAG 인덱싱 중", "RAG 검색 인덱스를 생성하고 있습니다.", 130),
-    (CodeGroup.TASK_STAGE, TaskStageCode.RAG_READY, "RAG 준비 완료", "문서 기반 질의응답 준비가 완료되었습니다.", 140),
+    (CodeGroup.TASK_STAGE, TaskStageCode.EMBEDDING_PENDING, "Embedding 대기", "문서 임베딩 작업 대기 중입니다.", 90),
+    (CodeGroup.TASK_STAGE, TaskStageCode.EMBEDDING_PROCESSING, "Embedding 처리 중", "문서 임베딩을 생성하고 있습니다.", 100),
+    (CodeGroup.TASK_STAGE, TaskStageCode.EMBEDDING_COMPLETED, "Embedding 완료", "문서 임베딩 생성이 완료되었습니다.", 110),
+    (CodeGroup.TASK_STAGE, TaskStageCode.SUMMARY_PROCESSING, "요약 처리 중", "AI 요약을 생성하고 있습니다.", 120),
+    (CodeGroup.TASK_STAGE, TaskStageCode.SUMMARY_COMPLETED, "요약 완료", "AI 요약 생성이 완료되었습니다.", 130),
+    (CodeGroup.TASK_STAGE, TaskStageCode.RAG_INDEXING, "RAG 인덱싱 중", "RAG 검색 인덱스를 생성하고 있습니다.", 140),
+    (CodeGroup.TASK_STAGE, TaskStageCode.RAG_READY, "RAG 준비 완료", "문서 기반 질의응답 준비가 완료되었습니다.", 150),
     (CodeGroup.TASK_STAGE, TaskStageCode.FAILED, "실패", "작업 단계 처리 중 오류가 발생했습니다.", 900),
 ]

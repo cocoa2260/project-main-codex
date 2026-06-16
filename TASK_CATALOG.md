@@ -72,6 +72,7 @@
 | BE-COMP-001 | TaskStage Standardization Review | High | TODO |
 | BE-COMP-002 | Embedding Stage Normalization | Medium | TODO |
 | BE-COMP-003 | TaskTracker Concurrency Review | Medium | TODO |
+| BE-COMP-004 | Summary Embedding Task Split Implementation | High | DONE |
 
 ---
 
@@ -166,6 +167,20 @@ Review API
 - Backend TaskStageCode 표준화 검토
 - Ad-hoc Stage 문자열 제거 여부 검토
 - Frontend/Backend 계약 정리
+
+### BE-COMP-004
+
+- confirm-summary에서 EMBEDDING enqueue 제거
+- SUMMARY TaskTracker와 EMBEDDING TaskTracker 분리
+- Summary task 성공 시 SUMMARY row를 COMPLETED / 100 / SUMMARY_COMPLETED로 유지
+- Summary 성공 후 EMBEDDING TaskTracker를 별도 생성하고 process_document_embedding enqueue
+- Embedding task는 EMBEDDING row만 사용하고 chunk 미존재 시 FAILED 처리
+- Embedding 완료 시 Document.status를 COMPLETED로 전환
+- Failed Task Retry에서 EMBEDDING 재시도 지원
+- EMBEDDING_PENDING TaskStage common code 추가
+
+Priority: High
+Status: DONE
 
 ### BE-ADMIN-021 Audit Log Regression Tests
 

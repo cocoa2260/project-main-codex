@@ -8,6 +8,7 @@ from db.database import SessionLocal
 from models.document import Document, DocumentStatus
 from models.document_chunk import DocumentChunk
 from models.task_tracker import TaskStage, TaskStatus, TaskTracker
+from services.document_service import trigger_embedding_pipeline
 from tasks.ocr_tasks import update_task_progress
 from utils.text_chunk import split_text
 
@@ -144,7 +145,7 @@ def process_document_summary(document_id: str, task_id: str):
         )
 
         document.summary = llm_provider.summarize_from_chunk_summaries(chunk_summaries)
-        document.status = DocumentStatus.COMPLETED
+        document.status = DocumentStatus.PROCESSING
         document.process_at = datetime.utcnow()
 
         task.progress = 100
@@ -155,9 +156,31 @@ def process_document_summary(document_id: str, task_id: str):
 
         db.commit()
 
+        try:
+            embedding_task = trigger_embedding_pipeline(
+                db=db,
+                document=document,
+            )
+            embedding_task_id = str(embedding_task.id)
+            embedding_status = "PENDING"
+        except Exception as embedding_error:
+            db.rollback()
+            document = db.query(Document).filter(Document.id == document_uuid).first()
+            if document:
+                document.status = DocumentStatus.FAILED
+                db.commit()
+            embedding_task_id = None
+            embedding_status = "FAILED"
+            embedding_error_message = str(embedding_error)
+        else:
+            embedding_error_message = None
+
         return {
             "document_id": document_id,
             "task_id": task_id,
+            "embedding_task_id": embedding_task_id,
+            "embedding_status": embedding_status,
+            "embedding_error": embedding_error_message,
             "status": "COMPLETED",
             "chunk_count": len(chunks),
             "keyword_count": keyword_count,

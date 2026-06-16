@@ -1,202 +1,174 @@
-# import os
-# from langchain_community.document_loaders import PyPDFLoader
-# from langchain_text_splitters import RecursiveCharacterTextSplitter
-
-# from langchain_huggingface import HuggingFaceEmbeddings
-# from langchain_community.vectorstores import FAISS
-
 from datetime import datetime
 from uuid import UUID
 
+from ai.embeddings.embedding_factory import EMBEDDING_REGISTRY
+from ai.embeddings.embedding_factory import get_embedding_provider
 from app.celery_app import celery_app
 from db.database import SessionLocal
+from models.document import Document
+from models.document import DocumentStatus
+from models.document_chunk import DocumentChunk
+from models.document_embedding import DocumentEmbedding
+from models.task_tracker import TaskStage
+from models.task_tracker import TaskStatus
+from models.task_tracker import TaskTracker
+from models.task_tracker import TaskType
+from services.document_service import save_embeddings
 
-from models.document import (Document, DocumentStatus)
-from models.task_tracker import (TaskStage, TaskTracker, TaskStatus)
-from models.document_chunk import (DocumentChunk)
-from models.document_embedding import (DocumentEmbedding)
 
-from services.document_service import (
-    save_embeddings,
-)
-
-from utils.text_chunk import (split_text)
-
-# 임베딩 모델 호출
-from ai.embeddings.embedding_factory import (
-    get_embedding_provider,
-    EMBEDDING_REGISTRY
-)
-
-from ai.rerankers.reranking_factory import ( get_reranker_provider, RERANKING_REGISTRY )
-
-def update_embedding_progress(db, task, progress, stage, message):
+def update_embedding_progress(
+    db,
+    task: TaskTracker,
+    progress: int,
+    stage: str,
+    message: str,
+) -> None:
     task.status = TaskStatus.PROCESSING
     task.progress = progress
     task.stage = stage
     task.message = message
     db.commit()
 
-    '''
-    steps = [
-            (25, "CHUNKING", "Markdown 문서를 chunk 단위로 분할하는 중입니다."),
-            (50, "EMBEDDING", f"{document.selected_embedding_model} 모델로 임베딩을 생성하는 중입니다."),
-            (80, "SAVE", "임베딩 결과를 저장 중입니다."),
-        ]
-    '''
 
-def chunk_embedding(document, embedding_model, chunk_rows) :
-    '''
-    1. 임베딩 모델 불러오기
-    2. Chunk를 vector 값으로 변환
-    3. DB에 변환된 vector 저장
-    '''
-
-    # 1. 임베딩 모델 불러오기
-    provider = get_embedding_provider(
-        embedding_model
-    )
-
+def chunk_embedding(
+    document: Document,
+    embedding_model: str,
+    chunk_rows: list[DocumentChunk],
+) -> list[DocumentEmbedding]:
+    provider = get_embedding_provider(embedding_model)
     embeddings = []
 
     for chunk in chunk_rows:
-        # 2. Chunk를 vector 값으로 변환
-        vector = provider.embed(
-            chunk.content
-        )
-
-        # 3. DB에 변환된 vector 저장
+        vector = provider.embed(chunk.content)
         embeddings.append(
             DocumentEmbedding(
                 document_id=document.id,
-                chunk_id=chunk.id,   # UUID
+                chunk_id=chunk.id,
                 embedding_model=embedding_model,
                 embedding_dimension=len(vector),
                 embedding=vector,
             )
         )
-    
+
     return embeddings
 
+
 @celery_app.task(name="tasks.embedding_tasks.process_document_embedding")
-def process_document_embedding(document_id:str, task_id:str, embedding_model:str = "snowflake-ko-lora"):
-
-    """
-    =====================================================
-    Embedding 파이프라인
-    =====================================================
-
-    input:
-        document_id
-        task_id
-        embedding_model
-
-    구현 순서:
-    1. Document 조회
-    2. TaskTracker 조회
-    3. 진행률 업데이트
-    4. DocumentChunk 조회 (input : document_id, output: list[DocumentChunk])
-    5. embedding_model 값 확인
-    6. 진행률 업데이트
-    7. 임베딩 시작 - chunk text를 vector로 변환 
-    8. 임베딩 결과 저장
-    9. 진행률 업데이트
-
-    =====================================================
-    """
-
+def process_document_embedding(
+    document_id: str,
+    task_id: str,
+    embedding_model: str = "snowflake-ko-lora",
+):
     db = SessionLocal()
 
     try:
-        # 1. Document 조회
-        # 2. TaskTracer 조회
-
         document_uuid = UUID(document_id)
         task_uuid = UUID(task_id)
 
         document = db.query(Document).filter(Document.id == document_uuid).first()
         task = db.query(TaskTracker).filter(TaskTracker.id == task_uuid).first()
 
-        # 3. 진행률 업데이트
+        if document is None or task is None:
+            return {
+                "document_id": document_id,
+                "task_id": task_id,
+                "status": "FAILED",
+                "error": "document or task not found",
+            }
+
+        if task.task_type != TaskType.EMBEDDING:
+            raise ValueError("Embedding task requires an EMBEDDING TaskTracker.")
+
         document.status = DocumentStatus.PROCESSING
         task.started_at = datetime.now()
         update_embedding_progress(
             db=db,
             task=task,
-            progress=25,
-            stage=TaskStage.CHUNKING_PROCESSING,
-            message="문서를 chunk 단위로 분할하는 중입니다."
-        )
-
-        # 4. DocumentChunk 조회 (input : document_id, output: list[DocumentChunk])
-        chunks = split_text(
-            document.ocr_markdown
-        )
-
-        chunk_rows = []
-
-        for idx, chunk_text in enumerate(chunks):
-
-            chunk_rows.append(
-                DocumentChunk(
-                    document_id=document.id,
-                    chunk_index=idx,
-                    content=chunk_text,
-                )
-            )
-
-        db.add_all(chunk_rows)
-        db.commit()
-        db.flush()
-
-        # 5. embedding_model 값 확인
-        if embedding_model not in EMBEDDING_REGISTRY:
-            embedding_model = EMBEDDING_REGISTRY[0]
-
-        update_embedding_progress(
-            db=db,
-            task=task,
-            progress=50,
-            stage="EMBEDDING",
-            message=f"{document.selected_embedding_model} 모델로 임베딩을 생성하는 중입니다."
-        )
-
-        # 6. 진행률 업데이트
-        update_embedding_progress(
-            db=db,
-            task=task,
-            progress=65,
+            progress=10,
             stage=TaskStage.EMBEDDING_PROCESSING,
-            message="문서 임베딩 생성을 시작합니다."
+            message="요약 단계에서 생성된 chunk를 조회하는 중입니다.",
         )
-        
-        # 7. chunk text를 vector로 변환 
-        embeddings = chunk_embedding(document, embedding_model, chunk_rows)
 
-        # 8. DocumentEmbedding 테이블에 저장
+        chunk_rows = (
+            db.query(DocumentChunk)
+            .filter(DocumentChunk.document_id == document.id)
+            .order_by(DocumentChunk.chunk_index.asc())
+            .all()
+        )
+
+        if not chunk_rows:
+            raise ValueError("Document chunks are required before embedding.")
+
+        if embedding_model not in EMBEDDING_REGISTRY:
+            embedding_model = next(iter(EMBEDDING_REGISTRY))
+
+        update_embedding_progress(
+            db=db,
+            task=task,
+            progress=40,
+            stage=TaskStage.EMBEDDING_PROCESSING,
+            message=f"{embedding_model} 모델로 임베딩을 생성하는 중입니다.",
+        )
+
+        embeddings = chunk_embedding(
+            document=document,
+            embedding_model=embedding_model,
+            chunk_rows=chunk_rows,
+        )
+
+        update_embedding_progress(
+            db=db,
+            task=task,
+            progress=70,
+            stage=TaskStage.EMBEDDING_PROCESSING,
+            message="임베딩 결과를 저장하는 중입니다.",
+        )
+
+        db.query(DocumentEmbedding).filter(
+            DocumentEmbedding.document_id == document.id,
+            DocumentEmbedding.embedding_model == embedding_model,
+        ).delete(synchronize_session=False)
         save_embeddings(db, embeddings)
 
-        # 9. 상태 변경
-        task.progress = 75
-        task.status = TaskStatus.PROCESSING
-        task.stage=TaskStage.EMBEDDING_COMPLETED
+        task.progress = 100
+        task.status = TaskStatus.COMPLETED
+        task.stage = TaskStage.EMBEDDING_COMPLETED
         task.message = "EMBEDDING 처리가 완료되었습니다."
         task.completed_at = datetime.now()
 
-        document.status = DocumentStatus.PROCESSING
+        document.status = DocumentStatus.COMPLETED
         document.process_at = datetime.now()
-        
+
         db.commit()
 
         return {
             "document_id": document_id,
             "task_id": task_id,
             "embedding_model": embedding_model,
-            "status": "COMPLETED"
+            "status": "COMPLETED",
         }
+
     except Exception as exc:
         db.rollback()
-        print(exc)
+
+        try:
+            task = db.query(TaskTracker).filter(TaskTracker.id == UUID(task_id)).first()
+            document = db.query(Document).filter(Document.id == UUID(document_id)).first()
+
+            if task:
+                task.status = TaskStatus.FAILED
+                task.stage = TaskStage.FAILED
+                task.message = "임베딩 처리 중 오류가 발생했습니다."
+                task.error_message = str(exc)
+                task.completed_at = datetime.now()
+
+            if document:
+                document.status = DocumentStatus.FAILED
+
+            db.commit()
+        except Exception:
+            db.rollback()
+
         raise
 
     finally:

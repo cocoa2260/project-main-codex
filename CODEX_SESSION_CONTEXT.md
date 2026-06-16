@@ -88,6 +88,23 @@ Summary:
 - Removed misleading hardcoded RAG/chunk information
 - Build passed
 
+### BE-COMP-004
+Summary Embedding Task Split Implementation
+Status: DONE
+Summary:
+- Removed direct embedding enqueue from confirm-summary
+- Kept confirm-summary creating and enqueueing only a SUMMARY TaskTracker
+- Added trigger_embedding_pipeline service to create a separate EMBEDDING TaskTracker and persist its Celery task id
+- Updated summary task success to leave Document.status as PROCESSING while SUMMARY stays COMPLETED / 100 / SUMMARY_COMPLETED
+- Updated summary task success to trigger the embedding pipeline after summary commit
+- Reworked embedding task to require an EMBEDDING TaskTracker and read existing DocumentChunk rows only
+- Removed informal "EMBEDDING" stage writes from embedding task
+- Added EMBEDDING_PENDING TaskStage constant, admin stage allowlist entry, frontend normalization, and common-code data migration 20260616_000001
+- Updated embedding success to set EMBEDDING row COMPLETED / 100 / EMBEDDING_COMPLETED and Document.status COMPLETED
+- Updated embedding failure to set EMBEDDING row FAILED / FAILED and Document.status FAILED
+- Enabled failed EMBEDDING task retry through the admin retry service
+- Verified OpenAPI 200, admin task API 200, Alembic current head, compile, frontend build, confirm-summary tracker split, summary-triggered embedding creation, and empty-chunk embedding failure handling
+
 ### FE-016
 Admin Task Monitoring API Integration
 Status: DONE
