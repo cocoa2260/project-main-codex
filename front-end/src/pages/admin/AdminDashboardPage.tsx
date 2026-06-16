@@ -88,6 +88,15 @@ function normalizeHealthServiceKey(service: Pick<AdminHealthService, 'key' | 'na
   return null;
 }
 
+function normalizeHealthServiceStatus(status?: string | null): AdminHealthServiceStatus {
+  const normalizedStatus = status?.toUpperCase();
+  if (normalizedStatus === 'HEALTHY' || normalizedStatus === 'WARNING' || normalizedStatus === 'ERROR' || normalizedStatus === 'OFFLINE') {
+    return normalizedStatus;
+  }
+
+  return 'OFFLINE';
+}
+
 function normalizeTaskStatus(status?: string | null): TaskStatus {
   const normalizedStatus = normalizeDocumentStatus(status);
   return normalizedStatus === 'REVIEW_REQUIRED' ? 'PROCESSING' : normalizedStatus;
@@ -296,13 +305,14 @@ export function AdminDashboardPage({ onLogout }: AdminDashboardPageProps) {
     return healthServiceOrder.map((key) => {
       const service = servicesByKey.get(key);
       const presentation = healthServicePresentation[key];
+      const status = normalizeHealthServiceStatus(service?.status);
 
       return {
         key,
         name: presentation.name,
-        status: service?.status ?? 'OFFLINE',
+        status,
         icon: presentation.icon,
-        details: service?.details ?? (healthErrorMessage ? '상태를 불러오지 못했습니다.' : '상태 확인 대기 중'),
+        details: service?.details ?? (status === 'HEALTHY' ? '정상' : (healthErrorMessage ? '상태를 불러오지 못했습니다.' : '상태 확인 대기 중')),
         checkedAt: formatDateTime(service?.checked_at),
       };
     });
@@ -628,6 +638,10 @@ export function AdminDashboardPage({ onLogout }: AdminDashboardPageProps) {
                             )}
                           </div>
                           <h4 className="font-medium mb-1">{service.name}</h4>
+                          <div className="mb-1 flex items-center justify-between text-xs">
+                            <span className="opacity-80">Status</span>
+                            <span className="font-semibold">{service.status}</span>
+                          </div>
                           <p className="text-xs opacity-80">{service.details}</p>
                           <p className="text-xs opacity-60 mt-1">Checked: {service.checkedAt}</p>
                         </div>

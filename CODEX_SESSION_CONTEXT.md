@@ -887,3 +887,36 @@ Scope notes:
 - Admin settings unchanged.
 - Chat / RAG / QA unchanged.
 - No backend schema, migration, or API changes.
+
+## 2026-06-17 QA-002 Release Blocker Fixes
+
+Branch: feature/qa-002-release-blocker-fixes
+
+Implemented:
+
+- Fixed duplicate signup to return 409 Conflict with `이미 가입된 이메일입니다.` instead of leaking a database IntegrityError as 500.
+- Preserved normal signup behavior for new emails.
+- Removed hashed password logging from the signup path.
+- Updated Admin Health UI to normalize API responses and render explicit `HEALTHY` status cards with non-placeholder details for healthy services.
+- Updated Admin Queue and Worker API clients to normalize wrapped or array responses so real queue/worker states render instead of staying in loading placeholders.
+- Updated Sidebar to load the real user from `/api/auth/me` first, then fall back to `localStorage auth_user`.
+- Removed hardcoded sidebar user/admin display values.
+- Hid the Admin menu from USER role users while preserving ADMIN visibility.
+
+Verification:
+
+- Backend duplicate signup and normal signup checks completed.
+- Frontend Admin Health, Queue, Worker, Sidebar user info, and USER Admin-menu behavior checked through build/lint and code-path verification.
+- `npm run build` in `front-end` passed.
+- `npm run lint` in `front-end` passed.
+- `python compile` passed for `back-end`.
+- `git diff --check` passed.
+
+Scope notes:
+
+- RAG unchanged.
+- Chat unchanged.
+- Summary unchanged.
+- Embedding unchanged.
+- Pipeline unchanged.
+- Admin permission policy unchanged; only USER sidebar menu visibility changed.

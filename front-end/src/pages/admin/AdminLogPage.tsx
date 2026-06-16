@@ -121,6 +121,15 @@ function normalizeHealthServiceKey(service: Pick<AdminHealthService, 'key' | 'na
   return null;
 }
 
+function normalizeHealthServiceStatus(status?: string | null): AdminHealthServiceStatus {
+  const normalizedStatus = status?.toUpperCase();
+  if (normalizedStatus === 'HEALTHY' || normalizedStatus === 'WARNING' || normalizedStatus === 'ERROR' || normalizedStatus === 'OFFLINE') {
+    return normalizedStatus;
+  }
+
+  return 'OFFLINE';
+}
+
 function formatDateTime(value?: string | null): string {
   if (!value) return '-';
 
@@ -364,12 +373,13 @@ export function AdminLogPage({ onLogout }: AdminLogPageProps) {
     return healthServiceOrder.map((key) => {
       const service = servicesByKey.get(key);
       const presentation = healthServicePresentation[key];
+      const status = normalizeHealthServiceStatus(service?.status);
 
       return {
         key,
         name: presentation.name,
-        status: service?.status ?? 'OFFLINE',
-        details: service?.details ?? (healthErrorMessage ? '상태를 불러오지 못했습니다.' : '상태 확인 대기 중'),
+        status,
+        details: service?.details ?? (status === 'HEALTHY' ? '정상' : (healthErrorMessage ? '상태를 불러오지 못했습니다.' : '상태 확인 대기 중')),
         checkedAt: formatDateTime(service?.checked_at),
         icon: presentation.icon,
       };

@@ -13,6 +13,8 @@ import type {
   AdminLogListParams,
   AdminLogsResponse,
   AdminLogSummaryResponse,
+  AdminHealthService,
+  AdminQueueItem,
   AdminQueueListResponse,
   AdminSettingsResponse,
   AdminSystemHealthResponse,
@@ -28,9 +30,14 @@ import type {
   AdminUserStatusUpdateRequest,
   AdminUserStatusUpdateResponse,
   AdminUsersResponse,
+  AdminWorkerItem,
   AdminWorkerListResponse,
 } from '@/types/admin';
 import type { UserRole } from '@/utils/auth';
+
+type AdminSystemHealthRawResponse = AdminSystemHealthResponse | AdminHealthService[];
+type AdminQueueRawResponse = AdminQueueListResponse | AdminQueueItem[];
+type AdminWorkerRawResponse = AdminWorkerListResponse | AdminWorkerItem[];
 
 type BlobErrorResponse = {
   response?: {
@@ -93,8 +100,17 @@ export async function getAdminDashboardSummary(): Promise<AdminDashboardSummaryR
 }
 
 export async function getAdminSystemHealth(): Promise<AdminSystemHealthResponse> {
-  const response = await apiClient.get<AdminSystemHealthResponse>('/api/admin/system/health');
-  return response.data;
+  const response = await apiClient.get<AdminSystemHealthRawResponse>('/api/admin/system/health');
+  const data = response.data;
+
+  if (Array.isArray(data)) {
+    return { services: data };
+  }
+
+  return {
+    ...data,
+    services: Array.isArray(data.services) ? data.services : [],
+  };
 }
 
 export async function getAdminSettings(): Promise<AdminSettingsResponse> {
@@ -103,13 +119,39 @@ export async function getAdminSettings(): Promise<AdminSettingsResponse> {
 }
 
 export async function getAdminQueues(): Promise<AdminQueueListResponse> {
-  const response = await apiClient.get<AdminQueueListResponse>('/api/admin/queues');
-  return response.data;
+  const response = await apiClient.get<AdminQueueRawResponse>('/api/admin/queues');
+  const data = response.data;
+
+  if (Array.isArray(data)) {
+    return {
+      queues: data,
+      checked_at: new Date().toISOString(),
+    };
+  }
+
+  return {
+    ...data,
+    queues: Array.isArray(data.queues) ? data.queues : [],
+    checked_at: data.checked_at ?? new Date().toISOString(),
+  };
 }
 
 export async function getAdminWorkers(): Promise<AdminWorkerListResponse> {
-  const response = await apiClient.get<AdminWorkerListResponse>('/api/admin/workers');
-  return response.data;
+  const response = await apiClient.get<AdminWorkerRawResponse>('/api/admin/workers');
+  const data = response.data;
+
+  if (Array.isArray(data)) {
+    return {
+      workers: data,
+      checked_at: new Date().toISOString(),
+    };
+  }
+
+  return {
+    ...data,
+    workers: Array.isArray(data.workers) ? data.workers : [],
+    checked_at: data.checked_at ?? new Date().toISOString(),
+  };
 }
 
 export async function getAdminLogs(params?: AdminLogListParams): Promise<AdminLogsResponse> {

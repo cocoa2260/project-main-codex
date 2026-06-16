@@ -671,3 +671,17 @@ Status: DONE
 
 Priority: Medium
 Status: DONE
+
+### QA-002 Release Blocker Fixes
+
+- Duplicate signup IntegrityError 500을 409 Conflict로 변환
+- 중복 이메일 응답 메시지 `이미 가입된 이메일입니다.` 적용
+- 회원가입 과정의 hashed password 로그 제거
+- Admin System Health 응답 normalize 및 HEALTHY/status 카드 표시 보강
+- Admin Queue / Worker 응답 normalize로 실제 상태 렌더링 보강
+- Sidebar 사용자 정보 표시를 `/api/auth/me` 우선, localStorage fallback으로 변경
+- USER 역할일 때 일반 Sidebar의 Admin 메뉴 숨김
+- RAG / Chat / Summary / Embedding / Pipeline 변경 없음
+
+Priority: High
+Status: DONE
