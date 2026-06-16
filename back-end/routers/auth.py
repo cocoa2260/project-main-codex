@@ -23,6 +23,7 @@ def to_user_response(user):
         email=user.email,
         name=user.name,
         role=user.role,
+        status=user.status,
     )
 
 @router.post("/signup")

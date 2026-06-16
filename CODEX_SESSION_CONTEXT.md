@@ -137,6 +137,22 @@ Summary:
 - Enabled failed EMBEDDING task retry through the admin retry service
 - Verified OpenAPI 200, admin task API 200, Alembic current head, compile, frontend build, confirm-summary tracker split, summary-triggered embedding creation, and empty-chunk embedding failure handling
 
+### BE-USER-004
+User Settings APIs
+Status: DONE
+Summary:
+- Included current user status in `/api/auth/me` and login user responses where available
+- Added authenticated self-service profile update API at PATCH `/api/users/me/profile`
+- Added authenticated self-service password change API at PATCH `/api/users/me/password`
+- Enforced current password verification and new password minimum length validation
+- Stored changed passwords through existing password hashing and did not return password fields
+- Connected UserSettingsPage profile name editing to the real profile API
+- Connected UserSettingsPage password change form to the real password API with success/error states
+- Updated localStorage `auth_user` after successful profile save
+- Kept notification, theme, and language preferences disabled/prepared because no user preference DB structure exists
+- Preserved Admin, Chat, RAG, and QA behavior
+- No DB migration or schema change
+
 ### FE-016
 Admin Task Monitoring API Integration
 Status: DONE
