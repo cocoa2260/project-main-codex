@@ -1,0 +1,28 @@
+{
+  "instruction": "다음 판례를 핵심 쟁점, 판단 이유, 결론 중심으로 간결하게 요약하세요.",
+  "jobs": [
+    {
+      "name": "train",
+      "source": "/Users/cocoa/Desktop/Desktop_Projects/lbox_open/summarization_plus/train.jsonl",
+      "target": "/Users/cocoa/Desktop/Desktop_Projects/lbox_open_result/summarization_plus/summarization_plus_train_result.jsonl"
+    },
+    {
+      "name": "valid",
+      "source": "/Users/cocoa/Desktop/Desktop_Projects/lbox_open/summarization_plus/valid.jsonl",
+      "target": "/Users/cocoa/Desktop/Desktop_Projects/lbox_open_result/summarization_plus/summarization_plus_valid_result.jsonl"
+    },
+    {
+      "name": "test",
+      "source": "/Users/cocoa/Desktop/Desktop_Projects/lbox_open/summarization_plus/test.jsonl",
+      "target": "/Users/cocoa/Desktop/Desktop_Projects/lbox_open_result/summarization_plus/summarization_plus_test_result.jsonl"
+    }
+  ],
+  "source_fields": {
+    "input": "precedent",
+    "output": "summary"
+  },
+  "validation": {
+    "min_input_length": 100,
+    "min_output_length": 30
+  }
+}
