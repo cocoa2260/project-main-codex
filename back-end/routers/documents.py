@@ -13,6 +13,7 @@ from fastapi import WebSocketDisconnect
 from sqlalchemy.orm import Session
 
 from ai.embeddings.embedding_factory import EMBEDDING_REGISTRY
+from ai.embeddings.embedding_factory import resolve_embedding_model
 from core.config import settings
 from core.logging_config import get_logger
 from db.database import SessionLocal
@@ -65,7 +66,7 @@ def get_embedding_models():
     .env의 EMBEDDING_MODEL이 기본값으로 포함되어야 한다.
     """
     return {
-        "default_model": settings.EMBEDDING_MODEL,
+        "default_model": resolve_embedding_model(settings.EMBEDDING_MODEL),
         "models": [
             {
                 "value": model_name,

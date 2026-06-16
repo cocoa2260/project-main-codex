@@ -34,7 +34,16 @@ EMBEDDING_REGISTRY = {
 
 _provider_cache = {}
 
+
+def resolve_embedding_model(model_name: str | None) -> str:
+    if model_name in EMBEDDING_REGISTRY:
+        return model_name
+
+    return next(iter(EMBEDDING_REGISTRY))
+
+
 def get_embedding_provider(model_name: str):
+    model_name = resolve_embedding_model(model_name)
 
     if model_name in _provider_cache:
         return _provider_cache[
