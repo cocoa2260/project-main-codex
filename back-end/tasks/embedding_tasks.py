@@ -5,24 +5,28 @@ from ai.embeddings.embedding_factory import EMBEDDING_REGISTRY
 from ai.embeddings.embedding_factory import get_embedding_provider
 from app.celery_app import celery_app
 from db.database import SessionLocal
-from models.document import Document
-from models.document import DocumentStatus
-from models.document_chunk import DocumentChunk
-from models.document_embedding import DocumentEmbedding
-from models.task_tracker import TaskStage
-from models.task_tracker import TaskStatus
-from models.task_tracker import TaskTracker
-from models.task_tracker import TaskType
-from services.document_service import save_embeddings
 
+from models.document import (Document, DocumentStatus)
+from models.task_tracker import (TaskStage, TaskTracker, TaskStatus)
+from models.document_chunk import (DocumentChunk)
+from models.document_embedding import (DocumentEmbedding)
 
-def update_embedding_progress(
-    db,
-    task: TaskTracker,
-    progress: int,
-    stage: str,
-    message: str,
-) -> None:
+from services.document_service import (
+    save_embeddings,
+    get_chunks
+)
+
+from utils.text_chunk import (split_text)
+
+# 임베딩 모델 호출
+from ai.embeddings.embedding_factory import (
+    get_embedding_provider,
+    EMBEDDING_REGISTRY
+)
+
+from ai.rerankers.reranking_factory import ( get_reranker_provider, RERANKING_REGISTRY )
+
+def update_embedding_progress(db, task, progress, stage, message):
     task.status = TaskStatus.PROCESSING
     task.progress = progress
     task.stage = stage
@@ -62,6 +66,8 @@ def process_document_embedding(
     db = SessionLocal()
 
     try:
+        # 1. Document 조회
+        # 2. TaskTracer 조회
         document_uuid = UUID(document_id)
         task_uuid = UUID(task_id)
 
@@ -89,16 +95,10 @@ def process_document_embedding(
             message="요약 단계에서 생성된 chunk를 조회하는 중입니다.",
         )
 
-        chunk_rows = (
-            db.query(DocumentChunk)
-            .filter(DocumentChunk.document_id == document.id)
-            .order_by(DocumentChunk.chunk_index.asc())
-            .all()
-        )
+        # 4. DocumentChunk 조회
+        chunk_rows = get_chunks(db=db, document_id=document_id)
 
-        if not chunk_rows:
-            raise ValueError("Document chunks are required before embedding.")
-
+        # 5. embedding_model 값 확인
         if embedding_model not in EMBEDDING_REGISTRY:
             embedding_model = next(iter(EMBEDDING_REGISTRY))
 

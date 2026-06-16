@@ -36,6 +36,7 @@ from services.document_service import (
     create_document_task,
     get_document_for_user,
     get_latest_document_task,
+    set_chunks,
 )
 from tasks.ocr_tasks import process_document_ocr
 from tasks.summary_tasks import process_document_summary
@@ -259,7 +260,9 @@ def confirm_document_summary(
             status_code=400,
             detail="요약 진행을 승인할 수 있는 상태가 아닙니다.",
         )
-
+    
+    set_chunks(db, document_id, document.ocr_markdown)
+    
     task = create_document_task(
         db=db,
         document_id=document.id,

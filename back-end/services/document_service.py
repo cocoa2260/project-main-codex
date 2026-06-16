@@ -13,7 +13,7 @@ from models.task_tracker import TaskStage, TaskTracker, TaskStatus, TaskType
 from models.document_chunk import DocumentChunk
 from models.document_embedding import DocumentEmbedding
 
-from utils.calc_cos import calc_cos_score
+from utils.text_chunk import split_text
 
 STORAGE_DIR = "/storage/uploads"
 MAX_UPLOAD_SIZE = 30 * 1024 * 1024
@@ -237,3 +237,55 @@ def save_embeddings(
     db.commit()
 
     return embeddings
+
+def get_chunks(
+    db: Session,
+    document_id,
+):
+    chunks = (db.query(DocumentChunk.content, DocumentChunk.id)
+        .filter(DocumentChunk.document_id == document_id)
+        .all())
+    
+    chunk_rows = []
+
+    if not chunks:
+        raise ValueError(
+            f"No chunks found for document_id={document_id}"
+        )
+    
+    for idx, (chunk_text, id)  in enumerate(chunks):
+        chunk_rows.append(
+            DocumentChunk(
+                document_id=document_id,
+                id=id,
+                chunk_index=idx,
+                content=chunk_text,
+            )
+        )
+
+    return chunk_rows
+
+def set_chunks(
+    db: Session,
+    document_id,
+    text: str,
+
+):
+    chunks = split_text(
+        text
+    )
+
+    chunk_rows = []
+
+    for idx, chunk_text in enumerate(chunks):
+        chunk_rows.append(
+            DocumentChunk(
+                document_id=document_id,
+                chunk_index=idx,
+                content=chunk_text,
+            )
+        )
+
+    db.add_all(chunk_rows)
+    db.flush()
+    db.commit()
