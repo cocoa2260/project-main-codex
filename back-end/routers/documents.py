@@ -23,11 +23,22 @@ from models.user import User
 from routers.deps import get_current_user
 from schemas.document import (
     DocumentActionResponse,
+    DocumentChatCitation,
+    DocumentChatRequest,
+    DocumentChatResponse,
     DocumentMarkdownResponse,
     DocumentSummaryResponse,
     DocumentStatusResponse,
     DocumentUploadResponse,
     DocumentResponse,
+)
+from services.chat_service import (
+    DocumentChatContextError,
+    DocumentChatEmptyMessageError,
+    DocumentChatGenerationError,
+    DocumentChatInvalidStateError,
+    DocumentChatNotFoundError,
+    answer_document_question,
 )
 from services.document_service import (
     attach_celery_task_id,
@@ -231,6 +242,47 @@ def get_document_summary(
         process_at=document.process_at,
         embedding_model=document.selected_embedding_model,
         llm_model=settings.DEFAULT_LLM_MODEL,
+    )
+
+
+@router.post("/{document_id}/chat", response_model=DocumentChatResponse)
+def chat_with_document(
+    document_id: UUID,
+    payload: DocumentChatRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        result = answer_document_question(
+            db=db,
+            document_id=document_id,
+            user_id=current_user.id,
+            message=payload.message,
+        )
+    except DocumentChatEmptyMessageError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except DocumentChatNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except DocumentChatInvalidStateError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except DocumentChatContextError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except DocumentChatGenerationError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    return DocumentChatResponse(
+        answer=result.answer,
+        citations=[
+            DocumentChatCitation(
+                source=citation.source,
+                label=citation.label,
+                chunk_id=citation.chunk_id,
+                page_no=citation.page_no,
+            )
+            for citation in result.citations
+        ],
+        session_id=result.session_id,
+        message_id=result.message_id,
     )
 
 

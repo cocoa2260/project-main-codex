@@ -103,6 +103,23 @@ Summary:
 - Updated DocumentStatusPage misleading static system/queue metrics to API-backed status and prepared controls
 - Verified build, touched frontend eslint, git diff --check, and limited browser smoke
 
+### USER-CHAT-001
+User Chat API and UI Integration
+Status: DONE
+Summary:
+- Added POST /api/documents/{document_id}/chat for authenticated user document questions
+- Enforced owner-only access and COMPLETED-only chat policy
+- Returned answer, citations, session_id, and message_id from the chat API
+- Built chat context from summary, relevant DocumentChunk rows, and OCR Markdown fallback
+- Added LLM provider answer_question support with explicit generation failure handling
+- Persisted chat sessions and messages using existing chat_sessions and chat_messages tables
+- Connected DocumentChatPage to the real chat API with input, suggested questions, loading, error, answer, and citation states
+- Connected DocumentWorkspacePage question panel to the real chat API with answer, loading, error, and citation states
+- Added frontend chat DTOs and API client
+- Verified backend py_compile, frontend build, touched frontend eslint, OpenAPI 200, user chat 200, other-user document 404, unauthenticated 401, incomplete document 409, and empty question 400
+- No admin features changed
+- No DB migration or schema changes
+
 ### BE-COMP-004
 Summary Embedding Task Split Implementation
 Status: DONE

@@ -12,8 +12,9 @@ import {
 import { VIEW_TEXT } from '../../constants/text';
 import { Sidebar } from '../../components/common/Sidebar';
 import { StatusBadge } from '../../components/common/StatusBadge';
-import { getDocumentSummary } from '../../api/document';
-import type { DocumentSummaryResponse } from '../../types/document';
+import { chatWithDocument, getDocumentSummary } from '../../api/document';
+import type { DocumentChatCitation, DocumentSummaryResponse } from '../../types/document';
+import { normalizeDocumentStatus } from '../../utils/documentStatus';
 
 interface DocumentWorkspacePageProps {
   onLogout?: () => void;
@@ -53,19 +54,32 @@ function getErrorMessage(error: unknown) {
   return '문서 정보를 불러오지 못했습니다.';
 }
 
+function getChatErrorMessage(error: unknown) {
+  if (typeof error === 'object' && error !== null && 'response' in error) {
+    const response = (error as { response?: { data?: { detail?: string; message?: string } } }).response;
+    return response?.data?.detail ?? response?.data?.message ?? '답변을 생성하지 못했습니다.';
+  }
+
+  if (error instanceof Error) return error.message;
+
+  return '답변을 생성하지 못했습니다.';
+}
+
 export function DocumentWorkspacePage({ onLogout }: DocumentWorkspacePageProps) {
   const navigate = useNavigate();
   const { documentId } = useParams();
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen] = useState(true);
   const [message, setMessage] = useState('');
   const [summaryData, setSummaryData] = useState<DocumentSummaryResponse | null>(null);
   const [isLoading, setIsLoading] = useState(Boolean(documentId));
   const [error, setError] = useState<string | null>(documentId ? null : '문서 ID가 없습니다.');
+  const [answer, setAnswer] = useState<string | null>(null);
+  const [citations, setCitations] = useState<DocumentChatCitation[]>([]);
+  const [isSending, setIsSending] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!documentId) {
-      setError('문서 ID가 없습니다.');
-      setIsLoading(false);
       return;
     }
 
@@ -85,15 +99,33 @@ export function DocumentWorkspacePage({ onLogout }: DocumentWorkspacePageProps) 
     void loadSummary();
   }, [documentId]);
 
-  const handleSend = () => {
-    if (!message.trim()) return;
-    setMessage('');
+  const normalizedStatus = normalizeDocumentStatus(summaryData?.status);
+  const canAskQuestion = Boolean(documentId) && normalizedStatus === 'COMPLETED';
+
+  const handleSend = async () => {
+    const question = message.trim();
+    if (!documentId || !question || !canAskQuestion || isSending) return;
+
+    setIsSending(true);
+    setChatError(null);
+
+    try {
+      const response = await chatWithDocument(documentId, { message: question });
+      setAnswer(response.answer);
+      setCitations(response.citations);
+      setMessage('');
+    } catch (sendError) {
+      setChatError(getChatErrorMessage(sendError));
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const keywords = summaryData?.keywords ?? [];
   const summaryText = summaryData?.summary?.trim() || '저장된 요약이 없습니다.';
   const pageCount = summaryData?.page_count ?? null;
   const canOpenSummary = Boolean(documentId);
+  const canSendMessage = canAskQuestion && !isSending && message.trim().length > 0;
 
   return (
     <div className="min-h-screen w-full bg-[#0f0f17] flex">
@@ -193,7 +225,9 @@ export function DocumentWorkspacePage({ onLogout }: DocumentWorkspacePageProps) 
                   </div>
                   <div>
                     <h2 className="text-white font-bold">문서 기반 질문</h2>
-                    <p className="text-sm text-zinc-400">채팅 API 연동 준비 중</p>
+                    <p className="text-sm text-zinc-400">
+                      {canAskQuestion ? '문서 컨텍스트 기반 답변' : '완료된 문서만 질문 가능'}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -201,15 +235,33 @@ export function DocumentWorkspacePage({ onLogout }: DocumentWorkspacePageProps) 
               <div className="flex-1 min-h-0 overflow-auto p-5 space-y-4">
                 <div className="p-4 bg-white/5 border border-white/10 rounded-2xl">
                   <p className="text-zinc-200 text-sm leading-relaxed">
-                    문서 기반 질문 기능은 백엔드 API가 준비되면 연결할 예정입니다.
+                    {answer ?? (canAskQuestion
+                      ? '질문을 입력하면 이 영역에 문서 기반 답변이 표시됩니다.'
+                      : '문서 처리가 완료되면 질문을 입력할 수 있습니다.')}
                   </p>
                 </div>
+
+                {isSending && (
+                  <div className="flex items-center gap-2 rounded-2xl border border-blue-500/20 bg-blue-500/10 p-4 text-sm text-blue-100">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    답변을 생성하는 중입니다.
+                  </div>
+                )}
+
+                {chatError && (
+                  <div className="flex items-center gap-2 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-200">
+                    <AlertCircle className="h-4 w-4" />
+                    {chatError}
+                  </div>
+                )}
 
                 <div className="p-4 bg-primary/10 border border-primary/20 rounded-2xl">
                   <p className="text-white text-sm font-medium mb-2">참조 가능 정보</p>
                   <div className="flex items-center gap-2 text-sm text-zinc-300">
                     <Layers className="w-4 h-4 text-primary" />
-                    {pageCount ? `Page 1-${pageCount}` : '페이지 정보 없음'} · RAG 상태 정보 없음
+                    {citations.length > 0
+                      ? citations.map((citation) => citation.label).join(', ')
+                      : `${pageCount ? `Page 1-${pageCount}` : '페이지 정보 없음'} · 참조 없음`}
                   </div>
                 </div>
               </div>
@@ -219,18 +271,24 @@ export function DocumentWorkspacePage({ onLogout }: DocumentWorkspacePageProps) 
                   <textarea
                     value={message}
                     onChange={(event) => setMessage(event.target.value)}
-                    placeholder="문서 기반 질문 기능 준비 중"
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' && !event.shiftKey) {
+                        event.preventDefault();
+                        void handleSend();
+                      }
+                    }}
+                    placeholder={canAskQuestion ? '문서에 대해 질문해 보세요' : '문서 처리가 완료되면 질문할 수 있습니다'}
                     rows={2}
-                    disabled
+                    disabled={!canAskQuestion || isSending}
                     className="flex-1 resize-none bg-transparent text-white placeholder-zinc-400 text-sm focus:outline-none"
                   />
                   <button
                     type="button"
-                    onClick={handleSend}
+                    onClick={() => void handleSend()}
                     className="p-2.5 rounded-xl bg-gradient-to-r from-primary to-blue-500 text-white hover:opacity-90 transition-opacity disabled:opacity-40"
-                    disabled
+                    disabled={!canSendMessage}
                   >
-                    <Send className="w-4 h-4" />
+                    {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                   </button>
                 </div>
               </div>

@@ -14,5 +14,13 @@ class BaseLLMProvider(ABC):
     def summarize_from_chunk_summaries(self, summaries: list[str]) -> str:
         return self.summarize("\n\n".join(summaries))
 
+    def answer_question(self, question: str, context: str) -> str:
+        return self.summarize(
+            "문서 컨텍스트:\n"
+            f"{context}\n\n"
+            "질문:\n"
+            f"{question}"
+        )
+
     def extract_keywords(self, text: str) -> list[str]:
         return []

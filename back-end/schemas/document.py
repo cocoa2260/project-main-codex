@@ -50,6 +50,24 @@ class DocumentActionResponse(BaseModel):
     message: str
 
 
+class DocumentChatRequest(BaseModel):
+    message: str
+
+
+class DocumentChatCitation(BaseModel):
+    source: str
+    label: str
+    chunk_id: UUID | None = None
+    page_no: int | None = None
+
+
+class DocumentChatResponse(BaseModel):
+    answer: str
+    citations: list[DocumentChatCitation] = []
+    session_id: UUID | None = None
+    message_id: UUID | None = None
+
+
 class DocumentResponse(BaseModel):
     id: UUID
     file_name: str
