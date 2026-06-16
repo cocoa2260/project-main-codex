@@ -88,6 +88,21 @@ Summary:
 - Removed misleading hardcoded RAG/chunk information
 - Build passed
 
+### FE-USER-001
+User Feature Gap Implementation
+Status: DONE
+Summary:
+- Audited user document list, detail, status, summary, review, workspace, chat, settings, sidebar, and dashboard surfaces for unconnected UI
+- Added `/settings` user route and connected the common user sidebar settings item to it
+- Implemented minimal UserSettingsPage backed by `/api/auth/me` with unsupported write actions disabled/prepared
+- Replaced placeholder DocumentDetailPage with API-backed document hub using `getDocumentSummary`
+- Replaced DocumentChatPage hardcoded document/mock AI response with API-backed document context and disabled/prepared chat controls until product chat API is available
+- Connected DocumentListPage upload, detail, status, summary, chat, and workspace actions where supported
+- Marked user download/reprocess/cancel controls as disabled/prepared where no user API exists
+- Replaced DashboardPage hardcoded recent activity with document API-backed recent documents
+- Updated DocumentStatusPage misleading static system/queue metrics to API-backed status and prepared controls
+- Verified build, touched frontend eslint, git diff --check, and limited browser smoke
+
 ### BE-COMP-004
 Summary Embedding Task Split Implementation
 Status: DONE

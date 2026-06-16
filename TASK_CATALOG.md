@@ -62,6 +62,7 @@
 | FE-008 | Review API Integration | High | DONE |
 | FE-009 | Summary API Validation | High | DONE |
 | FE-010 | Workspace API Integration | High | DONE |
+| FE-USER-001 | User Feature Gap Implementation | High | DONE |
 
 ---
 

@@ -7,21 +7,14 @@ import type { DocumentItem, DocumentStatus, TaskStage } from '@/types/document';
 import { formatDateTime } from '@/utils/date';
 import { getDocumentProgress, normalizeDocumentStatus } from '@/utils/documentStatus';
 import {
-  Home,
   FileText,
   Upload,
   MessageSquare,
-  Clock,
-  Settings,
-  Shield,
   Menu,
   X,
   Search,
   Bell,
-  User,
-  Filter,
   Download,
-  Trash2,
   RefreshCw,
   Eye,
   MoreVertical,
@@ -29,21 +22,21 @@ import {
   Loader2,
   AlertCircle,
   Brain,
-  Sparkles,
-  ChevronDown,
   Grid3x3,
   List,
   Calendar,
   FileType,
   Layers,
-  TrendingUp,
   Activity
 } from 'lucide-react';
+
+type SortBy = 'recent' | 'oldest' | 'name';
 
 interface Document {
   id: string;
   name: string;
   uploadDate: string;
+  uploadedAtRaw: string;
   size: string;
   pages: number;
   status: DocumentStatus;
@@ -64,9 +57,8 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'processing' | 'completed' | 'failed'>('all');
-  const [sortBy, setSortBy] = useState<'recent' | 'oldest' | 'name'>('recent');
+  const [sortBy, setSortBy] = useState<SortBy>('recent');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [showFilters, setShowFilters] = useState(false);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -74,26 +66,6 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
   const statusParam = searchParams.get('status');
   const normalizedStatusParam = statusParam ? normalizeDocumentStatus(statusParam) : null;
   
-  const menuItems = [
-    { id: 'dashboard', label: '대시보드', icon: Home },
-    { id: 'documents', label: '문서 관리', icon: FileText },
-    { id: 'settings', label: '설정', icon: Settings },
-    { id: 'admin', label: '관리자', icon: Shield, badge: 'Pro' }
-  ];
-
-
-  const userMenuRoutes: Record<string, string> = {
-    dashboard: '/dashboard',
-    documents: '/documents',
-    settings: '/dashboard',
-    admin: '/admin',
-  };
-
-  const handleMenuClick = (menuId: string) => {
-    const route = userMenuRoutes[menuId];
-    if (route) navigate(route);
-  };
-
   useEffect(() => {
     let isMounted = true;
 
@@ -104,6 +76,7 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
         id: doc.id,
         name: doc.file_name,
         uploadDate: formatDateTime(doc.upload_at),
+        uploadedAtRaw: doc.upload_at,
         size: '-',
         pages: doc.page_count ?? 0,
         status,
@@ -154,6 +127,21 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
 
     return matchesSearch && matchesStatus && matchesFilter;
   });
+
+  const sortedDocuments = [...filteredDocuments].sort((a, b) => {
+    if (sortBy === 'name') return a.name.localeCompare(b.name, 'ko-KR');
+
+    const aTime = new Date(a.uploadedAtRaw).getTime();
+    const bTime = new Date(b.uploadedAtRaw).getTime();
+
+    if (Number.isNaN(aTime) || Number.isNaN(bTime)) return 0;
+
+    return sortBy === 'oldest' ? aTime - bTime : bTime - aTime;
+  });
+
+  const openDocumentDetail = (documentId: string) => navigate(`/documents/${documentId}`);
+  const openDocumentStatus = (documentId: string) => navigate(`/documents/${documentId}/status`);
+  const openDocumentWorkspace = (documentId: string) => navigate(`/documents/${documentId}/workspace`);
 
   const stats = {
     total: documents.length,
@@ -354,7 +342,7 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                 {/* Sort dropdown */}
                 <select
                   value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as any)}
+                  onChange={(e) => setSortBy(e.target.value as SortBy)}
                   className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
                 >
                   <option value="recent">최신순</option>
@@ -385,6 +373,7 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                 <p className="text-zinc-300 mb-6">아직 업로드한 문서가 없습니다</p>
                 <button
                   type="button"
+                  onClick={() => navigate('/documents/upload')}
                   className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-primary to-blue-500 text-white rounded-lg hover:opacity-90 transition-opacity"
                 >
                   <Upload className="w-5 h-5" />
@@ -394,7 +383,7 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
             ) : viewMode === 'grid' ? (
               // Grid view
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredDocuments.map((doc) => {
+                {sortedDocuments.map((doc) => {
                   return (
                     <div
                       key={doc.id}
@@ -418,7 +407,9 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
 
                         <button
                           type="button"
+                          onClick={() => openDocumentDetail(doc.id)}
                           className="opacity-0 group-hover:opacity-100 p-1 hover:bg-white/5 rounded transition-all"
+                          title="문서 상세"
                         >
                           <MoreVertical className="w-4 h-4 text-zinc-300" />
                         </button>
@@ -468,6 +459,17 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                       )}
 
                       {/* Actions */}
+                      {doc.status !== 'COMPLETED' && doc.status !== 'REVIEW_REQUIRED' && doc.status !== 'FAILED' && (
+                        <button
+                          type="button"
+                          onClick={() => openDocumentStatus(doc.id)}
+                          className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 rounded-lg transition-colors text-sm text-blue-300"
+                        >
+                          <Activity className="w-4 h-4" />
+                          처리 상태 보기
+                        </button>
+                      )}
+
                       {doc.status === 'REVIEW_REQUIRED' && (
                         <button
                           type="button"
@@ -499,7 +501,17 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                           </button>
                           <button
                             type="button"
+                            onClick={() => openDocumentWorkspace(doc.id)}
                             className="p-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors"
+                            title="워크스페이스"
+                          >
+                            <Brain className="w-3.5 h-3.5 text-zinc-200" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled
+                            title="사용자 원본 다운로드 API 준비 중"
+                            className="p-2 bg-white/5 rounded-lg transition-colors opacity-40 cursor-not-allowed"
                           >
                             <Download className="w-3.5 h-3.5 text-zinc-200" />
                           </button>
@@ -509,7 +521,9 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                       {doc.status === 'FAILED' && (
                         <button
                           type="button"
-                          className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-lg transition-colors text-sm text-red-400"
+                          disabled
+                          title="사용자 재처리 API 준비 중"
+                          className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-red-500/10 border border-red-500/20 rounded-lg transition-colors text-sm text-red-400 opacity-50 cursor-not-allowed"
                         >
                           <RefreshCw className="w-4 h-4" />
                           재처리
@@ -547,7 +561,7 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5">
-                      {filteredDocuments.map((doc) => {
+                      {sortedDocuments.map((doc) => {
                         return (
                           <tr key={doc.id} className="hover:bg-white/5 transition-colors">
                             <td className="px-6 py-4 whitespace-nowrap">
@@ -599,8 +613,17 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                                     </button>
                                     <button
                                       type="button"
+                                      onClick={() => openDocumentWorkspace(doc.id)}
                                       className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-                                      title="다운로드"
+                                      title="워크스페이스"
+                                    >
+                                      <Brain className="w-4 h-4 text-zinc-300" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled
+                                      className="p-2 rounded-lg opacity-40 cursor-not-allowed"
+                                      title="사용자 원본 다운로드 API 준비 중"
                                     >
                                       <Download className="w-4 h-4 text-zinc-300" />
                                     </button>
@@ -620,15 +643,18 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                                 {doc.status === 'FAILED' && (
                                   <button
                                     type="button"
-                                    className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-                                    title="재처리"
+                                    disabled
+                                    className="p-2 rounded-lg opacity-40 cursor-not-allowed"
+                                    title="사용자 재처리 API 준비 중"
                                   >
                                     <RefreshCw className="w-4 h-4 text-red-400" />
                                   </button>
                                 )}
                                 <button
                                   type="button"
+                                  onClick={() => openDocumentDetail(doc.id)}
                                   className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                                  title="문서 상세"
                                 >
                                   <MoreVertical className="w-4 h-4 text-zinc-300" />
                                 </button>

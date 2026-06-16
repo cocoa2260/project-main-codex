@@ -19,6 +19,7 @@ import { DocumentUploadPage } from '../pages/documents/DocumentUploadPage';
 import { DocumentDetailPage } from '../pages/documents/DocumentDetailPage';
 import { DocumentReviewPage } from '../pages/documents/DocumentReviewPage';
 import { DocumentWorkspacePage } from '../pages/documents/DocumentWorkspacePage';
+import { UserSettingsPage } from '../pages/settings/UserSettingsPage';
 import { AdminDashboardPage } from '../pages/admin/AdminDashboardPage';
 import { AdminUserPage } from '../pages/admin/AdminUserPage';
 import { AdminDocumentPage } from '../pages/admin/AdminDocumentPage';
@@ -71,7 +72,6 @@ function DocumentStatusRoute() {
 
 function DocumentSummaryRoute() {
   const navigate = useNavigate();
-  const { documentId = 'demo' } = useParams();
   return (
     <DocumentSummaryPage
       onLogout={() => { clearAuth(); navigate('/login'); }}
@@ -115,6 +115,7 @@ function AppRoutes() {
       <Route path="/documents/:documentId/workspace" element={<UserRoute><DocumentWorkspacePage /></UserRoute>} />
       <Route path="/documents/:documentId/summary" element={<UserRoute><DocumentSummaryRoute /></UserRoute>} />
       <Route path="/documents/:documentId/chat" element={<UserRoute><DocumentChatRoute /></UserRoute>} />
+      <Route path="/settings" element={<UserRoute><UserSettingsPage onLogout={logout} /></UserRoute>} />
 
       <Route path="/admin" element={<AdminRoute><AdminDashboardPage onLogout={logout} /></AdminRoute>} />
       <Route path="/admin/users" element={<AdminRoute><AdminUserPage onLogout={logout} /></AdminRoute>} />
