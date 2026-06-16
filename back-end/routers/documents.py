@@ -18,7 +18,6 @@ from core.logging_config import get_logger
 from db.database import SessionLocal
 from db.session import get_db
 from models.document import Document, DocumentStatus
-from models.document_chunk import DocumentChunk
 from tasks.embedding_tasks import process_document_embedding
 from models.task_tracker import TaskStage, TaskStatus, TaskType
 from models.user import User
@@ -220,26 +219,12 @@ def get_document_summary(
     if document is None:
         raise HTTPException(status_code=404, detail="문서를 찾을 수 없습니다.")
 
-    # 요약 자체는 documents.summary에서 가져오고, 핵심 키워드는 document_chunks.keywords에서 모아 응답한다.
-    keywords = []
-    chunks = (
-        db.query(DocumentChunk.keywords)
-        .filter(DocumentChunk.document_id == document.id)
-        .order_by(DocumentChunk.chunk_index.asc())
-        .all()
-    )
-
-    for chunk_keywords, in chunks:
-        for keyword in chunk_keywords or []:
-            if keyword and keyword not in keywords:
-                keywords.append(keyword)
-
     return DocumentSummaryResponse(
         document_id=document.id,
         file_name=document.file_name,
         status=document.status,
         summary=document.summary,
-        keywords=keywords,
+        keywords=document.keywords or [],
         page_count=document.page_count,
         file_size=document.file_size,
         upload_at=document.upload_at,

@@ -33,7 +33,7 @@ class DocumentSummaryResponse(BaseModel):
     file_name: str
     status: str
     summary: str | None = None
-    # document_chunks.keywords에서 모은 핵심 키워드를 프론트 요약 화면에 내려준다.
+    # documents.keywords에 저장된 문서 대표 키워드를 프론트 요약 화면에 내려준다.
     keywords: list[str] = []
     page_count: int | None = 0
     file_size: int

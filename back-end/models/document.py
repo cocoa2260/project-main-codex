@@ -9,7 +9,7 @@ from sqlalchemy import Text
 from sqlalchemy import Enum
 from sqlalchemy import func
 
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import ARRAY, UUID
 
 from sqlalchemy.orm import relationship
 
@@ -71,6 +71,13 @@ class Document(Base):
 
     summary = Column(
         Text,
+        nullable=True,
+    )
+
+    # 프론트 요약 화면에 표시할 문서 대표 키워드 목록이다.
+    # chunk별 상세 키워드는 document_chunks.keywords에 따로 저장한다.
+    keywords = Column(
+        ARRAY(String),
         nullable=True,
     )
 

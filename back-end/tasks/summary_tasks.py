@@ -33,6 +33,7 @@ def summarize_chunks(
     task: TaskTracker,
 ) -> tuple[list[str], int]:
     chunk_summaries: list[str] = []
+    document_keywords: list[str] = []
     keyword_count = 0
     total_chunks = len(chunks)
 
@@ -48,6 +49,7 @@ def summarize_chunks(
         )
 
         keywords = llm_provider.extract_keywords(chunk)
+        representative_keyword = llm_provider.extract_representative_keyword(chunk)
         chunk_summary = llm_provider.summarize_chunk(chunk)
 
         # summary 단계에서 LLM으로 추출한 키워드를 chunk row에 저장한다.
@@ -72,11 +74,17 @@ def summarize_chunks(
 
         chunk_row.keywords = keywords
 
+        # 프론트 표시용 대표 키워드는 chunk마다 1개씩 뽑아 documents.keywords에 모아 저장한다.
+        if representative_keyword and representative_keyword not in document_keywords:
+            document_keywords.append(representative_keyword)
+
         keyword_text = ", ".join(keywords) if keywords else "없음"
         chunk_summaries.append(
             f"chunk {index} 키워드: {keyword_text}\nchunk {index} 요약: {chunk_summary}"
         )
         keyword_count += len(keywords)
+
+    document.keywords = document_keywords
 
     return chunk_summaries, keyword_count
 

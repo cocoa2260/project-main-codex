@@ -44,11 +44,12 @@ class OllamaLLMProvider(BaseLLMProvider):
                         "1. 최종 답변은 한국어만 사용합니다.\n"
                         "2. 영어 문장, 영어 제목, 영어 설명문을 그대로 출력하지 않습니다.\n"
                         "3. 원문에 있는 내용만 요약하고, 없는 내용은 추가하지 않습니다.\n"
-                        "4. OCR 오류로 보이는 내용은 '확인 필요' 섹션에 따로 정리합니다.\n"
+                        "4. OCR 오류로 보이는 내용이 있을 때만 '확인 필요' 섹션에 따로 정리합니다.\n"
                         "5. 너무 짧게 요약하지 말고, 원문을 다시 보지 않아도 이해할 수 있을 정도로 자세히 작성합니다.\n"
                         "6. 각 핵심 항목은 단순 키워드가 아니라 2~4문장으로 설명합니다.\n"
                         "7. 문서에 내용이 충분하다면 전체 출력은 최소 800자 이상으로 작성합니다.\n"
-                        "8. 비어 있는 섹션은 억지로 만들지 말고 '해당 내용 없음'이라고 작성합니다.\n\n"
+                        "8. '확인 필요'에 작성할 내용이 없으면 해당 섹션 자체를 출력하지 않습니다.\n"
+                        "9. '확인 필요 없음', '불확실한 부분: 없음', '없음' 같은 문구를 출력하지 않습니다.\n\n"
                         "출력 형식은 반드시 아래 제목을 그대로 사용합니다. "
                         "제목을 바꾸거나 생략하지 않습니다.\n\n"
                         "## 전체 요약\n"
@@ -66,7 +67,8 @@ class OllamaLLMProvider(BaseLLMProvider):
                         "- 문서 전체를 대표하는 핵심 키워드 5~15개를 한국어 명사구로 작성합니다.\n"
                         "- 키워드는 반드시 한 줄에 하나씩 작성합니다.\n\n"
                         "## 확인 필요\n"
-                        "- OCR 오류 가능성이 있거나 의미가 불명확한 내용을 정리합니다.\n\n"
+                        "OCR 오류 가능성이 있거나 의미가 불명확한 내용이 있을 때만 이 섹션을 작성합니다.\n"
+                        "작성할 내용이 없으면 이 제목과 섹션을 모두 생략합니다.\n\n"
                         f"문서:\n{markdown}\n\n"
                         "다시 강조합니다. 최종 답변은 반드시 한국어로만 작성합니다. "
                         "중요한 정보가 있다면 짧게 줄이지 말고 충분히 설명합니다. "
@@ -125,7 +127,8 @@ class OllamaLLMProvider(BaseLLMProvider):
                         "- 금액:\n"
                         "- 조건:\n\n"
                         "## 확인 필요\n"
-                        "- 불명확하거나 OCR 오류 가능성이 있는 내용을 작성합니다.\n\n"
+                        "불명확하거나 OCR 오류 가능성이 있는 내용이 있을 때만 이 섹션을 작성합니다.\n"
+                        "확인할 내용이 없으면 '확인 필요', '불확실한 부분', '없음' 같은 문구를 출력하지 말고 섹션 자체를 생략합니다.\n\n"
                         f"{joined_summaries}\n\n/no_think"
                     )
                 ),
@@ -161,3 +164,25 @@ class OllamaLLMProvider(BaseLLMProvider):
                 keywords.append(cleaned_keyword)
 
         return keywords[:8]
+
+    def extract_representative_keyword(self, text: str) -> str | None:
+        response = self.client.invoke(
+            [
+                SystemMessage(
+                    content=(
+                        "당신은 OCR 문서 chunk에서 문서 대표 키워드 후보를 고르는 전문가입니다. "
+                        "이 chunk를 가장 잘 대표하는 핵심 키워드 1개만 한국어 명사구로 작성하세요. "
+                        "명백한 OCR 오타는 자연스러운 전문 용어로 보정하세요. "
+                        "설명, 번호, 따옴표, 문장부호 없이 키워드만 출력하세요. /no_think"
+                    )
+                ),
+                HumanMessage(content=f"chunk:\n{text}\n\n/no_think"),
+            ]
+        )
+
+        keyword = str(response.content).strip()
+        keyword = keyword.strip("`*_\"' ")
+        keyword = re.sub(r"^[\\-\\*\\d\\.\\s]+", "", keyword).strip()
+        keyword = re.split(r"[,，|/·\n]", keyword)[0].strip()
+
+        return keyword or None
