@@ -175,7 +175,7 @@ export function UserSettingsPage({ onLogout }: UserSettingsPageProps) {
                   type="button"
                   disabled
                   title="사용자 알림 저장 API 준비 중"
-                  className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-500 disabled:cursor-not-allowed"
+                  className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-400 disabled:cursor-not-allowed"
                 >
                   <Save className="h-4 w-4" />
                   저장 준비 중
@@ -201,7 +201,7 @@ export function UserSettingsPage({ onLogout }: UserSettingsPageProps) {
                   type="button"
                   disabled
                   title="비밀번호 변경 API 준비 중"
-                  className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-500 disabled:cursor-not-allowed"
+                  className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-400 disabled:cursor-not-allowed"
                 >
                   변경 준비 중
                 </button>

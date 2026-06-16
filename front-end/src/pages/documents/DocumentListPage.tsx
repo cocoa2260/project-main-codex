@@ -27,7 +27,8 @@ import {
   Calendar,
   FileType,
   Layers,
-  Activity
+  Activity,
+  Trash2
 } from 'lucide-react';
 
 type SortBy = 'recent' | 'oldest' | 'name';
@@ -50,6 +51,16 @@ interface DocumentListPageProps {
   onLogout?: () => void;
   onOpenSummary?: (id: string) => void;
   onOpenChat?: (id: string) => void;
+}
+
+function formatBytes(bytes?: number | null) {
+  if (!bytes) return '-';
+
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / 1024 ** index;
+
+  return `${value.toFixed(value >= 10 || index === 0 ? 0 : 1)} ${units[index]}`;
 }
 
 export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: DocumentListPageProps) {
@@ -77,7 +88,7 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
         name: doc.file_name,
         uploadDate: formatDateTime(doc.upload_at),
         uploadedAtRaw: doc.upload_at,
-        size: '-',
+        size: formatBytes(doc.file_size),
         pages: doc.page_count ?? 0,
         status,
         category: doc.category ?? undefined,
@@ -515,6 +526,14 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                           >
                             <Download className="w-3.5 h-3.5 text-zinc-200" />
                           </button>
+                          <button
+                            type="button"
+                            disabled
+                            title="사용자 문서 삭제 API 준비 중"
+                            className="p-2 bg-red-500/10 rounded-lg transition-colors opacity-50 cursor-not-allowed"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-red-300" />
+                          </button>
                         </div>
                       )}
 
@@ -626,6 +645,14 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                                       title="사용자 원본 다운로드 API 준비 중"
                                     >
                                       <Download className="w-4 h-4 text-zinc-300" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled
+                                      className="p-2 rounded-lg opacity-50 cursor-not-allowed"
+                                      title="사용자 문서 삭제 API 준비 중"
+                                    >
+                                      <Trash2 className="w-4 h-4 text-red-300" />
                                     </button>
                                   </>
                                 )}

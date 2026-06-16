@@ -828,6 +828,29 @@ Phase 3
 - User Status
 - Settings Save
 
+## 2026-06-17 FE-USER-002 User Document Actions Finalization
+
+Branch: feature/fe-user-002-document-actions-finalization
+
+Implemented:
+
+- Added `file_size` to the user document list API response schema so user list/dashboard cards can show real file metadata instead of `-`.
+- Updated frontend `DocumentItem` type and rendered formatted file sizes in `DocumentListPage` and Dashboard recent documents.
+- Audited User document action surfaces:
+  - real route/API-backed actions remain enabled: detail, status, review, summary, workspace, chat
+  - User original download, delete, retry/reprocess, and processing cancel remain disabled/prepared because no User API exists
+  - Dashboard recent document download no longer appears as a clickable mock action
+- Added prepared disabled download/retry/delete actions to `DocumentDetailPage` so unsupported User actions are explicit.
+- Added prepared disabled delete affordances to `DocumentListPage`.
+- Fixed USER-CHAT-001 dark theme regression by explicitly applying bright text to AI chat answer bubbles; reviewed citation area, question input, workspace answer area, user settings, document detail, and dashboard recent activity for black/near-black text risks.
+
+Verification:
+
+- `npm run build` in `front-end` passed.
+- `npm run lint` in `front-end` passed.
+- Dark-theme hardcoding scan for user document/dashboard/settings/chat surfaces found no `text-black`, `text-gray-900`, `text-slate-900`, `fill-black`, or `stroke-black` matches after edits.
+- `python3 -m pytest back-end/tests` could not run in this local environment because `pytest` is not installed.
+
 주의:
 
 위 기능들은 모두 최종 제품 범위에 포함된다.

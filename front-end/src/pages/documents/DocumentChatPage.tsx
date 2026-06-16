@@ -380,7 +380,7 @@ export function DocumentChatPage({ onBack, onLogout }: DocumentChatPageProps) {
                     <div className={msg.type === 'user' ? 'max-w-[80%]' : 'flex-1 max-w-[85%]'}>
                       <div className={msg.type === 'user'
                         ? 'bg-gradient-to-r from-primary to-blue-500 text-white rounded-2xl rounded-tr-sm px-4 py-3'
-                        : 'bg-[#15151c] border border-white/10 rounded-2xl rounded-tl-sm px-4 py-3'
+                        : 'bg-[#15151c] border border-white/10 text-zinc-100 rounded-2xl rounded-tl-sm px-4 py-3'
                       }>
                         <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
                         {msg.type === 'ai' && msg.citations && (
