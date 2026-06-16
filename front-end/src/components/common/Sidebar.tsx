@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Activity,
@@ -12,6 +13,8 @@ import {
   Users,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { fetchMe } from '../../api/auth';
+import { getAuthUser, type AuthUser } from '../../utils/auth';
 
 interface SidebarMenuItem {
   id: string;
@@ -61,13 +64,41 @@ export function Sidebar({
   variant = 'user',
   sidebarOpen,
   onLogout,
-  userName = '홍길동',
-  userEmail = 'user@example.com',
+  userName,
+  userEmail,
 }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const [authUser, setAuthUser] = useState<AuthUser | null>(() => getAuthUser());
   const isAdmin = variant === 'admin';
-  const menuItems = isAdmin ? adminMenuItems : userMenuItems;
+  const displayName = userName ?? authUser?.name ?? '';
+  const displayEmail = userEmail ?? authUser?.email ?? '';
+  const canSeeAdminMenu = authUser?.role === 'ADMIN';
+  const menuItems = useMemo(() => {
+    if (isAdmin) return adminMenuItems;
+
+    return userMenuItems.filter((item) => item.id !== 'admin' || canSeeAdminMenu);
+  }, [canSeeAdminMenu, isAdmin]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    fetchMe()
+      .then((user) => {
+        if (isMounted) {
+          setAuthUser(user);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setAuthUser(getAuthUser());
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleLogout = () => {
     if (onLogout) {
@@ -164,8 +195,8 @@ export function Sidebar({
           </div>
           {sidebarOpen && (
             <div className="flex-1 text-left min-w-0">
-              <p className="text-white text-sm font-medium">{isAdmin ? '관리자' : userName}</p>
-              <p className="text-zinc-400 text-xs">{isAdmin ? 'admin@example.com' : userEmail}</p>
+              <p className="truncate text-white text-sm font-medium">{displayName || displayEmail || '-'}</p>
+              <p className="truncate text-zinc-400 text-xs">{displayEmail || '-'}</p>
             </div>
           )}
         </button>
