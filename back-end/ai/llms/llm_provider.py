@@ -136,6 +136,29 @@ class OllamaLLMProvider(BaseLLMProvider):
         )
         return str(response.content).strip()
 
+    def answer_question(self, question: str, context: str) -> str:
+        response = self.client.invoke(
+            [
+                SystemMessage(
+                    content=(
+                        "당신은 문서 기반 질의응답 도우미입니다. "
+                        "제공된 문서 컨텍스트에 근거해서만 한국어로 답변하세요. "
+                        "문서에서 확인할 수 없는 내용은 확인할 수 없다고 말하세요. "
+                        "추측하지 말고, 답변은 간결하되 필요한 근거를 포함하세요. "
+                        "최종 답변만 출력하세요. /no_think"
+                    )
+                ),
+                HumanMessage(
+                    content=(
+                        f"문서 컨텍스트:\n{context}\n\n"
+                        f"질문:\n{question}\n\n"
+                        "답변:"
+                    )
+                ),
+            ]
+        )
+        return str(response.content).strip()
+
     def extract_keywords(self, text: str) -> list[str]:
         response = self.client.invoke(
             [

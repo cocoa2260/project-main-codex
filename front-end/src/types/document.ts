@@ -142,6 +142,24 @@ export interface DocumentActionResponse {
   message: string;
 }
 
+export interface DocumentChatRequest {
+  message: string;
+}
+
+export interface DocumentChatCitation {
+  source: string;
+  label: string;
+  chunk_id?: string | null;
+  page_no?: number | null;
+}
+
+export interface DocumentChatResponse {
+  answer: string;
+  citations: DocumentChatCitation[];
+  session_id?: string | null;
+  message_id?: string | null;
+}
+
 export interface EmbeddingModelOption {
   value: string;
   label: string;

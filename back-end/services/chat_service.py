@@ -1,8 +1,214 @@
+from dataclasses import dataclass
+from uuid import UUID
+
 import httpx
 from sqlalchemy.orm import Session
-# from models import Document # (예시) 실제 DB 모델을 임포트해야 합니다.
+
+from ai.llms.llm_factory import get_llm_provider
+from core.config import settings
+from models.chat_message import ChatMessage
+from models.chat_message import ChatRole
+from models.chat_session import ChatSession
+from models.document import Document
+from models.document import DocumentStatus
+from models.document_chunk import DocumentChunk
 
 COLAB_LLM_URL = "https://caravan-powdery-omen.ngrok-free.dev/generate"
+MAX_CONTEXT_CHARS = 12000
+MAX_CHUNKS = 4
+
+
+class DocumentChatError(Exception):
+    pass
+
+
+class DocumentChatNotFoundError(DocumentChatError):
+    pass
+
+
+class DocumentChatInvalidStateError(DocumentChatError):
+    pass
+
+
+class DocumentChatEmptyMessageError(DocumentChatError):
+    pass
+
+
+class DocumentChatContextError(DocumentChatError):
+    pass
+
+
+class DocumentChatGenerationError(DocumentChatError):
+    pass
+
+
+@dataclass
+class DocumentChatCitation:
+    source: str
+    label: str
+    chunk_id: UUID | None = None
+    page_no: int | None = None
+
+
+@dataclass
+class DocumentChatResult:
+    answer: str
+    citations: list[DocumentChatCitation]
+    session_id: UUID | None
+    message_id: UUID | None
+
+
+def _score_chunk(question_terms: set[str], chunk: DocumentChunk) -> int:
+    if not question_terms:
+        return 0
+
+    content = (chunk.content or "").lower()
+    keywords = " ".join(chunk.keywords or []).lower()
+    haystack = f"{content} {keywords}"
+
+    return sum(1 for term in question_terms if term and term in haystack)
+
+
+def _select_relevant_chunks(db: Session, document_id: UUID, question: str) -> list[DocumentChunk]:
+    chunks = (
+        db.query(DocumentChunk)
+        .filter(DocumentChunk.document_id == document_id)
+        .order_by(DocumentChunk.chunk_index.asc())
+        .all()
+    )
+    if not chunks:
+        return []
+
+    question_terms = {
+        term.strip().lower()
+        for term in question.replace("\n", " ").split(" ")
+        if len(term.strip()) >= 2
+    }
+    scored_chunks = [
+        (_score_chunk(question_terms, chunk), chunk.chunk_index, chunk)
+        for chunk in chunks
+    ]
+    scored_chunks.sort(key=lambda item: (-item[0], item[1]))
+
+    selected = [chunk for score, _, chunk in scored_chunks if score > 0][:MAX_CHUNKS]
+    if selected:
+        return selected
+
+    return chunks[:MAX_CHUNKS]
+
+
+def _build_chat_context(document: Document, chunks: list[DocumentChunk]) -> tuple[str, list[DocumentChatCitation]]:
+    context_parts: list[str] = []
+    citations: list[DocumentChatCitation] = []
+
+    if document.summary:
+        context_parts.append(f"## 문서 요약\n{document.summary.strip()}")
+        citations.append(DocumentChatCitation(source="summary", label="문서 요약"))
+
+    for chunk in chunks:
+        chunk_text = (chunk.content or "").strip()
+        if not chunk_text:
+            continue
+
+        label = f"Chunk {chunk.chunk_index}"
+        if chunk.page_no:
+            label = f"Page {chunk.page_no} · {label}"
+        context_parts.append(f"## {label}\n{chunk_text}")
+        citations.append(
+            DocumentChatCitation(
+                source="chunk",
+                label=label,
+                chunk_id=chunk.id,
+                page_no=chunk.page_no,
+            )
+        )
+
+    if not context_parts and document.ocr_markdown:
+        context_parts.append(f"## OCR Markdown\n{document.ocr_markdown.strip()[:MAX_CONTEXT_CHARS]}")
+        citations.append(DocumentChatCitation(source="ocr_markdown", label="OCR Markdown"))
+
+    context = "\n\n".join(context_parts).strip()
+    return context[:MAX_CONTEXT_CHARS], citations
+
+
+def _generate_answer(question: str, context: str) -> str:
+    provider = get_llm_provider(settings.DEFAULT_LLM_MODEL)
+    return provider.answer_question(question=question, context=context).strip()
+
+
+def answer_document_question(
+    db: Session,
+    document_id: UUID,
+    user_id: UUID,
+    message: str,
+) -> DocumentChatResult:
+    question = message.strip()
+    if not question:
+        raise DocumentChatEmptyMessageError("질문 내용을 입력해 주세요.")
+
+    document = (
+        db.query(Document)
+        .filter(
+            Document.id == document_id,
+            Document.user_id == user_id,
+        )
+        .first()
+    )
+    if document is None:
+        raise DocumentChatNotFoundError("문서를 찾을 수 없습니다.")
+
+    if document.status != DocumentStatus.COMPLETED:
+        raise DocumentChatInvalidStateError("처리가 완료된 문서만 질문할 수 있습니다.")
+
+    chunks = _select_relevant_chunks(db, document.id, question)
+    context, citations = _build_chat_context(document, chunks)
+    if not context:
+        raise DocumentChatContextError("질문에 사용할 문서 컨텍스트가 없습니다.")
+
+    session = ChatSession(
+        user_id=user_id,
+        document_id=document.id,
+        title=question[:120],
+        llm_model=settings.DEFAULT_LLM_MODEL,
+        embedding_model=document.selected_embedding_model,
+    )
+    db.add(session)
+    db.flush()
+
+    user_message = ChatMessage(
+        session_id=session.id,
+        role=ChatRole.USER,
+        content=question,
+    )
+    db.add(user_message)
+    db.flush()
+
+    try:
+        answer = _generate_answer(question, context)
+    except Exception as exc:
+        db.rollback()
+        raise DocumentChatGenerationError("LLM 답변 생성에 실패했습니다.") from exc
+
+    if not answer:
+        db.rollback()
+        raise DocumentChatGenerationError("LLM 답변이 비어 있습니다.")
+
+    assistant_message = ChatMessage(
+        session_id=session.id,
+        role=ChatRole.ASSISTANT,
+        content=answer,
+    )
+    db.add(assistant_message)
+    db.commit()
+    db.refresh(session)
+    db.refresh(assistant_message)
+
+    return DocumentChatResult(
+        answer=answer,
+        citations=citations,
+        session_id=session.id,
+        message_id=assistant_message.id,
+    )
 
 async def generate_rag_stream(user_message: str, document_id: str, db: Session):
     """

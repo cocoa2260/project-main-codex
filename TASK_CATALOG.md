@@ -63,6 +63,7 @@
 | FE-009 | Summary API Validation | High | DONE |
 | FE-010 | Workspace API Integration | High | DONE |
 | FE-USER-001 | User Feature Gap Implementation | High | DONE |
+| USER-CHAT-001 | User Chat API and UI Integration | High | DONE |
 
 ---
 
@@ -258,6 +259,21 @@ Status: DONE
 - 저장/초기화 UI는 삭제하지 않고 read-only/준비 중/disabled 처리
 - Loading / Error / Empty / Refresh 상태 추가
 - Backend 변경 없음
+
+### USER-CHAT-001 User Chat API and UI Integration
+
+- Added authenticated user document chat API at POST /api/documents/{document_id}/chat
+- Enforced user document ownership and COMPLETED-only document policy
+- Used summary, relevant document chunks, and OCR Markdown fallback as chat context
+- Added LLM provider question-answer method and clear 502 handling for generation failures
+- Persisted chat sessions and user/assistant messages using existing chat tables
+- Added frontend chat request/response types and API client
+- Connected DocumentChatPage question input, suggested questions, loading, error, answer, and citation rendering
+- Connected DocumentWorkspacePage question input, loading, error, answer, and citation rendering
+- No admin feature changes, DB schema changes, or migration
+
+Priority: High
+Status: DONE
 
 Priority: Medium
 Status: DONE

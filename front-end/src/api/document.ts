@@ -1,12 +1,13 @@
 import { apiClient } from './client';
 import type {
   DocumentActionResponse,
+  DocumentChatRequest,
+  DocumentChatResponse,
   DocumentMarkdownResponse,
   DocumentSummaryResponse,
   DocumentStatusResponse,
   DocumentUploadResponse,
   DocumentItem,
-  EmbeddingModelOption,
   EmbeddingModelsResponse
 } from '@/types/document';
 
@@ -74,5 +75,13 @@ export async function confirmDocumentSummary(documentId: string): Promise<Docume
 
 export async function cancelDocumentSummary(documentId: string): Promise<DocumentActionResponse> {
   const response = await apiClient.post<DocumentActionResponse>(`/api/documents/${documentId}/cancel-summary`);
+  return response.data;
+}
+
+export async function chatWithDocument(
+  documentId: string,
+  payload: DocumentChatRequest,
+): Promise<DocumentChatResponse> {
+  const response = await apiClient.post<DocumentChatResponse>(`/api/documents/${documentId}/chat`, payload);
   return response.data;
 }
