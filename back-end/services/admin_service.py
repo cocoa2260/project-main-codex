@@ -77,6 +77,7 @@ from services.audit_service import record_document_exported
 from services.audit_service import record_failed_task_retry
 from services.document_service import attach_celery_task_id
 from services.document_service import create_document_task
+from tasks.embedding_tasks import process_document_embedding
 from tasks.ocr_tasks import process_document_ocr
 from tasks.summary_tasks import process_document_summary
 from services.audit_service import record_admin_action
@@ -2278,7 +2279,7 @@ def retry_failed_task(
     if original_task.status != TaskStatus.FAILED:
         raise AdminTaskRetryError(409, "실패한 작업만 재시도할 수 있습니다.")
 
-    if original_task.task_type not in {TaskType.OCR, TaskType.SUMMARY}:
+    if original_task.task_type not in {TaskType.OCR, TaskType.SUMMARY, TaskType.EMBEDDING}:
         raise AdminTaskRetryError(400, "지원하지 않는 작업 유형입니다.")
 
     document = original_task.document
@@ -2307,17 +2308,27 @@ def retry_failed_task(
             message="OCR 재시도 작업 대기 중입니다.",
         )
     else:
-        if not document.ocr_markdown:
+        if original_task.task_type == TaskType.SUMMARY and not document.ocr_markdown:
             raise AdminTaskRetryError(400, "OCR Markdown 결과가 없습니다.")
 
-        retry_task = TaskTracker(
-            document_id=document.id,
-            task_type=TaskType.SUMMARY,
-            status=TaskStatus.PENDING,
-            progress=0,
-            stage=TaskStage.SUMMARY_PENDING,
-            message="요약 재시도 작업 대기 중입니다.",
-        )
+        if original_task.task_type == TaskType.SUMMARY:
+            retry_task = TaskTracker(
+                document_id=document.id,
+                task_type=TaskType.SUMMARY,
+                status=TaskStatus.PENDING,
+                progress=0,
+                stage=TaskStage.SUMMARY_PENDING,
+                message="요약 재시도 작업 대기 중입니다.",
+            )
+        else:
+            retry_task = TaskTracker(
+                document_id=document.id,
+                task_type=TaskType.EMBEDDING,
+                status=TaskStatus.PENDING,
+                progress=0,
+                stage=TaskStage.EMBEDDING_PENDING,
+                message="임베딩 재시도 작업 대기 중입니다.",
+            )
 
     db.add(retry_task)
     db.flush()
@@ -2342,10 +2353,17 @@ def retry_failed_task(
                 str(retry_task.id),
             )
         else:
-            async_result = process_document_summary.delay(
-                str(document.id),
-                str(retry_task.id),
-            )
+            if retry_task.task_type == TaskType.SUMMARY:
+                async_result = process_document_summary.delay(
+                    str(document.id),
+                    str(retry_task.id),
+                )
+            else:
+                async_result = process_document_embedding.delay(
+                    str(document.id),
+                    str(retry_task.id),
+                    str(document.selected_embedding_model),
+                )
 
         attach_celery_task_id(
             db=db,

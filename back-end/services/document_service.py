@@ -1,5 +1,6 @@
 import os
 import uuid
+from datetime import datetime
 from pathlib import Path
 
 import aiofiles
@@ -157,6 +158,43 @@ def create_document_task(
     db.commit()
     db.refresh(task)
     return task
+
+
+def trigger_embedding_pipeline(
+    db: Session,
+    document: Document,
+) -> TaskTracker:
+    from tasks.embedding_tasks import process_document_embedding
+
+    task = create_document_task(
+        db=db,
+        document_id=document.id,
+        task_type=TaskType.EMBEDDING,
+        stage=TaskStage.EMBEDDING_PENDING,
+        message="문서 임베딩 작업 대기 중입니다.",
+    )
+
+    try:
+        async_result = process_document_embedding.delay(
+            str(document.id),
+            str(task.id),
+            str(document.selected_embedding_model),
+        )
+    except Exception as error:
+        task.status = TaskStatus.FAILED
+        task.stage = TaskStage.FAILED
+        task.message = "임베딩 작업 등록 중 오류가 발생했습니다."
+        task.error_message = str(error)
+        task.completed_at = datetime.utcnow()
+        document.status = DocumentStatus.FAILED
+        db.commit()
+        raise
+
+    return attach_celery_task_id(
+        db=db,
+        task_id=task.id,
+        celery_task_id=async_result.id,
+    ) or task
 
 
 def build_status_message(

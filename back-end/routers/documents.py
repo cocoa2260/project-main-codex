@@ -18,7 +18,6 @@ from core.logging_config import get_logger
 from db.database import SessionLocal
 from db.session import get_db
 from models.document import Document, DocumentStatus
-from tasks.embedding_tasks import process_document_embedding
 from models.task_tracker import TaskStage, TaskStatus, TaskType
 from models.user import User
 from routers.deps import get_current_user
@@ -266,19 +265,7 @@ def confirm_document_summary(
         document_id=document.id,
         task_type=TaskType.SUMMARY,
         stage=TaskStage.SUMMARY_PENDING,
-        message="요약/임베딩 작업 대기 중입니다.",
-    )
-
-    embedding_result = process_document_embedding.delay(
-        str(document.id),
-        str(task.id),
-        str(document.selected_embedding_model),
-    )
-
-    attach_celery_task_id(
-        db=db,
-        task_id=task.id,
-        celery_task_id=embedding_result.id,
+        message="요약 작업 대기 중입니다.",
     )
 
     async_result = process_document_summary.delay(
@@ -296,7 +283,7 @@ def confirm_document_summary(
         document_id=document.id,
         task_id=task.id,
         status=task.status,
-        message="요약/임베딩 작업을 시작했습니다.",
+        message="요약 작업을 시작했습니다.",
     )
 
 

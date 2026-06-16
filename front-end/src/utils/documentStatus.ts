@@ -84,6 +84,7 @@ export function normalizeTaskStage(stage?: TaskStage | string | null): TaskStage
       return "SUMMARY";
     case "CHUNKING_PROCESSING":
     case "CHUNKING_COMPLETED":
+    case "EMBEDDING_PENDING":
     case "EMBEDDING_PROCESSING":
     case "EMBEDDING_COMPLETED":
     case "EMBEDDING":
