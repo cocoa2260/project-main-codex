@@ -29,6 +29,16 @@ interface DashboardPageProps {
   onLogout?: () => void;
 }
 
+function formatBytes(bytes?: number | null) {
+  if (!bytes) return '-';
+
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / 1024 ** index;
+
+  return `${value.toFixed(value >= 10 || index === 0 ? 0 : 1)} ${units[index]}`;
+}
+
 export function DashboardPage({ onLogout }: DashboardPageProps) {
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -53,6 +63,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     status: doc.status,
     progress: getDocumentProgress(doc.status),
     pages: doc.page_count ?? 0,
+    size: formatBytes(doc.file_size),
     summary: doc.summary,
   }));
 
@@ -213,7 +224,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
                 <div className="relative group">
                   <div className="absolute -inset-0.5 bg-gradient-to-r from-primary to-blue-500 rounded-xl opacity-0 group-hover:opacity-30 blur transition-opacity" />
                   <div 
-                    onClick={() => navigate('/documents')}
+                    onClick={() => navigate('/documents/upload')}
                     className="relative bg-[#15151c] border-2 border-dashed border-white/10 rounded-xl p-6 hover:border-primary/50 transition-all cursor-pointer"
                   >
                     <div className="flex flex-col items-center justify-center text-center">
@@ -267,7 +278,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
                       return (
                         <div
                           key={doc.id}
-                          className="p-4 bg-white/5 hover:bg-white/10 rounded-lg border border-white/10 hover:border-white/10 transition-all group cursor-pointer"
+                          className="p-4 bg-white/5 rounded-lg border border-white/10 transition-all group"
                         >
                           <div className="flex items-start gap-3">
                             <div className="p-2 bg-primary/10 rounded-lg flex-shrink-0">
@@ -279,7 +290,9 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
                                 <h4 className="text-white font-medium text-sm truncate">{doc.name}</h4>
                                 <button
                                   type="button"
-                                  className="opacity-0 group-hover:opacity-100 transition-opacity"
+                                  onClick={() => navigate(`/documents/${doc.id}`)}
+                                  className="opacity-0 group-hover:opacity-100 rounded p-1 transition-all hover:bg-white/10"
+                                  title="문서 상세"
                                 >
                                   <MoreVertical className="w-4 h-4 text-zinc-300" />
                                 </button>
@@ -287,7 +300,8 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
 
                               <div className="flex items-center gap-3 text-xs text-zinc-300 mb-3">
                                 <span>{doc.uploadDate}</span>
-                                {doc.pages && <span>• {doc.pages} 페이지</span>}
+                                <span>{doc.size}</span>
+                                {doc.pages > 0 && <span>{doc.pages} 페이지</span>}
                               </div>
 
                               {/* Status */}
@@ -316,6 +330,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
                                 <div className="flex items-center gap-2 mt-3 pt-3 border-t border-white/10">
                                   <button
                                     type="button"
+                                    onClick={() => navigate(`/documents/${doc.id}/chat`)}
                                     className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg transition-colors text-xs text-zinc-200"
                                   >
                                     <MessageSquare className="w-3.5 h-3.5" />
@@ -323,10 +338,20 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
                                   </button>
                                   <button
                                     type="button"
-                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg transition-colors text-xs text-zinc-200"
+                                    disabled
+                                    title="사용자 원본 다운로드 API 준비 중"
+                                    className="flex cursor-not-allowed items-center gap-1.5 rounded-lg bg-white/5 px-3 py-1.5 text-xs text-zinc-400 opacity-70"
                                   >
                                     <Download className="w-3.5 h-3.5" />
-                                    다운로드
+                                    다운로드 준비 중
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => navigate(`/documents/${doc.id}/summary`)}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg transition-colors text-xs text-zinc-200"
+                                  >
+                                    <Sparkles className="w-3.5 h-3.5" />
+                                    요약
                                   </button>
                                 </div>
                               )}

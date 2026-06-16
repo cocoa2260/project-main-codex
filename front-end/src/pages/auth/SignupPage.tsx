@@ -10,11 +10,9 @@ import {
   Sparkles,
   Upload,
   Brain,
-  Zap,
   Eye,
   MessageSquare,
   CheckCircle2,
-  Circle,
   Github
 } from 'lucide-react';
 

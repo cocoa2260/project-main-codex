@@ -52,11 +52,14 @@ export function useDocumentStatus(documentId?: string): UseDocumentStatusResult 
   const [isLoading, setIsLoading] = useState(Boolean(documentId));
   const [error, setError] = useState<string | null>(null);
   const lastMessageRef = useRef<string>('');
+  const statusStatusRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    statusStatusRef.current = status?.status ?? null;
+  }, [status?.status]);
 
   useEffect(() => {
     if (!documentId) {
-      setError('문서 ID가 없습니다.');
-      setIsLoading(false);
       return;
     }
 
@@ -100,7 +103,7 @@ export function useDocumentStatus(documentId?: string): UseDocumentStatusResult 
           if (FINAL_STATUSES.has(nextStatus.status.toUpperCase())) {
             if (pollingTimer) window.clearInterval(pollingTimer);
           }
-        } catch (pollingError) {
+        } catch {
           if (!isMounted) return;
           setError('문서 상태를 조회하지 못했습니다.');
           setIsLoading(false);
@@ -138,7 +141,7 @@ export function useDocumentStatus(documentId?: string): UseDocumentStatusResult 
         if (!isMounted) return;
         setIsConnected(false);
 
-        const currentStatus = status?.status?.toUpperCase();
+        const currentStatus = statusStatusRef.current?.toUpperCase();
         if (!currentStatus || !FINAL_STATUSES.has(currentStatus)) {
           startPolling();
         }
@@ -162,8 +165,8 @@ export function useDocumentStatus(documentId?: string): UseDocumentStatusResult 
     status,
     activityLog,
     isConnected,
-    isLoading,
-    error,
+    isLoading: documentId ? isLoading : false,
+    error: documentId ? error : '문서 ID가 없습니다.',
     progress,
     normalizedStatus,
     currentStageLabel,

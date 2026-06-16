@@ -45,10 +45,10 @@ export function DocumentReviewPage() {
   const navigate = useNavigate();
   const { documentId } = useParams();
   const [reviewData, setReviewData] = useState<DocumentMarkdownResponse | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(Boolean(documentId));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(documentId ? null : '문서 ID가 없습니다.');
 
   const markdown = reviewData?.markdown ?? '';
   const markdownStats = useMemo(() => {
@@ -63,8 +63,6 @@ export function DocumentReviewPage() {
 
   useEffect(() => {
     if (!documentId) {
-      setError('문서 ID가 없습니다.');
-      setIsLoading(false);
       return;
     }
 

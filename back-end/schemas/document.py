@@ -71,6 +71,7 @@ class DocumentChatResponse(BaseModel):
 class DocumentResponse(BaseModel):
     id: UUID
     file_name: str
+    file_size: int
     status: str
     category: str | None = None
     summary: str | None = None

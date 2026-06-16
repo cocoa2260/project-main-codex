@@ -7,12 +7,15 @@ import {
   Calendar,
   CheckCircle2,
   ClipboardCheck,
+  Download,
   FileText,
   FileType,
   Layers,
   Loader2,
   MessageSquare,
+  RefreshCw,
   Sparkles,
+  Trash2,
 } from 'lucide-react';
 
 import { getDocumentSummary } from '../../api/document';
@@ -215,6 +218,33 @@ export function DocumentDetailPage() {
                   >
                     <ClipboardCheck className="h-4 w-4" />
                     OCR 검토
+                  </button>
+                  <button
+                    type="button"
+                    disabled
+                    title="사용자 원본 다운로드 API 준비 중"
+                    className="flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-zinc-400 opacity-70"
+                  >
+                    <Download className="h-4 w-4" />
+                    원본 다운로드 준비 중
+                  </button>
+                  <button
+                    type="button"
+                    disabled
+                    title="사용자 재처리 API 준비 중"
+                    className="flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-zinc-400 opacity-70"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    재처리 준비 중
+                  </button>
+                  <button
+                    type="button"
+                    disabled
+                    title="사용자 문서 삭제 API 준비 중"
+                    className="flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm font-medium text-red-300 opacity-70"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    삭제 준비 중
                   </button>
                 </aside>
               </section>

@@ -140,14 +140,12 @@ export function DocumentSummaryPage({ onBack, onLogout }: DocumentSummaryPagePro
   const navigate = useNavigate();
   const { documentId } = useParams();
   const [summaryData, setSummaryData] = useState<DocumentSummaryResponse | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(Boolean(documentId));
+  const [error, setError] = useState<string | null>(documentId ? null : '문서 ID가 없습니다.');
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (!documentId) {
-      setError('문서 ID가 없습니다.');
-      setIsLoading(false);
       return;
     }
 

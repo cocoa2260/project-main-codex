@@ -64,6 +64,7 @@
 | FE-010 | Workspace API Integration | High | DONE |
 | FE-USER-001 | User Feature Gap Implementation | High | DONE |
 | USER-CHAT-001 | User Chat API and UI Integration | High | DONE |
+| FE-USER-002 | User Document Actions Finalization | High | DONE |
 
 ---
 
@@ -271,6 +272,19 @@ Status: DONE
 - Connected DocumentChatPage question input, suggested questions, loading, error, answer, and citation rendering
 - Connected DocumentWorkspacePage question input, loading, error, answer, and citation rendering
 - No admin feature changes, DB schema changes, or migration
+
+Priority: High
+Status: DONE
+
+### FE-USER-002 User Document Actions Finalization
+
+- Audited User document actions across DocumentListPage, DocumentDetailPage, DocumentStatusPage, DocumentWorkspacePage, and Dashboard recent activity
+- Connected available actions to real routes/API-backed views: detail, status, review, summary, workspace, and chat
+- Kept unsupported User original download, delete, retry/reprocess, and processing cancel actions disabled/prepared because no User API exists yet
+- Removed misleading Dashboard recent document download behavior and replaced it with disabled/prepared state
+- Exposed document file_size in the user document list response and rendered real file sizes in DocumentListPage and Dashboard recent documents
+- Patched USER-CHAT-001 dark-theme readability issue by explicitly setting bright text on AI chat answer bubbles and reviewing citation/input/workspace/settings/detail/dashboard surfaces
+- Preserved existing dark design system colors and avoided mock state-changing behavior
 
 Priority: High
 Status: DONE

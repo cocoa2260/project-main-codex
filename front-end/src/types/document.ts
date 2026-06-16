@@ -67,6 +67,7 @@ export interface DocumentList {
 export interface DocumentItem {
   id: string;
   file_name: string;
+  file_size: number;
   status: DocumentStatus;
   category: string | null;
   summary?: string | null;
