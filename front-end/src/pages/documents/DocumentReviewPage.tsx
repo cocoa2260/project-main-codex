@@ -60,6 +60,7 @@ export function DocumentReviewPage() {
   }, [markdown]);
   const normalizedStatus = reviewData ? normalizeDocumentStatus(reviewData.status) : null;
   const isReviewRequired = normalizedStatus === 'REVIEW_REQUIRED';
+  const canSubmitReview = isReviewRequired && Boolean(markdown);
 
   useEffect(() => {
     if (!documentId) {
@@ -83,7 +84,7 @@ export function DocumentReviewPage() {
   }, [documentId]);
 
   const handleConfirmSummary = async () => {
-    if (!documentId || isSubmitting) return;
+    if (!documentId || isSubmitting || !canSubmitReview) return;
 
     try {
       setIsSubmitting(true);
@@ -98,7 +99,7 @@ export function DocumentReviewPage() {
   };
 
   const handleCancelSummary = async () => {
-    if (!documentId || isSubmitting) return;
+    if (!documentId || isSubmitting || !isReviewRequired) return;
 
     try {
       setIsSubmitting(true);
@@ -255,7 +256,8 @@ export function DocumentReviewPage() {
               <button
                 type="button"
                 onClick={handleConfirmSummary}
-                disabled={isSubmitting || !markdown}
+                disabled={isSubmitting || !canSubmitReview}
+                title={isReviewRequired ? undefined : '검토 대기 상태에서만 요약을 진행할 수 있습니다.'}
                 className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-primary to-blue-500 text-white rounded-xl hover:opacity-90 disabled:opacity-50 transition-opacity font-medium"
               >
                 {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
@@ -265,7 +267,8 @@ export function DocumentReviewPage() {
               <button
                 type="button"
                 onClick={handleCancelSummary}
-                disabled={isSubmitting}
+                disabled={isSubmitting || !isReviewRequired}
+                title={isReviewRequired ? undefined : '검토 대기 상태에서만 요약을 보류할 수 있습니다.'}
                 className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 bg-white/5 border border-white/10 text-white rounded-xl hover:bg-white/10 disabled:opacity-50 transition-colors font-medium"
               >
                 <MessageSquare className="w-4 h-4" />

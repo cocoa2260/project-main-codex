@@ -7,6 +7,7 @@ import aiofiles
 from fastapi import UploadFile
 from sqlalchemy.orm import Session
 
+from ai.embeddings.embedding_factory import resolve_embedding_model
 from core.config import settings
 from models.document import Document, DocumentStatus
 from models.task_tracker import TaskStage, TaskTracker, TaskStatus, TaskType
@@ -65,7 +66,9 @@ async def create_document_from_upload(
     - OCR 완료 후에는 곧바로 Summary/Embedding으로 가지 않고 REVIEW_REQUIRED 상태가 된다.
     """
     storage_path, file_size = await save_upload_file(file)
-    selected_embedding_model = embedding_model or settings.EMBEDDING_MODEL
+    selected_embedding_model = resolve_embedding_model(
+        embedding_model or settings.EMBEDDING_MODEL
+    )
 
     document = Document(
         user_id=user_id,

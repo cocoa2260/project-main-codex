@@ -704,3 +704,16 @@ Status: DONE
 
 Priority: High
 Status: DONE
+
+### QA-004 Minor Release Polish
+
+- DocumentReviewPage에서 REVIEW_REQUIRED가 아닌 문서의 요약 계속 진행 / 요약 보류 버튼 비활성화
+- REVIEW_REQUIRED가 아닌 상태에서 confirm-summary / cancel-summary click handler 실행 방지
+- 검토 대기 상태에서만 가능한 작업이라는 기존 안내 유지
+- Embedding default model을 backend registry 기준 available model 안의 유효한 값으로 정규화
+- Upload 저장 metadata가 registry 밖 모델명으로 남지 않도록 selected_embedding_model 정규화
+- Migration 없음
+- Chat / RAG / Admin 신규 기능 / Pipeline 구조 변경 없음
+
+Priority: Medium
+Status: DONE

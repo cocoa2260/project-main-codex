@@ -936,3 +936,31 @@ Scope notes:
 - Embedding unchanged.
 - Pipeline unchanged.
 - Admin permission policy unchanged; only USER sidebar menu visibility changed.
+
+## 2026-06-17 QA-004 Minor Release Polish
+
+Branch: feature/qa-004-minor-release-polish
+
+Implemented:
+
+- Disabled DocumentReviewPage summary confirmation and hold actions unless the document is in REVIEW_REQUIRED.
+- Added handler guards so non-REVIEW_REQUIRED documents cannot call confirm-summary or cancel-summary from the review page.
+- Preserved the existing non-review-required warning guidance.
+- Added a backend embedding model resolver that falls back to the first registered embedding model when the configured/default model is not available.
+- Updated the embedding model options API to return a default_model that is included in the available models list.
+- Updated upload document creation to store the resolved embedding model so document metadata stays aligned with available models.
+
+Verification:
+
+- `npm run lint` in `front-end` passed.
+- `npm run build` in `front-end` passed.
+- Backend compile passed.
+- `/openapi.json` returned 200.
+- Upload page/API default model check confirmed `default_model` is included in the available model list.
+
+Scope notes:
+
+- No migration.
+- No Chat/RAG changes.
+- No Admin feature changes.
+- No Pipeline structure changes.
