@@ -66,6 +66,7 @@
 | USER-CHAT-001 | User Chat API and UI Integration | High | DONE |
 | FE-USER-002 | User Document Actions Finalization | High | DONE |
 | FE-USER-003 | User Settings Finalization | High | DONE |
+| BE-USER-004 | User Settings APIs | High | DONE |
 
 ---
 
@@ -559,6 +560,24 @@ Status: DONE
 - mock 저장 성공 메시지 추가 없음
 - 다크 테마 설정/사이드바 표면에서 black/near-black 텍스트 hardcoding 재확인
 - Admin / Chat / RAG / QA / Backend 변경 없음
+
+Priority: High
+Status: DONE
+
+### BE-USER-004 User Settings APIs
+
+- `/api/auth/me` 현재 사용자 응답에 status 포함
+- 사용자 본인 프로필 이름 수정 API 추가
+- PATCH /api/users/me/profile
+- 사용자 본인 비밀번호 변경 API 추가
+- PATCH /api/users/me/password
+- 현재 비밀번호 확인 및 새 비밀번호 최소 길이 검증 적용
+- 새 비밀번호는 hash 저장하며 요청/응답/로그에 비밀번호 원문 미노출
+- UserSettingsPage 프로필 이름 저장 및 비밀번호 변경 form을 실제 API에 연결
+- 프로필 저장 성공 시 localStorage auth_user 갱신
+- 알림 / 테마 / 언어 preference 저장은 DB 구조 부재로 disabled/prepared 유지
+- Admin / Chat / RAG / QA 기능 변경 없음
+- DB model 변경 및 migration 없음
 
 Priority: High
 Status: DONE

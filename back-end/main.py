@@ -7,6 +7,7 @@ from routers import auth
 from routers import documents
 from routers import common_codes
 from routers import admin
+from routers import users
 
 
 setup_logging()
@@ -48,4 +49,9 @@ app.include_router(
     admin.router,
     prefix="/api/admin",
     tags=["admin"],
+)
+app.include_router(
+    users.router,
+    prefix="/api/users",
+    tags=["users"],
 )

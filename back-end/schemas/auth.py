@@ -20,6 +20,7 @@ class UserResponse(BaseModel):
     email:EmailStr
     name:Optional[str]=None
     role:str
+    status:str
 
 
 class TokenResponse(BaseModel):
