@@ -18,6 +18,7 @@ interface BackendUser {
   username?: string;
   name?: string;
   role?: string;
+  status?: string;
 }
 
 interface AuthResponse {
@@ -42,6 +43,7 @@ function normalizeUser(response: AuthResponse, fallbackEmail: string): AuthUser 
     email: backendUser?.email ?? response.email ?? fallbackEmail,
     name: backendUser?.name ?? backendUser?.username ?? response.name,
     role: normalizeRole(backendUser?.role ?? response.role),
+    status: backendUser?.status,
   };
 }
 
@@ -79,6 +81,7 @@ export async function fetchMe() {
     email: data.email ?? '',
     name: data.name ?? data.username,
     role: normalizeRole(data.role),
+    status: data.status,
   };
 
   saveAuthUser(user);

@@ -1,10 +1,12 @@
 export type UserRole = 'USER' | 'ADMIN';
+export type AuthUserStatus = 'ACTIVE' | 'SUSPENDED' | 'INACTIVE' | string;
 
 export interface AuthUser {
   id?: string;
   email: string;
   name?: string;
   role: UserRole;
+  status?: AuthUserStatus;
 }
 
 const ACCESS_TOKEN_KEY = 'access_token';
