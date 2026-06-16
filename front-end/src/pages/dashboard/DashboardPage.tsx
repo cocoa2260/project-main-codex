@@ -3,33 +3,24 @@ import { useNavigate } from 'react-router-dom';
 import { Sidebar } from '../../components/common/Sidebar';
 import { StatusBadge } from '@/components/common/StatusBadge';
 import {
-  Home,
   FileText,
   Upload,
   MessageSquare,
-  Clock,
-  Settings,
-  Shield,
   Menu,
   X,
   Search,
   Bell,
-  User,
   ChevronRight,
   TrendingUp,
   CheckCircle2,
-  AlertCircle,
   Loader2,
   Download,
   MoreVertical,
   Sparkles,
   Brain,
   Zap,
-  BarChart3,
-  ClipboardCheck,
-  FileCheck2
 } from 'lucide-react';
-import type { Document, DocumentItem } from '@/types/document';
+import type { DocumentItem } from '@/types/document';
 import { getDocuments } from '@/api/document';
 import { getDocumentProgress } from '@/utils/documentStatus'
 import { formatDateTime } from '@/utils/date'
@@ -43,13 +34,6 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [documents,setDocuments] = useState<DocumentItem[]>([])
 
-  const menuItems = [
-    { id: 'dashboard', label: '대시보드', icon: Home },
-    { id: 'documents', label: '문서 관리', icon: FileText },
-    { id: 'settings', label: '설정', icon: Settings },
-    { id: 'admin', label: '관리자', icon: Shield, badge: 'Pro' }
-  ];
-
   useEffect(() => {
     const loadDocuments = async () => {
       try {
@@ -61,18 +45,6 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     }
     loadDocuments();
   }, []);
-
-  const userMenuRoutes: Record<string, string> = {
-    dashboard: '/dashboard',
-    documents: '/documents',
-    settings: '/dashboard',
-    admin: '/admin',
-  };
-
-  const handleMenuClick = (menuId: string) => {
-    const route = userMenuRoutes[menuId];
-    if (route) navigate(route);
-  };
 
   const recentDocuments = documents.slice(0, 5).map((doc) => ({
     id: doc.id,
@@ -90,7 +62,6 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
   const processingCount = documents.filter((doc) => doc.status === 'PROCESSING').length;
   const reviewRequiredCount = documents.filter((doc) => doc.status === 'REVIEW_REQUIRED').length;
   const completedCount = documents.filter((doc) => doc.status === 'COMPLETED').length;
-  const failedCount = documents.filter((doc) => doc.status === 'FAILED').length;
   const getRatio = (count: number) => {
   if (totalCount === 0) return 0;
   return Math.round((count / totalCount) * 100);
@@ -430,37 +401,24 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
                 <div className="bg-[#15151c] border border-white/10 rounded-xl p-5">
                   <h3 className="text-white font-semibold text-lg mb-4">최근 활동</h3>
                   <div className="space-y-4">
-                    <div className="flex gap-3">
-                      <div className="w-1.5 bg-primary rounded-full flex-shrink-0" />
-                      <div className="flex-1">
-                        <p className="text-white text-sm mb-1">프로젝트_제안서_2024.pdf 처리 완료</p>
-                        <p className="text-zinc-400 text-xs">2분 전</p>
-                      </div>
-                    </div>
-
-                    <div className="flex gap-3">
-                      <div className="w-1.5 bg-blue-500 rounded-full flex-shrink-0" />
-                      <div className="flex-1">
-                        <p className="text-white text-sm mb-1">계약서_검토본.pdf AI 요약 시작</p>
-                        <p className="text-zinc-400 text-xs">15분 전</p>
-                      </div>
-                    </div>
-
-                    <div className="flex gap-3">
-                      <div className="w-1.5 bg-green-500 rounded-full flex-shrink-0" />
-                      <div className="flex-1">
-                        <p className="text-white text-sm mb-1">회의록_0515.pdf 업로드 완료</p>
-                        <p className="text-zinc-400 text-xs">1시간 전</p>
-                      </div>
-                    </div>
-
-                    <div className="flex gap-3">
-                      <div className="w-1.5 bg-purple-500 rounded-full flex-shrink-0" />
-                      <div className="flex-1">
-                        <p className="text-white text-sm mb-1">AI 채팅으로 3개 질문 완료</p>
-                        <p className="text-zinc-400 text-xs">2시간 전</p>
-                      </div>
-                    </div>
+                    {recentDocuments.length === 0 ? (
+                      <p className="rounded-lg bg-white/5 p-4 text-sm text-zinc-400">최근 문서 활동이 없습니다.</p>
+                    ) : (
+                      recentDocuments.slice(0, 4).map((doc) => (
+                        <button
+                          key={doc.id}
+                          type="button"
+                          onClick={() => navigate(`/documents/${doc.id}/status`)}
+                          className="flex w-full gap-3 rounded-lg text-left transition-colors hover:bg-white/5"
+                        >
+                          <div className="w-1.5 bg-primary rounded-full flex-shrink-0" />
+                          <div className="flex-1 py-1 pr-2">
+                            <p className="text-white text-sm mb-1 line-clamp-1">{doc.name}</p>
+                            <p className="text-zinc-400 text-xs">{doc.status} · {doc.uploadDate}</p>
+                          </div>
+                        </button>
+                      ))
+                    )}
                   </div>
                 </div>
               </div>

@@ -32,7 +32,7 @@ interface SidebarProps {
 const userMenuItems: SidebarMenuItem[] = [
   { id: 'dashboard', label: '대시보드', icon: Home, path: '/dashboard' },
   { id: 'documents', label: '문서 관리', icon: FileText, path: '/documents' },
-  { id: 'settings', label: '설정', icon: Settings, path: '/dashboard' },
+  { id: 'settings', label: '설정', icon: Settings, path: '/settings' },
   { id: 'admin', label: '관리자', icon: Shield, path: '/admin', badge: 'Pro' },
 ];
 
@@ -53,6 +53,7 @@ function isActivePath(pathname: string, item: SidebarMenuItem, variant: 'user' |
 
   if (item.path === '/dashboard') return pathname === '/dashboard';
   if (item.path === '/documents') return pathname.startsWith('/documents');
+  if (item.path === '/settings') return pathname.startsWith('/settings');
   return pathname === item.path;
 }
 
@@ -73,6 +74,7 @@ export function Sidebar({
       onLogout();
       return;
     }
+
     navigate('/login');
   };
 
@@ -166,6 +168,14 @@ export function Sidebar({
               <p className="text-zinc-400 text-xs">{isAdmin ? 'admin@example.com' : userEmail}</p>
             </div>
           )}
+        </button>
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="mt-2 w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-zinc-300 hover:bg-white/5 hover:text-white transition-colors"
+        >
+          <LogOut className={`w-4 h-4 shrink-0 ${sidebarOpen ? '' : 'mx-auto'}`} />
+          {sidebarOpen && <span className="text-sm font-medium">로그아웃</span>}
         </button>
       </div>
     </aside>

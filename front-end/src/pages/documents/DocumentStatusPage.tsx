@@ -1,16 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  Home,
   FileText,
   MessageSquare,
   Clock,
-  Settings,
-  Shield,
   Menu,
   X,
   Bell,
-  User,
   ChevronLeft,
   CheckCircle2,
   Loader2,
@@ -18,14 +14,12 @@ import {
   XCircle,
   Eye,
   Download,
-  Database,
   Zap,
   Calendar,
   FileType,
   Layers,
   Activity,
   TrendingUp,
-  PlayCircle,
   PauseCircle
 } from 'lucide-react';
 import { useDocumentStatus } from '../../hooks/useDocumentStatus';
@@ -77,25 +71,6 @@ export function DocumentStatusPage({ onBack, onLogout, onOpenSummary, onOpenChat
     uploadDate: '처리 상태 조회 중',
     size: '-',
     pages: '-',
-  };
-
-  const menuItems = [
-    { id: 'dashboard', label: '대시보드', icon: Home },
-    { id: 'documents', label: '문서 관리', icon: FileText },
-    { id: 'settings', label: '설정', icon: Settings },
-    { id: 'admin', label: '관리자', icon: Shield, badge: 'Pro' },
-  ];
-
-  const userMenuRoutes: Record<string, string> = {
-    dashboard: '/dashboard',
-    documents: '/documents',
-    settings: '/dashboard',
-    admin: '/admin',
-  };
-
-  const handleMenuClick = (menuId: string) => {
-    const route = userMenuRoutes[menuId];
-    if (route) navigate(route);
   };
 
   const getActivityIcon = (type: ActivityLog['type']) => {
@@ -301,16 +276,19 @@ export function DocumentStatusPage({ onBack, onLogout, onOpenSummary, onOpenChat
                     <>
                       <button
                         type="button"
+                        onClick={onBack}
                         className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-white/5 border border-white/10 text-white rounded-lg hover:bg-white/10 transition-colors"
                       >
                         <PauseCircle className="w-4 h-4" />
-                        <span className="font-medium">백그라운드로 전환</span>
+                        <span className="font-medium">문서 목록으로 이동</span>
                       </button>
                       <button
                         type="button"
-                        className="px-6 py-3 bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg hover:bg-red-500/20 transition-colors font-medium"
+                        disabled
+                        title="사용자 작업 취소 API 준비 중"
+                        className="px-6 py-3 bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg transition-colors font-medium opacity-50 cursor-not-allowed"
                       >
-                        취소
+                        취소 준비 중
                       </button>
                     </>
                   ) : isCompleted ? (
@@ -333,7 +311,9 @@ export function DocumentStatusPage({ onBack, onLogout, onOpenSummary, onOpenChat
                       </button>
                       <button
                         type="button"
-                        className="px-6 py-3 bg-white/5 border border-white/10 text-white rounded-lg hover:bg-white/10 transition-colors"
+                        disabled
+                        title="사용자 원본 다운로드 API 준비 중"
+                        className="px-6 py-3 bg-white/5 border border-white/10 text-white rounded-lg transition-colors opacity-40 cursor-not-allowed"
                       >
                         <Download className="w-5 h-5" />
                       </button>
@@ -358,25 +338,20 @@ export function DocumentStatusPage({ onBack, onLogout, onOpenSummary, onOpenChat
                       <span className="text-white font-medium text-sm">{currentStageLabel}</span>
                     </div>
                     <div className="flex items-center justify-between py-2 border-b border-white/10">
-                      <span className="text-zinc-300 text-sm">처리 속도</span>
-                      <span className="text-white font-medium text-sm">1.2 페이지/초</span>
+                      <span className="text-zinc-300 text-sm">연결 상태</span>
+                      <span className="text-white font-medium text-sm">{isConnected ? '실시간 연결' : '폴링 조회'}</span>
                     </div>
                     <div className="flex items-center justify-between py-2 border-b border-white/10">
-                      <span className="text-zinc-300 text-sm">추출된 페이지</span>
+                      <span className="text-zinc-300 text-sm">진행률</span>
                       <span className="text-white font-medium text-sm">{progress}%</span>
                     </div>
                     <div className="flex items-center justify-between py-2 border-b border-white/10">
-                      <span className="text-zinc-300 text-sm">OCR 정확도</span>
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 w-20 bg-white/5 rounded-full h-1.5">
-                          <div className="bg-green-400 h-1.5 rounded-full" style={{ width: '97%' }} />
-                        </div>
-                        <span className="text-green-400 font-medium text-sm">97%</span>
-                      </div>
+                      <span className="text-zinc-300 text-sm">현재 상태</span>
+                      <span className="text-white font-medium text-sm">{normalizedStatus}</span>
                     </div>
                     <div className="flex items-center justify-between py-2">
-                      <span className="text-zinc-300 text-sm">작업 큐</span>
-                      <span className="text-white font-medium text-sm">2개 대기 중</span>
+                      <span className="text-zinc-300 text-sm">작업 ID</span>
+                      <span className="text-white font-medium text-sm">{status?.task_id?.slice(0, 8) ?? '-'}</span>
                     </div>
                   </div>
                 </div>
@@ -414,28 +389,28 @@ export function DocumentStatusPage({ onBack, onLogout, onOpenSummary, onOpenChat
                   <div className="space-y-3">
                     <div>
                       <div className="flex justify-between mb-2">
-                        <span className="text-zinc-300 text-sm">Worker 사용률</span>
-                        <span className="text-white text-sm">3 / 5</span>
+                        <span className="text-zinc-300 text-sm">상태 조회</span>
+                        <span className="text-white text-sm">{isConnected ? 'WebSocket' : 'HTTP Polling'}</span>
                       </div>
                       <div className="w-full bg-white/5 rounded-full h-2">
-                        <div className="bg-blue-500 h-2 rounded-full" style={{ width: '60%' }} />
+                        <div className="bg-blue-500 h-2 rounded-full" style={{ width: isConnected ? '100%' : '60%' }} />
                       </div>
                     </div>
 
                     <div>
                       <div className="flex justify-between mb-2">
-                        <span className="text-zinc-300 text-sm">처리 큐</span>
-                        <span className="text-white text-sm">2 대기</span>
+                        <span className="text-zinc-300 text-sm">작업 제어</span>
+                        <span className="text-white text-sm">API 준비 중</span>
                       </div>
                       <div className="w-full bg-white/5 rounded-full h-2">
-                        <div className="bg-green-500 h-2 rounded-full" style={{ width: '40%' }} />
+                        <div className="bg-zinc-500 h-2 rounded-full" style={{ width: '35%' }} />
                       </div>
                     </div>
 
                     <div className="pt-3 border-t border-white/10">
                       <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-                        <span className="text-green-400 text-sm">모든 시스템 정상</span>
+                        <div className="w-2 h-2 bg-amber-400 rounded-full animate-pulse" />
+                        <span className="text-amber-300 text-sm">시스템 상세 상태는 Admin API에서 제공됩니다.</span>
                       </div>
                     </div>
                   </div>
