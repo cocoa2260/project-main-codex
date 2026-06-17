@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   AlertCircle,
@@ -15,9 +15,16 @@ import {
   RefreshCw,
   Sparkles,
   Trash2,
+  XCircle,
 } from 'lucide-react';
 
-import { deleteUserDocument, downloadDocumentOriginal, getDocumentSummary } from '../../api/document';
+import {
+  cancelDocument,
+  deleteUserDocument,
+  downloadDocumentOriginal,
+  getDocumentSummary,
+  reprocessDocument,
+} from '../../api/document';
 import { PageTopNav } from '../../components/common/PageTopNav';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import type { DocumentSummaryResponse } from '../../types/document';
@@ -57,6 +64,14 @@ function getErrorMessage(error: unknown) {
   return '문서 상세 정보를 불러오지 못했습니다.';
 }
 
+function canReprocessDocument(status: string) {
+  return status === 'REVIEW_REQUIRED' || status === 'COMPLETED' || status === 'FAILED';
+}
+
+function canCancelDocument(status: string) {
+  return status === 'PROCESSING';
+}
+
 export function DocumentDetailPage() {
   const navigate = useNavigate();
   const { documentId } = useParams();
@@ -67,7 +82,26 @@ export function DocumentDetailPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isReprocessing, setIsReprocessing] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isReprocessModalOpen, setIsReprocessModalOpen] = useState(false);
+  const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
+
+  const loadDocument = useCallback(async () => {
+    if (!documentId) return;
+
+    try {
+      setIsLoading(true);
+      setError(null);
+      const data = await getDocumentSummary(documentId);
+      setDocumentData(data);
+    } catch (loadError) {
+      setError(getErrorMessage(loadError));
+    } finally {
+      setIsLoading(false);
+    }
+  }, [documentId]);
 
   useEffect(() => {
     if (!documentId) {
@@ -100,6 +134,8 @@ export function DocumentDetailPage() {
   const canOpenCompletedViews = normalizedStatus === 'COMPLETED';
   const canOpenReview = normalizedStatus === 'REVIEW_REQUIRED';
   const canDelete = normalizedStatus === 'REVIEW_REQUIRED' || normalizedStatus === 'COMPLETED' || normalizedStatus === 'FAILED';
+  const canReprocess = canReprocessDocument(normalizedStatus);
+  const canCancel = canCancelDocument(normalizedStatus);
   const summaryPreview = useMemo(() => {
     const summary = documentData?.summary?.trim();
     if (!summary) return '저장된 요약이 없습니다. 처리 상태를 확인하거나 OCR 검토를 진행해주세요.';
@@ -139,6 +175,44 @@ export function DocumentDetailPage() {
       setIsDeleteModalOpen(false);
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleReprocess = async () => {
+    if (!documentId) return;
+
+    try {
+      setActionError(null);
+      setActionMessage(null);
+      setIsReprocessing(true);
+      const response = await reprocessDocument(documentId);
+      setActionMessage(response.message || '문서 재처리를 시작했습니다.');
+      setIsReprocessModalOpen(false);
+      await loadDocument();
+    } catch (reprocessError) {
+      setActionError(getErrorMessage(reprocessError));
+      setIsReprocessModalOpen(false);
+    } finally {
+      setIsReprocessing(false);
+    }
+  };
+
+  const handleCancelProcessing = async () => {
+    if (!documentId) return;
+
+    try {
+      setActionError(null);
+      setActionMessage(null);
+      setIsCancelling(true);
+      const response = await cancelDocument(documentId);
+      setActionMessage(response.message || '문서 처리를 취소했습니다.');
+      setIsCancelModalOpen(false);
+      await loadDocument();
+    } catch (cancelError) {
+      setActionError(getErrorMessage(cancelError));
+      setIsCancelModalOpen(false);
+    } finally {
+      setIsCancelling(false);
     }
   };
 
@@ -280,12 +354,23 @@ export function DocumentDetailPage() {
                   </button>
                   <button
                     type="button"
-                    disabled
-                    title="사용자 재처리 API 준비 중"
-                    className="flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-zinc-400 opacity-70"
+                    onClick={() => setIsReprocessModalOpen(true)}
+                    disabled={!canReprocess || isReprocessing}
+                    title={canReprocess ? '문서 재처리' : '처리 대기/진행 중인 문서는 재처리할 수 없습니다.'}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-yellow-500/20 bg-yellow-500/10 px-4 py-3 text-sm font-medium text-yellow-200 transition-colors hover:bg-yellow-500/20 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    <RefreshCw className="h-4 w-4" />
-                    재처리 준비 중
+                    {isReprocessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                    재처리
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsCancelModalOpen(true)}
+                    disabled={!canCancel || isCancelling}
+                    title={canCancel ? '처리 취소' : '처리 중인 문서만 취소할 수 있습니다.'}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm font-medium text-red-300 transition-colors hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isCancelling ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
+                    처리 취소
                   </button>
                   <button
                     type="button"
@@ -355,6 +440,83 @@ export function DocumentDetailPage() {
               >
                 {isDeleting && <Loader2 className="h-4 w-4 animate-spin" />}
                 삭제
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isReprocessModalOpen && documentData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="w-full max-w-md rounded-xl border border-white/10 bg-[#15151c] p-6 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-yellow-500/10">
+                <RefreshCw className="h-5 w-5 text-yellow-300" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-lg font-semibold text-white">문서 재처리 확인</h3>
+                <p className="mt-2 text-sm leading-6 text-zinc-300">
+                  <span className="font-medium text-white">{documentData.file_name}</span> 문서를 OCR 단계부터 다시 처리하시겠습니까?
+                  기존 요약/임베딩 결과는 재생성됩니다.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setIsReprocessModalOpen(false)}
+                disabled={isReprocessing}
+                className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-zinc-200 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleReprocess()}
+                disabled={isReprocessing}
+                className="inline-flex items-center gap-2 rounded-lg bg-yellow-500 px-4 py-2 text-sm font-semibold text-black transition-colors hover:bg-yellow-400 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isReprocessing && <Loader2 className="h-4 w-4 animate-spin" />}
+                재처리
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isCancelModalOpen && documentData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="w-full max-w-md rounded-xl border border-white/10 bg-[#15151c] p-6 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-500/10">
+                <XCircle className="h-5 w-5 text-red-300" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-lg font-semibold text-white">처리 취소 확인</h3>
+                <p className="mt-2 text-sm leading-6 text-zinc-300">
+                  <span className="font-medium text-white">{documentData.file_name}</span> 문서의 현재 처리를 취소하시겠습니까?
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setIsCancelModalOpen(false)}
+                disabled={isCancelling}
+                className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-zinc-200 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                닫기
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleCancelProcessing()}
+                disabled={isCancelling}
+                className="inline-flex items-center gap-2 rounded-lg bg-red-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-400 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isCancelling && <Loader2 className="h-4 w-4 animate-spin" />}
+                처리 취소
               </button>
             </div>
           </div>

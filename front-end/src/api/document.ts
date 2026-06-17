@@ -113,6 +113,16 @@ export async function deleteUserDocument(documentId: string): Promise<DocumentDe
   return response.data;
 }
 
+export async function reprocessDocument(documentId: string): Promise<DocumentActionResponse> {
+  const response = await apiClient.post<DocumentActionResponse>(`/api/documents/${documentId}/reprocess`);
+  return response.data;
+}
+
+export async function cancelDocument(documentId: string): Promise<DocumentActionResponse> {
+  const response = await apiClient.post<DocumentActionResponse>(`/api/documents/${documentId}/cancel`);
+  return response.data;
+}
+
 export async function uploadDocument(
   file: File,
   embeddingModel: string,

@@ -12,12 +12,14 @@ from ai.embeddings.embedding_factory import resolve_embedding_model
 from core.config import settings
 from models.document import Document, DocumentStatus
 from models.audit_log import AuditAction, AuditTargetType
+from models.document_page import DocumentPage
 from models.task_tracker import TaskStage, TaskTracker, TaskStatus, TaskType
 from models.document_chunk import DocumentChunk
 from models.document_embedding import DocumentEmbedding
 from models.user import User
 from schemas.document import DocumentDeleteResponse
 from services.audit_service import record_admin_action
+from services.audit_service import record_document_reprocess_requested
 
 from utils.text_chunk import split_text
 
@@ -29,6 +31,15 @@ DOCUMENT_DELETE_BLOCKED_STATUSES = {
     DocumentStatus.PENDING,
     DocumentStatus.PROCESSING,
 }
+DOCUMENT_REPROCESS_ALLOWED_STATUSES = {
+    DocumentStatus.FAILED,
+    DocumentStatus.COMPLETED,
+    DocumentStatus.REVIEW_REQUIRED,
+}
+DOCUMENT_REPROCESS_RETRY_STAGE = "OCR"
+DOCUMENT_CANCELLED_ERROR_MESSAGE = "사용자 요청으로 취소됨"
+DOCUMENT_REPROCESS_REGISTERED_MESSAGE = "문서 재처리 작업을 등록했습니다."
+DOCUMENT_CANCELLED_MESSAGE = "문서 처리를 취소했습니다."
 
 
 async def save_upload_file(file: UploadFile) -> tuple[str, int]:
@@ -147,6 +158,12 @@ class UserDocumentDownloadError(Exception):
         self.detail = detail
 
 
+class UserDocumentActionError(Exception):
+    def __init__(self, status_code: int, detail: str):
+        self.status_code = status_code
+        self.detail = detail
+
+
 class UserDocumentOriginalDownload:
     def __init__(
         self,
@@ -194,6 +211,70 @@ def _delete_storage_path_if_exists(path: Path) -> None:
         path.unlink()
     except FileNotFoundError:
         return
+
+
+def _document_artifact_cleanup_paths(storage_path: str | None) -> list[Path]:
+    if not storage_path:
+        return []
+
+    original_path = Path(storage_path)
+    candidates = [
+        original_path.with_suffix(f"{original_path.suffix}.ocr.json"),
+        original_path.with_suffix(".ocr.json"),
+        original_path.with_suffix(".ocr.md"),
+        original_path.with_suffix(".md"),
+        original_path.with_name(f"{original_path.name}.ocr"),
+        original_path.with_name(f"{original_path.stem}.ocr"),
+    ]
+
+    unique_paths: list[Path] = []
+    seen: set[str] = set()
+    for path in candidates:
+        path_key = str(path)
+        if path_key not in seen:
+            seen.add(path_key)
+            unique_paths.append(path)
+
+    return unique_paths
+
+
+def _clear_user_document_reprocess_artifacts(
+    db: Session,
+    document: Document,
+) -> list[str]:
+    cleared_artifacts = []
+
+    document.ocr_markdown = None
+    document.summary = None
+    document.keywords = None
+    document.process_at = None
+    cleared_artifacts.extend(["ocr_markdown", "summary", "keywords"])
+
+    db.query(DocumentEmbedding).filter(
+        DocumentEmbedding.document_id == document.id,
+    ).delete(synchronize_session=False)
+    cleared_artifacts.append("embeddings")
+
+    db.query(DocumentChunk).filter(
+        DocumentChunk.document_id == document.id,
+    ).delete(synchronize_session=False)
+    cleared_artifacts.append("chunks")
+
+    db.query(DocumentPage).filter(
+        DocumentPage.document_id == document.id,
+    ).delete(synchronize_session=False)
+    cleared_artifacts.append("pages")
+
+    deleted_files = 0
+    for path in _document_artifact_cleanup_paths(document.storage_path):
+        if path.exists():
+            deleted_files += 1
+        _delete_storage_path_if_exists(path)
+
+    if deleted_files:
+        cleared_artifacts.append("artifact_files")
+
+    return cleared_artifacts
 
 
 def prepare_user_document_original_download(
@@ -315,6 +396,139 @@ def delete_user_document(
     db.commit()
 
     return response
+
+
+def request_user_document_reprocess(
+    db: Session,
+    document_id,
+    actor: User,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> TaskTracker:
+    document = get_document_for_user(
+        db=db,
+        document_id=document_id,
+        user_id=actor.id,
+    )
+
+    if document is None:
+        raise UserDocumentActionError(404, "문서를 찾을 수 없습니다.")
+
+    previous_status = document.status
+    if previous_status not in DOCUMENT_REPROCESS_ALLOWED_STATUSES:
+        raise UserDocumentActionError(409, "재처리할 수 없는 문서 상태입니다.")
+
+    cleared_artifacts = _clear_user_document_reprocess_artifacts(
+        db=db,
+        document=document,
+    )
+
+    retry_task = TaskTracker(
+        document_id=document.id,
+        task_type=TaskType.OCR,
+        status=TaskStatus.PENDING,
+        progress=0,
+        stage=TaskStage.OCR_PENDING,
+        message="문서 OCR 재처리 작업 대기 중입니다.",
+    )
+    db.add(retry_task)
+    db.flush()
+
+    document.status = DocumentStatus.PROCESSING
+
+    record_document_reprocess_requested(
+        db=db,
+        actor=actor,
+        document_id=document.id,
+        previous_status=previous_status,
+        retry_task_id=retry_task.id,
+        retry_from_stage=DOCUMENT_REPROCESS_RETRY_STAGE,
+        status=document.status,
+        cleared_artifacts=cleared_artifacts,
+        reason="User requested document reprocess.",
+        ip_address=ip_address,
+        user_agent=user_agent,
+        metadata={
+            "requested_by": "user",
+            "retry_from": DOCUMENT_REPROCESS_RETRY_STAGE,
+        },
+    )
+    db.commit()
+    db.refresh(retry_task)
+
+    return retry_task
+
+
+def cancel_user_document_processing(
+    db: Session,
+    document_id,
+    actor: User,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> TaskTracker | None:
+    document = get_document_for_user(
+        db=db,
+        document_id=document_id,
+        user_id=actor.id,
+    )
+
+    if document is None:
+        raise UserDocumentActionError(404, "문서를 찾을 수 없습니다.")
+
+    previous_status = document.status
+    if previous_status != DocumentStatus.PROCESSING:
+        raise UserDocumentActionError(409, "처리 중인 문서만 취소할 수 있습니다.")
+
+    active_tasks = (
+        db.query(TaskTracker)
+        .filter(
+            TaskTracker.document_id == document.id,
+            TaskTracker.status.in_([TaskStatus.PENDING, TaskStatus.PROCESSING]),
+        )
+        .order_by(TaskTracker.created_at.desc())
+        .all()
+    )
+    latest_task = active_tasks[0] if active_tasks else get_latest_document_task(db, document.id)
+
+    for task in active_tasks:
+        task.status = TaskStatus.FAILED
+        task.stage = TaskStage.FAILED
+        task.progress = task.progress or 0
+        task.message = DOCUMENT_CANCELLED_ERROR_MESSAGE
+        task.error_message = DOCUMENT_CANCELLED_ERROR_MESSAGE
+        task.completed_at = datetime.utcnow()
+
+    document.status = DocumentStatus.FAILED
+
+    record_admin_action(
+        db=db,
+        actor_user=actor,
+        action=AuditAction.DOCUMENT_CANCELLED,
+        target_type=AuditTargetType.DOCUMENT,
+        target_id=document.id,
+        old_value={
+            "document_id": str(document.id),
+            "status": previous_status,
+        },
+        new_value={
+            "status": document.status,
+            "task_ids": [str(task.id) for task in active_tasks],
+            "error_message": DOCUMENT_CANCELLED_ERROR_MESSAGE,
+        },
+        reason="User cancelled own document processing.",
+        ip_address=ip_address,
+        user_agent=user_agent,
+        metadata={
+            "requested_by": "user",
+            "logical_cancel": True,
+        },
+    )
+    db.commit()
+    db.refresh(document)
+    if latest_task is not None:
+        db.refresh(latest_task)
+
+    return latest_task
 
 
 def get_latest_document_task(
