@@ -28,7 +28,7 @@ EMBEDDING_REGISTRY = {
 
     "snowflake-ko-lora": {
         "base_model": "dragonkue/snowflake-arctic-embed-l-v2.0-ko",
-        "adapter_path": Path(__file__).resolve().parent / "models/adapter",
+        "adapter_path": "skdiwlsdn5/snowflake-Lora-Adapter-512",
     },
 }
 

@@ -11,8 +11,6 @@ from ai.embeddings.model_loader import (
 
 from models.document_chunk import DocumentChunk
 from models.document_embedding import DocumentEmbedding
-
-from utils.calc_cos import calc_cos_score
     
 class HFEmbeddingProvider(BaseEmbeddingProvider):
 
