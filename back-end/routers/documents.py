@@ -47,14 +47,19 @@ from services.chat_service import (
 from services.document_service import (
     attach_celery_task_id,
     build_status_message,
+    cancel_user_document_processing,
     create_document_from_upload,
     create_document_task,
     delete_user_document,
     get_document_for_user,
     get_latest_document_task,
     prepare_user_document_original_download,
+    request_user_document_reprocess,
     set_chunks,
+    DOCUMENT_CANCELLED_MESSAGE,
+    DOCUMENT_REPROCESS_REGISTERED_MESSAGE,
     UserDocumentDownloadError,
+    UserDocumentActionError,
 )
 from tasks.ocr_tasks import process_document_ocr
 from tasks.summary_tasks import process_document_summary
@@ -159,6 +164,74 @@ def delete_document(
         raise HTTPException(status_code=404, detail="문서를 찾을 수 없습니다.")
 
     return result
+
+
+@router.post(
+    "/{document_id}/reprocess",
+    response_model=DocumentActionResponse,
+)
+def reprocess_document(
+    document_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        task = request_user_document_reprocess(
+            db=db,
+            document_id=document_id,
+            actor=current_user,
+            ip_address=_client_ip(request),
+            user_agent=_user_agent(request),
+        )
+    except UserDocumentActionError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail)
+
+    async_result = process_document_ocr.delay(
+        str(document_id),
+        str(task.id),
+    )
+    attach_celery_task_id(
+        db=db,
+        task_id=task.id,
+        celery_task_id=async_result.id,
+    )
+
+    return DocumentActionResponse(
+        document_id=document_id,
+        task_id=task.id,
+        status=DocumentStatus.PROCESSING,
+        message=DOCUMENT_REPROCESS_REGISTERED_MESSAGE,
+    )
+
+
+@router.post(
+    "/{document_id}/cancel",
+    response_model=DocumentActionResponse,
+)
+def cancel_document_processing(
+    document_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        task = cancel_user_document_processing(
+            db=db,
+            document_id=document_id,
+            actor=current_user,
+            ip_address=_client_ip(request),
+            user_agent=_user_agent(request),
+        )
+    except UserDocumentActionError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail)
+
+    return DocumentActionResponse(
+        document_id=document_id,
+        task_id=task.id if task else None,
+        status=DocumentStatus.FAILED,
+        message=DOCUMENT_CANCELLED_MESSAGE,
+    )
 
 @router.post("/upload", response_model=DocumentUploadResponse)
 async def upload_document(

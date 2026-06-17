@@ -68,6 +68,7 @@
 | FE-USER-003 | User Settings Finalization | High | DONE |
 | BE-USER-004 | User Settings APIs | High | DONE |
 | USER-005 | User Document Download/Delete | High | DONE |
+| USER-006 | User Document Reprocess/Cancel | High | DONE |
 
 ---
 
@@ -745,6 +746,25 @@ Status: DONE
 - DocumentReviewPage에 완료 문서용 "요약 보기" shortcut 추가
 - Summary → Review 이동 시 review back이 summary로 돌아갈 수 있도록 명시적인 state.from 전달
 - Chat/RAG/Summary-Embedding 실행 순서/DB migration/Admin 신규 기능 변경 없음
+
+Priority: High
+Status: DONE
+
+### USER-006 User Document Reprocess/Cancel
+
+- Added authenticated user document reprocess API at POST /api/documents/{document_id}/reprocess
+- User reprocess is ownership-scoped and always restarts from OCR without exposing Admin stage selection
+- Reprocess allows FAILED / COMPLETED / REVIEW_REQUIRED and blocks PENDING / PROCESSING with 409
+- Reprocess clears OCR-derived artifacts, summary, chunks, embeddings, pages, and related artifact files while preserving existing TaskTracker rows
+- Reprocess creates a new OCR TaskTracker, sets Document.status to PROCESSING, enqueues OCR, and records DOCUMENT_REPROCESS_REQUESTED with requested_by=user and retry_from=OCR metadata
+- Added authenticated user document cancel API at POST /api/documents/{document_id}/cancel
+- Cancel is ownership-scoped, allows PROCESSING only, marks Document.status FAILED, marks active TaskTracker rows FAILED, and stores "사용자 요청으로 취소됨"
+- Cancel is logical MVP cancellation only; Celery revoke was intentionally not added
+- Added frontend API clients and connected DocumentListPage / DocumentDetailPage reprocess and cancel actions with confirmation modals, loading states, success/error messages, and refresh flows
+- No DB migration
+- No Chat/RAG changes
+- No Admin changes
+- No Summary/Embedding pipeline order changes
 
 Priority: High
 Status: DONE

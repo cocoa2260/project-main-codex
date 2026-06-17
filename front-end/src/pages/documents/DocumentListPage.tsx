@@ -2,7 +2,13 @@ import { useEffect, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Sidebar } from '../../components/common/Sidebar';
 import { StatusBadge } from '@/components/common/StatusBadge';
-import { deleteUserDocument, downloadDocumentOriginal, getDocuments } from '@/api/document';
+import {
+  cancelDocument,
+  deleteUserDocument,
+  downloadDocumentOriginal,
+  getDocuments,
+  reprocessDocument,
+} from '@/api/document';
 import { usePersistentSidebar } from '../../hooks/usePersistentSidebar';
 import type { DocumentItem, DocumentStatus, TaskStage } from '@/types/document';
 import { formatDateTime } from '@/utils/date';
@@ -29,6 +35,7 @@ import {
   Activity,
   Trash2,
   LogOut,
+  XCircle,
 } from 'lucide-react';
 
 type SortBy = 'recent' | 'oldest' | 'name';
@@ -112,6 +119,14 @@ function canDeleteDocument(status: DocumentStatus) {
   return status === 'REVIEW_REQUIRED' || status === 'COMPLETED' || status === 'FAILED';
 }
 
+function canReprocessDocument(status: DocumentStatus) {
+  return status === 'REVIEW_REQUIRED' || status === 'COMPLETED' || status === 'FAILED';
+}
+
+function canCancelDocument(status: DocumentStatus) {
+  return status === 'PROCESSING';
+}
+
 export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: DocumentListPageProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -130,7 +145,11 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
   const [actionError, setActionError] = useState<string | null>(null);
   const [downloadingDocumentId, setDownloadingDocumentId] = useState<string | null>(null);
   const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(null);
+  const [reprocessingDocumentId, setReprocessingDocumentId] = useState<string | null>(null);
+  const [cancellingDocumentId, setCancellingDocumentId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Document | null>(null);
+  const [reprocessTarget, setReprocessTarget] = useState<Document | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<Document | null>(null);
   const filterStatus = getFilterStatusFromParam(statusParam);
 
   useEffect(() => {
@@ -238,6 +257,42 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
       setActionError(getApiErrorMessage(deleteError, '문서를 삭제하지 못했습니다.'));
     } finally {
       setDeletingDocumentId(null);
+    }
+  };
+
+  const handleConfirmReprocess = async () => {
+    if (!reprocessTarget) return;
+
+    try {
+      setActionError(null);
+      setActionMessage(null);
+      setReprocessingDocumentId(reprocessTarget.id);
+      const response = await reprocessDocument(reprocessTarget.id);
+      setActionMessage(response.message || '문서 재처리를 시작했습니다.');
+      setReprocessTarget(null);
+      await loadDocuments({ showLoading: false });
+    } catch (reprocessError) {
+      setActionError(getApiErrorMessage(reprocessError, '문서 재처리를 요청하지 못했습니다.'));
+    } finally {
+      setReprocessingDocumentId(null);
+    }
+  };
+
+  const handleConfirmCancel = async () => {
+    if (!cancelTarget) return;
+
+    try {
+      setActionError(null);
+      setActionMessage(null);
+      setCancellingDocumentId(cancelTarget.id);
+      const response = await cancelDocument(cancelTarget.id);
+      setActionMessage(response.message || '문서 처리를 취소했습니다.');
+      setCancelTarget(null);
+      await loadDocuments({ showLoading: false });
+    } catch (cancelError) {
+      setActionError(getApiErrorMessage(cancelError, '문서 처리를 취소하지 못했습니다.'));
+    } finally {
+      setCancellingDocumentId(null);
     }
   };
 
@@ -574,14 +629,29 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                       {/* Actions */}
                       <div className="space-y-2">
                       {doc.status !== 'COMPLETED' && doc.status !== 'REVIEW_REQUIRED' && doc.status !== 'FAILED' && (
-                        <button
-                          type="button"
-                          onClick={() => openDocumentStatus(doc.id)}
-                          className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 rounded-lg transition-colors text-sm text-blue-300"
-                        >
-                          <Activity className="w-4 h-4" />
-                          처리 상태 보기
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openDocumentStatus(doc.id)}
+                            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 rounded-lg transition-colors text-sm text-blue-300"
+                          >
+                            <Activity className="w-4 h-4" />
+                            처리 상태 보기
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCancelTarget(doc)}
+                            disabled={!canCancelDocument(doc.status) || cancellingDocumentId === doc.id}
+                            className="p-2 bg-red-500/10 hover:bg-red-500/20 rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                            title={canCancelDocument(doc.status) ? '처리 취소' : '처리 중인 문서만 취소할 수 있습니다.'}
+                          >
+                            {cancellingDocumentId === doc.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin text-red-300" />
+                            ) : (
+                              <XCircle className="w-4 h-4 text-red-300" />
+                            )}
+                          </button>
+                        </div>
                       )}
 
                       {doc.status === 'REVIEW_REQUIRED' && (
@@ -593,6 +663,19 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                           >
                             <Eye className="w-4 h-4" />
                             검토하기
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setReprocessTarget(doc)}
+                            disabled={!canReprocessDocument(doc.status) || reprocessingDocumentId === doc.id}
+                            className="p-2 bg-yellow-500/10 hover:bg-yellow-500/20 rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                            title="문서 재처리"
+                          >
+                            {reprocessingDocumentId === doc.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin text-yellow-300" />
+                            ) : (
+                              <RefreshCw className="w-4 h-4 text-yellow-300" />
+                            )}
                           </button>
                           <button
                             type="button"
@@ -647,6 +730,19 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                           </button>
                           <button
                             type="button"
+                            onClick={() => setReprocessTarget(doc)}
+                            disabled={!canReprocessDocument(doc.status) || reprocessingDocumentId === doc.id}
+                            title="문서 재처리"
+                            className="p-2 bg-yellow-500/10 hover:bg-yellow-500/20 rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {reprocessingDocumentId === doc.id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin text-yellow-300" />
+                            ) : (
+                              <RefreshCw className="w-3.5 h-3.5 text-yellow-300" />
+                            )}
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => void handleDownload(doc)}
                             disabled={downloadingDocumentId === doc.id}
                             title="원본 다운로드"
@@ -674,11 +770,16 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                         <div className="flex items-center gap-2">
                           <button
                             type="button"
-                            disabled
-                            title="사용자 재처리 API 준비 중"
-                            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-red-500/10 border border-red-500/20 rounded-lg transition-colors text-sm text-red-400 opacity-50 cursor-not-allowed"
+                            onClick={() => setReprocessTarget(doc)}
+                            disabled={!canReprocessDocument(doc.status) || reprocessingDocumentId === doc.id}
+                            title="문서 재처리"
+                            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-500/20 rounded-lg transition-colors text-sm text-yellow-300 disabled:cursor-not-allowed disabled:opacity-50"
                           >
-                            <RefreshCw className="w-4 h-4" />
+                            {reprocessingDocumentId === doc.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <RefreshCw className="w-4 h-4" />
+                            )}
                             재처리
                           </button>
                           <button
@@ -806,6 +907,19 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                                     </button>
                                     <button
                                       type="button"
+                                      onClick={() => setReprocessTarget(doc)}
+                                      disabled={!canReprocessDocument(doc.status) || reprocessingDocumentId === doc.id}
+                                      className="p-2 hover:bg-yellow-500/10 rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                                      title="문서 재처리"
+                                    >
+                                      {reprocessingDocumentId === doc.id ? (
+                                        <Loader2 className="w-4 h-4 animate-spin text-yellow-300" />
+                                      ) : (
+                                        <RefreshCw className="w-4 h-4 text-yellow-300" />
+                                      )}
+                                    </button>
+                                    <button
+                                      type="button"
                                       onClick={() => void handleDownload(doc)}
                                       disabled={downloadingDocumentId === doc.id}
                                       className="p-2 hover:bg-white/10 rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50"
@@ -829,24 +943,59 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                                   </>
                                 )}
                                 {doc.status === 'REVIEW_REQUIRED' && (
-                                  <button
-                                    type="button"
-                                    onClick={() => navigate(`/documents/${doc.id}/review`)}
-                                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 rounded-lg transition-colors text-xs text-purple-300"
-                                    title="검토하기"
-                                  >
-                                    <Eye className="w-4 h-4" />
-                                    검토하기
-                                  </button>
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => navigate(`/documents/${doc.id}/review`)}
+                                      className="inline-flex items-center gap-1.5 px-3 py-2 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 rounded-lg transition-colors text-xs text-purple-300"
+                                      title="검토하기"
+                                    >
+                                      <Eye className="w-4 h-4" />
+                                      검토하기
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setReprocessTarget(doc)}
+                                      disabled={!canReprocessDocument(doc.status) || reprocessingDocumentId === doc.id}
+                                      className="p-2 hover:bg-yellow-500/10 rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                                      title="문서 재처리"
+                                    >
+                                      {reprocessingDocumentId === doc.id ? (
+                                        <Loader2 className="w-4 h-4 animate-spin text-yellow-300" />
+                                      ) : (
+                                        <RefreshCw className="w-4 h-4 text-yellow-300" />
+                                      )}
+                                    </button>
+                                  </>
                                 )}
                                 {doc.status === 'FAILED' && (
                                   <button
                                     type="button"
-                                    disabled
-                                    className="p-2 rounded-lg opacity-40 cursor-not-allowed"
-                                    title="사용자 재처리 API 준비 중"
+                                    onClick={() => setReprocessTarget(doc)}
+                                    disabled={!canReprocessDocument(doc.status) || reprocessingDocumentId === doc.id}
+                                    className="p-2 hover:bg-yellow-500/10 rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                                    title="문서 재처리"
                                   >
-                                    <RefreshCw className="w-4 h-4 text-red-400" />
+                                    {reprocessingDocumentId === doc.id ? (
+                                      <Loader2 className="w-4 h-4 animate-spin text-yellow-300" />
+                                    ) : (
+                                      <RefreshCw className="w-4 h-4 text-yellow-300" />
+                                    )}
+                                  </button>
+                                )}
+                                {doc.status === 'PROCESSING' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setCancelTarget(doc)}
+                                    disabled={!canCancelDocument(doc.status) || cancellingDocumentId === doc.id}
+                                    className="p-2 hover:bg-red-500/10 rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                                    title="처리 취소"
+                                  >
+                                    {cancellingDocumentId === doc.id ? (
+                                      <Loader2 className="w-4 h-4 animate-spin text-red-300" />
+                                    ) : (
+                                      <XCircle className="w-4 h-4 text-red-300" />
+                                    )}
                                   </button>
                                 )}
                                 {doc.status !== 'COMPLETED' && (
@@ -930,6 +1079,83 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
               >
                 {deletingDocumentId === deleteTarget.id && <Loader2 className="h-4 w-4 animate-spin" />}
                 삭제
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {reprocessTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="w-full max-w-md rounded-xl border border-white/10 bg-[#15151c] p-6 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-yellow-500/10">
+                <RefreshCw className="h-5 w-5 text-yellow-300" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-lg font-semibold text-white">문서 재처리 확인</h3>
+                <p className="mt-2 text-sm leading-6 text-zinc-300">
+                  <span className="font-medium text-white">{reprocessTarget.name}</span> 문서를 OCR 단계부터 다시 처리하시겠습니까?
+                  기존 요약/임베딩 결과는 재생성됩니다.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setReprocessTarget(null)}
+                disabled={reprocessingDocumentId === reprocessTarget.id}
+                className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-zinc-200 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleConfirmReprocess()}
+                disabled={reprocessingDocumentId === reprocessTarget.id}
+                className="inline-flex items-center gap-2 rounded-lg bg-yellow-500 px-4 py-2 text-sm font-semibold text-black transition-colors hover:bg-yellow-400 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {reprocessingDocumentId === reprocessTarget.id && <Loader2 className="h-4 w-4 animate-spin" />}
+                재처리
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {cancelTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="w-full max-w-md rounded-xl border border-white/10 bg-[#15151c] p-6 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-500/10">
+                <XCircle className="h-5 w-5 text-red-300" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-lg font-semibold text-white">처리 취소 확인</h3>
+                <p className="mt-2 text-sm leading-6 text-zinc-300">
+                  <span className="font-medium text-white">{cancelTarget.name}</span> 문서의 현재 처리를 취소하시겠습니까?
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setCancelTarget(null)}
+                disabled={cancellingDocumentId === cancelTarget.id}
+                className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-zinc-200 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                닫기
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleConfirmCancel()}
+                disabled={cancellingDocumentId === cancelTarget.id}
+                className="inline-flex items-center gap-2 rounded-lg bg-red-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-400 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {cancellingDocumentId === cancelTarget.id && <Loader2 className="h-4 w-4 animate-spin" />}
+                처리 취소
               </button>
             </div>
           </div>

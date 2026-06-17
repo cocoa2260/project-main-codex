@@ -1034,3 +1034,44 @@ Scope notes:
 - No Chat/RAG logic change.
 - No Summary/Embedding pipeline order change.
 - No new Admin feature surface.
+
+## 2026-06-17 USER-006 User Document Reprocess/Cancel
+
+Branch: feature/user-006-document-reprocess-cancel
+
+Implemented:
+
+- Added POST `/api/documents/{document_id}/reprocess` for authenticated users.
+- Enforced ownership policy with 404 for other users' documents.
+- Kept user reprocess simple: OCR-only restart, no SUMMARY/EMBEDDING stage selection.
+- Allowed reprocess for COMPLETED, REVIEW_REQUIRED, and FAILED documents; blocked PENDING and PROCESSING with 409.
+- Cleared OCR-derived artifacts, summary, chunks, embeddings, document pages, and related sidecar artifact files while preserving existing TaskTracker rows.
+- Created a new OCR TaskTracker for reprocess and recorded DOCUMENT_REPROCESS_REQUESTED audit metadata with `requested_by=user` and `retry_from=OCR`.
+- Added POST `/api/documents/{document_id}/cancel` for authenticated users.
+- Implemented logical cancel only: PROCESSING documents become FAILED and active TaskTracker rows become FAILED with `사용자 요청으로 취소됨`.
+- Added frontend `reprocessDocument` and `cancelDocument` API clients.
+- Connected DocumentListPage and DocumentDetailPage reprocess/cancel buttons with confirmation modals, loading guards, success/error messages, and status refresh.
+
+Verification:
+
+- `PYTHONPYCACHEPREFIX=/private/tmp/codex-pycache python3 -m compileall back-end`
+- `/openapi.json` returned 200 and included `/api/documents/{document_id}/reprocess` and `/api/documents/{document_id}/cancel`
+- Backend policy checks:
+  - Reprocess COMPLETED / REVIEW_REQUIRED / FAILED returned 200
+  - Reprocess PROCESSING / PENDING returned 409
+  - Reprocess ownership returned 404
+  - Cancel PROCESSING returned 200
+  - Cancel COMPLETED / FAILED / REVIEW_REQUIRED returned 409
+  - Cancel ownership returned 404
+  - Reprocess created a new OCR TaskTracker and preserved the existing TaskTracker
+- `npm run lint`
+- `npm run build`
+- `git diff --check`
+
+Scope notes:
+
+- No DB migration.
+- No Chat/RAG changes.
+- No Admin API/UI changes.
+- No Summary/Embedding pipeline order changes.
+- Celery revoke was intentionally not implemented for MVP cancel.

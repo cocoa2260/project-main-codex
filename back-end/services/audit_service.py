@@ -167,7 +167,14 @@ def record_document_reprocess_requested(
     reason: str | None = None,
     ip_address: str | None = None,
     user_agent: str | None = None,
+    metadata: dict | None = None,
 ) -> AuditLog:
+    metadata_json = {
+        "cleared_artifacts": cleared_artifacts,
+    }
+    if metadata:
+        metadata_json.update(metadata)
+
     return record_admin_action(
         db=db,
         actor_user=actor,
@@ -186,9 +193,7 @@ def record_document_reprocess_requested(
         reason=reason,
         ip_address=ip_address,
         user_agent=user_agent,
-        metadata={
-            "cleared_artifacts": cleared_artifacts,
-        },
+        metadata=metadata_json,
     )
 
 
