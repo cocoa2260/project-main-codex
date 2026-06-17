@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   AlertCircle,
-  ArrowLeft,
   Brain,
   Calendar,
   CheckCircle2,
@@ -19,9 +18,9 @@ import {
 } from 'lucide-react';
 
 import { getDocumentSummary } from '../../api/document';
+import { PageTopNav } from '../../components/common/PageTopNav';
 import type { DocumentSummaryResponse } from '../../types/document';
 import { normalizeDocumentStatus } from '../../utils/documentStatus';
-import { navigateBackOr } from '../../utils/navigation';
 
 interface DocumentSummaryPageProps {
   onBack?: () => void;
@@ -187,7 +186,7 @@ export function DocumentSummaryPage({ onBack, onLogout }: DocumentSummaryPagePro
       return;
     }
 
-    navigateBackOr(navigate);
+    navigate('/documents');
   };
 
   const handleCopy = async () => {
@@ -212,24 +211,11 @@ export function DocumentSummaryPage({ onBack, onLogout }: DocumentSummaryPagePro
 
   return (
     <div className="min-h-screen w-full bg-[#0f0f17] text-white">
-      <header className="sticky top-0 z-20 h-16 border-b border-white/10 bg-[#15151c]/90 backdrop-blur-xl">
-        <div className="flex h-full items-center justify-between px-5 lg:px-6">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={handleBack}
-              className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-zinc-300 transition-colors hover:bg-white/5 hover:text-white"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              문서 목록
-            </button>
-            <div className="hidden h-5 w-px bg-white/10 sm:block" />
-            <div className="hidden items-center gap-2 text-sm text-zinc-400 sm:flex">
-              <Sparkles className="h-4 w-4 text-blue-300" />
-              AI 생성 요약
-            </div>
-          </div>
-
+      <PageTopNav
+        onBack={handleBack}
+        title="AI 생성 요약"
+        description={summaryData?.file_name}
+        rightActions={
           <button
             type="button"
             onClick={onLogout}
@@ -238,8 +224,8 @@ export function DocumentSummaryPage({ onBack, onLogout }: DocumentSummaryPagePro
             <LogOut className="h-4 w-4" />
             로그아웃
           </button>
-        </div>
-      </header>
+        }
+      />
 
       <main className="p-5 lg:p-6">
         <div className="mx-auto max-w-[1280px] space-y-5">
@@ -410,7 +396,7 @@ export function DocumentSummaryPage({ onBack, onLogout }: DocumentSummaryPagePro
                     </button>
                     <button
                       type="button"
-                      onClick={() => documentId && navigate(`/documents/${documentId}/review`)}
+                      onClick={() => documentId && navigate(`/documents/${documentId}/review`, { state: { from: `/documents/${documentId}/summary` } })}
                       className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-white/10"
                     >
                       <RefreshCw className="h-4 w-4" />

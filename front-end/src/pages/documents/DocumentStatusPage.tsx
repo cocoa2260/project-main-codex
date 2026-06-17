@@ -1,13 +1,10 @@
 import { useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   FileText,
   MessageSquare,
   Clock,
-  Menu,
-  X,
   Bell,
-  ChevronLeft,
   CheckCircle2,
   Loader2,
   AlertCircle,
@@ -25,9 +22,10 @@ import {
 } from 'lucide-react';
 import { useDocumentStatus } from '../../hooks/useDocumentStatus';
 import { usePersistentSidebar } from '../../hooks/usePersistentSidebar';
+import { PageTopNav } from '../../components/common/PageTopNav';
 import { Sidebar } from '../../components/common/Sidebar';
 import { PipelineStepper } from '../../components/document/PipelineStepper';
-import { navigateBackOr } from '../../utils/navigation';
+import { getSafeFromPath } from '../../utils/navigation';
 
 interface ActivityLog {
   id: string;
@@ -45,6 +43,7 @@ interface DocumentStatusPageProps {
 
 export function DocumentStatusPage({ onBack, onLogout, onOpenSummary, onOpenChat }: DocumentStatusPageProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { documentId } = useParams();
   const [sidebarOpen, setSidebarOpen] = usePersistentSidebar();
   const {
@@ -82,7 +81,7 @@ export function DocumentStatusPage({ onBack, onLogout, onOpenSummary, onOpenChat
       return;
     }
 
-    navigateBackOr(navigate);
+    navigate(getSafeFromPath(location, '/documents'));
   };
 
   const getActivityIcon = (type: ActivityLog['type']) => {
@@ -110,31 +109,15 @@ export function DocumentStatusPage({ onBack, onLogout, onOpenSummary, onOpenChat
 
       {/* Main content */}
       <div className="flex-1 flex flex-col min-h-screen lg:ml-0">
-        {/* Top navigation */}
-        <header className="h-16 bg-[#15151c]/80 backdrop-blur-xl border-b border-white/10 flex items-center justify-between px-6 sticky top-0 z-20">
-          <div className="flex items-center gap-4">
+        <PageTopNav
+          onBack={handleBack}
+          title="처리 상태"
+          description={currentStageLabel}
+          rightActions={
+            <>
             <button
               type="button"
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-2 hover:bg-white/5 rounded-lg transition-colors"
-            >
-              {sidebarOpen ? <X className="w-5 h-5 text-zinc-300" /> : <Menu className="w-5 h-5 text-zinc-300" />}
-            </button>
-
-            <button
-              type="button"
-              onClick={handleBack}
-              className="flex items-center gap-2 px-3 py-2 hover:bg-white/5 rounded-lg transition-colors"
-            >
-              <ChevronLeft className="w-5 h-5 text-zinc-300" />
-              <span className="text-zinc-300 text-sm">돌아가기</span>
-            </button>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              className="p-2 hover:bg-white/5 rounded-lg transition-colors relative"
+              className="relative rounded-lg p-2 transition-colors hover:bg-white/5"
             >
               <Bell className="w-5 h-5 text-zinc-300" />
               <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full" />
@@ -148,8 +131,9 @@ export function DocumentStatusPage({ onBack, onLogout, onOpenSummary, onOpenChat
               <LogOut className="h-4 w-4" />
               로그아웃
             </button>
-          </div>
-        </header>
+            </>
+          }
+        />
 
         {/* Status content */}
         <main className="flex-1 p-6 overflow-auto">
@@ -290,11 +274,11 @@ export function DocumentStatusPage({ onBack, onLogout, onOpenSummary, onOpenChat
                     <>
                       <button
                         type="button"
-	                        onClick={handleBack}
+                        onClick={handleBack}
                         className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-white/5 border border-white/10 text-white rounded-lg hover:bg-white/10 transition-colors"
                       >
                         <PauseCircle className="w-4 h-4" />
-                        <span className="font-medium">문서 목록으로 이동</span>
+                        <span className="font-medium">돌아가기</span>
                       </button>
                       <button
                         type="button"
@@ -309,7 +293,7 @@ export function DocumentStatusPage({ onBack, onLogout, onOpenSummary, onOpenChat
                     <>
                       <button
                         type="button"
-                        onClick={onOpenSummary}
+                        onClick={() => (onOpenSummary ? onOpenSummary() : documentId && navigate(`/documents/${documentId}/summary`))}
                         className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-primary to-blue-500 text-white rounded-lg hover:opacity-90 transition-opacity"
                       >
                         <Eye className="w-4 h-4" />
@@ -317,7 +301,7 @@ export function DocumentStatusPage({ onBack, onLogout, onOpenSummary, onOpenChat
                       </button>
                       <button
                         type="button"
-                        onClick={onOpenChat}
+                        onClick={() => (onOpenChat ? onOpenChat() : documentId && navigate(`/documents/${documentId}/chat`))}
                         className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-white/5 border border-white/10 text-white rounded-lg hover:bg-white/10 transition-colors"
                       >
                         <MessageSquare className="w-4 h-4" />

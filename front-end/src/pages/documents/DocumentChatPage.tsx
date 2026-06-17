@@ -11,16 +11,15 @@ import {
   Layers,
   Loader2,
   LogOut,
-  Menu,
   MessageSquare,
   Send,
   Sparkles,
   Tag,
-  X,
 } from 'lucide-react';
 
 import { chatWithDocument, getDocumentSummary } from '../../api/document';
 import { usePersistentSidebar } from '../../hooks/usePersistentSidebar';
+import { PageTopNav } from '../../components/common/PageTopNav';
 import { Sidebar } from '../../components/common/Sidebar';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import type { DocumentChatCitation, DocumentSummaryResponse } from '../../types/document';
@@ -201,7 +200,7 @@ export function DocumentChatPage({ onBack, onLogout }: DocumentChatPageProps) {
       return;
     }
 
-    navigate('/documents');
+    navigate(documentId ? `/documents/${documentId}/workspace` : '/documents');
   };
 
   const summaryPreview = summaryData?.summary?.trim() || '저장된 요약이 없습니다.';
@@ -216,25 +215,12 @@ export function DocumentChatPage({ onBack, onLogout }: DocumentChatPageProps) {
       />
 
       <div className="flex-1 flex flex-col min-h-screen lg:ml-0">
-        <header className="h-16 bg-[#15151c]/80 backdrop-blur-xl border-b border-white/10 flex items-center justify-between px-6 sticky top-0 z-20">
-          <div className="flex items-center gap-4">
-            <button
-              type="button"
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-2 hover:bg-white/5 rounded-lg transition-colors"
-            >
-              {sidebarOpen ? <X className="w-5 h-5 text-zinc-300" /> : <Menu className="w-5 h-5 text-zinc-300" />}
-            </button>
-
-            <button
-              type="button"
-              onClick={handleBack}
-              className="flex items-center gap-2 px-3 py-2 hover:bg-white/5 rounded-lg transition-colors"
-            >
-              <ChevronLeft className="w-5 h-5 text-zinc-300" />
-              <span className="text-zinc-300 text-sm">돌아가기</span>
-            </button>
-
+        <PageTopNav
+          onBack={handleBack}
+          title="문서 채팅"
+          description={summaryData?.file_name}
+          rightActions={
+            <>
             <div className="hidden md:flex min-w-0 items-center gap-3 px-4 py-2 bg-white/5 border border-white/10 rounded-lg">
               <BookOpen className="w-4 h-4 shrink-0 text-primary" />
               <span className="truncate text-white text-sm font-medium">{summaryData?.file_name ?? '문서 채팅'}</span>
@@ -242,12 +228,9 @@ export function DocumentChatPage({ onBack, onLogout }: DocumentChatPageProps) {
                 {isChatPrepared ? '질문 가능' : '처리 대기'}
               </span>
             </div>
-          </div>
-
-          <div className="flex items-center gap-3">
             <button
               type="button"
-              className="p-2 hover:bg-white/5 rounded-lg transition-colors relative"
+              className="relative rounded-lg p-2 transition-colors hover:bg-white/5"
               title="알림 API 준비 중"
             >
               <Bell className="w-5 h-5 text-zinc-300" />
@@ -262,8 +245,9 @@ export function DocumentChatPage({ onBack, onLogout }: DocumentChatPageProps) {
               <LogOut className="h-4 w-4" />
               로그아웃
             </button>
-          </div>
-        </header>
+            </>
+          }
+        />
 
         <main className="relative flex-1 flex overflow-hidden">
           <div className={`

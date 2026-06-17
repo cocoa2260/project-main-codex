@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   AlertCircle,
-  ArrowLeft,
   Bot,
   FileText,
   Layers,
@@ -11,12 +10,12 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { usePersistentSidebar } from '../../hooks/usePersistentSidebar';
+import { PageTopNav } from '../../components/common/PageTopNav';
 import { Sidebar } from '../../components/common/Sidebar';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { chatWithDocument, getDocumentSummary } from '../../api/document';
 import type { DocumentChatCitation, DocumentSummaryResponse } from '../../types/document';
 import { normalizeDocumentStatus } from '../../utils/documentStatus';
-import { navigateBackOr } from '../../utils/navigation';
 
 interface DocumentWorkspacePageProps {
   onLogout?: () => void;
@@ -137,20 +136,19 @@ export function DocumentWorkspacePage({ onLogout }: DocumentWorkspacePageProps) 
         onLogout={onLogout}
       />
 
-      <main className="flex-1 p-5 lg:p-6 overflow-hidden">
+      <main className="flex-1 flex flex-col overflow-hidden">
+        <PageTopNav
+          backTo="/documents"
+          title="문서 워크스페이스"
+          description={summaryData?.file_name ?? '문서 정보'}
+        />
+
+        <div className="flex-1 p-5 lg:p-6 overflow-hidden">
           <div className="max-w-[1680px] mx-auto h-[calc(100vh-6.5rem)] grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px] gap-5">
             <section className="min-h-0 flex flex-col bg-[#15151c] border border-white/10 rounded-2xl overflow-hidden">
               <div className="p-5 border-b border-white/10 flex items-start justify-between gap-4">
-	                <div className="min-w-0">
-                    <button
-                      type="button"
-                      onClick={() => navigateBackOr(navigate)}
-                      className="mb-3 inline-flex items-center gap-2 rounded-lg px-2 py-1 text-sm text-zinc-300 transition-colors hover:bg-white/5 hover:text-white"
-                    >
-                      <ArrowLeft className="h-4 w-4" />
-                      돌아가기
-                    </button>
-	                  <div className="flex items-center gap-3 mb-2">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-3 mb-2">
                     <div className="p-2.5 bg-primary/10 rounded-xl">
                       <FileText className="w-5 h-5 text-primary" />
                     </div>
@@ -305,7 +303,8 @@ export function DocumentWorkspacePage({ onLogout }: DocumentWorkspacePageProps) 
               </div>
             </aside>
           </div>
-        </main>
+        </div>
+      </main>
       </div>
   );
 }

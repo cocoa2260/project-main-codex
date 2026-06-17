@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   AlertCircle,
-  ArrowLeft,
   CheckCircle2,
   Clipboard,
   Download,
@@ -17,9 +16,10 @@ import {
   confirmDocumentSummary,
   getDocumentMarkdown,
 } from '../../api/document';
+import { PageTopNav } from '../../components/common/PageTopNav';
 import type { DocumentMarkdownResponse } from '../../types/document';
 import { normalizeDocumentStatus } from '../../utils/documentStatus';
-import { navigateBackOr } from '../../utils/navigation';
+import { getSafeFromPath } from '../../utils/navigation';
 
 function getErrorMessage(error: unknown) {
   if (typeof error === 'object' && error !== null && 'response' in error) {
@@ -44,6 +44,7 @@ function downloadMarkdown(documentId: string, markdown: string) {
 
 export function DocumentReviewPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { documentId } = useParams();
   const [reviewData, setReviewData] = useState<DocumentMarkdownResponse | null>(null);
   const [isLoading, setIsLoading] = useState(Boolean(documentId));
@@ -61,6 +62,7 @@ export function DocumentReviewPage() {
   }, [markdown]);
   const normalizedStatus = reviewData ? normalizeDocumentStatus(reviewData.status) : null;
   const isReviewRequired = normalizedStatus === 'REVIEW_REQUIRED';
+  const canOpenSummary = normalizedStatus === 'COMPLETED';
   const canSubmitReview = isReviewRequired && Boolean(markdown);
 
   useEffect(() => {
@@ -122,33 +124,30 @@ export function DocumentReviewPage() {
     window.setTimeout(() => setCopied(false), 1500);
   };
 
+  const handleBack = () => {
+    const summaryPath = documentId ? `/documents/${documentId}/summary` : '/documents';
+    const fallback = getSafeFromPath(location, '/documents') === summaryPath ? summaryPath : '/documents';
+    navigate(fallback);
+  };
+
   return (
-    <div className="min-h-screen bg-[#0a0a0f] text-white p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
-        <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
+    <div className="min-h-screen bg-[#0a0a0f] text-white">
+      <PageTopNav
+        onBack={handleBack}
+        title="OCR Markdown 검토"
+        description="OCR 결과를 확인한 뒤 요약과 임베딩 작업을 계속 진행할지 선택하세요."
+        rightActions={
+          <>
             <button
               type="button"
-              onClick={() => navigateBackOr(navigate)}
-              className="inline-flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors mb-4"
+              onClick={() => documentId && navigate(`/documents/${documentId}/summary`)}
+              disabled={!canOpenSummary || isSubmitting}
+              title={canOpenSummary ? undefined : '요약 완료 후 확인할 수 있습니다.'}
+              className="inline-flex items-center gap-2 rounded-xl border border-blue-400/20 bg-blue-500/10 px-4 py-2.5 text-gray-200 transition-colors hover:bg-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <ArrowLeft className="w-4 h-4" />
-              문서 목록으로 돌아가기
+              <Sparkles className="w-4 h-4" />
+              요약 보기
             </button>
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-purple-500/10 border border-purple-500/20 rounded-2xl">
-                <FileText className="w-7 h-7 text-purple-300" />
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold">OCR Markdown 검토</h1>
-                <p className="text-gray-400 mt-1">
-                  OCR 결과를 확인한 뒤 요약과 임베딩 작업을 계속 진행할지 선택하세요.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
               onClick={handleCopy}
@@ -167,6 +166,20 @@ export function DocumentReviewPage() {
               <Download className="w-4 h-4" />
               다운로드
             </button>
+          </>
+        }
+      />
+
+      <div className="max-w-7xl mx-auto space-y-6 p-6">
+        <header className="flex items-center gap-3">
+          <div className="p-3 bg-purple-500/10 border border-purple-500/20 rounded-2xl">
+            <FileText className="w-7 h-7 text-purple-300" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold">OCR Markdown 검토</h1>
+            <p className="text-gray-400 mt-1">
+              검토 결과와 다음 작업 상태를 확인하세요.
+            </p>
           </div>
         </header>
 

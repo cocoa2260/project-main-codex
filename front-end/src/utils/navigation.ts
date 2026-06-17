@@ -1,12 +1,11 @@
-import type { NavigateFunction } from 'react-router-dom';
+import type { Location } from 'react-router-dom';
 
-export function navigateBackOr(navigate: NavigateFunction, fallback = '/documents') {
-  const historyState = window.history.state as { idx?: number } | null;
+export function getSafeFromPath(location: Location, fallback: string) {
+  const state = location.state as { from?: unknown } | null;
+  const from = state?.from;
 
-  if (typeof historyState?.idx === 'number' && historyState.idx > 0) {
-    navigate(-1);
-    return;
-  }
+  if (typeof from !== 'string') return fallback;
+  if (!from.startsWith('/') || from === location.pathname) return fallback;
 
-  navigate(fallback);
+  return from;
 }

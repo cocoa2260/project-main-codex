@@ -734,3 +734,16 @@ Status: DONE
 
 Priority: High
 Status: DONE
+
+### UX-002 Navigation Dashboard Polish
+
+- 문서 상세/상태/리뷰/요약/워크스페이스/채팅 화면의 top navigation을 공통 PageTopNav로 정리
+- User 문서/대시보드/설정 page top 영역의 Sidebar collapse button 제거, Sidebar 내부 control만 유지
+- 문서 화면 back label을 "돌아가기"로 통일하고 status/review/summary/workspace/chat fallback route를 명시해 history loop 제거
+- Dashboard 총 문서/실패 카드 이동 URL을 정정하고 DocumentListPage status query 필터를 URL 기준으로 반영
+- DocumentReviewPage에 완료 문서용 "요약 보기" shortcut 추가
+- Summary → Review 이동 시 review back이 summary로 돌아갈 수 있도록 명시적인 state.from 전달
+- Chat/RAG/Summary-Embedding 실행 순서/DB migration/Admin 신규 기능 변경 없음
+
+Priority: High
+Status: DONE

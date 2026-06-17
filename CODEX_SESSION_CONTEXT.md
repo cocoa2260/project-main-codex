@@ -989,3 +989,31 @@ Scope notes:
 - No Chat/RAG logic change.
 - No Summary/Embedding pipeline order change.
 - No new Admin feature surface.
+
+## 2026-06-17 UX-002 Navigation Dashboard Polish
+
+Branch: feature/ux-002-navigation-dashboard-polish
+
+Implemented:
+
+- Added a shared `PageTopNav` component for user document detail/status/review/summary/workspace/chat top navigation.
+- Removed duplicate Sidebar collapse controls from user page top bars, leaving the Sidebar-owned collapse/expand control as the single user-facing control.
+- Normalized user document back labels to "돌아가기" and replaced history-based document back behavior with explicit safe fallbacks.
+- Fixed the Dashboard upload/status/review loop by making Review default back navigation go to `/documents`, with Summary-origin Review preserving a safe `state.from` path.
+- Fixed Dashboard status card navigation so total goes to `/documents` and failed goes to `/documents?status=FAILED`.
+- Updated DocumentListPage filtering to derive the selected tab from `status` query params for `ALL`, `COMPLETED`, `PROCESSING`, and `FAILED`.
+- Added a DocumentReviewPage "요약 보기" shortcut that is enabled for completed documents and disabled before summary completion.
+- Kept Summary → Review navigation available through the existing OCR Markdown action with explicit return state.
+
+Verification:
+
+- `npm run lint`
+- `npm run build`
+- `git diff --check`
+
+Scope notes:
+
+- No DB migration.
+- No Chat/RAG logic change.
+- No Summary/Embedding pipeline order change.
+- No new Admin feature surface.
