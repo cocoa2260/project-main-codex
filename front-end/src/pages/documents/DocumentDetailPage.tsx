@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   AlertCircle,
-  ArrowLeft,
   Bot,
   Calendar,
   CheckCircle2,
@@ -19,10 +18,10 @@ import {
 } from 'lucide-react';
 
 import { getDocumentSummary } from '../../api/document';
+import { PageTopNav } from '../../components/common/PageTopNav';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import type { DocumentSummaryResponse } from '../../types/document';
 import { normalizeDocumentStatus } from '../../utils/documentStatus';
-import { navigateBackOr } from '../../utils/navigation';
 
 function formatBytes(bytes?: number | null) {
   if (!bytes) return '-';
@@ -103,16 +102,9 @@ export function DocumentDetailPage() {
 
   return (
     <div className="min-h-screen bg-[#0f0f17] text-white">
-      <header className="sticky top-0 z-20 h-16 border-b border-white/10 bg-[#15151c]/90 backdrop-blur-xl">
-        <div className="flex h-full items-center justify-between px-6">
-          <button
-            type="button"
-            onClick={() => navigateBackOr(navigate)}
-            className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-zinc-300 transition-colors hover:bg-white/5 hover:text-white"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            문서 목록
-          </button>
+      <PageTopNav
+        backTo="/documents"
+        rightActions={
           <button
             type="button"
             onClick={() => documentId && navigate(`/documents/${documentId}/status`)}
@@ -121,8 +113,8 @@ export function DocumentDetailPage() {
           >
             처리 상태
           </button>
-        </div>
-      </header>
+        }
+      />
 
       <main className="p-6">
         <div className="mx-auto max-w-6xl space-y-6">

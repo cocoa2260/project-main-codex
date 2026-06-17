@@ -30,7 +30,6 @@ import { ForbiddenPage } from '../pages/error/ForbiddenPage';
 import { NotFoundPage } from '../pages/error/NotFoundPage';
 import { ProtectedRoute } from '../routes/ProtectedRoute';
 import { clearAuth } from '../utils/auth';
-import { navigateBackOr } from '../utils/navigation';
 
 function LoginRoute() {
   const navigate = useNavigate();
@@ -64,7 +63,6 @@ function DocumentStatusRoute() {
   return (
     <DocumentStatusPage
       onLogout={() => { clearAuth(); navigate('/login'); }}
-      onBack={() => navigateBackOr(navigate)}
       onOpenSummary={() => navigate(`/documents/${documentId}/summary`)}
       onOpenChat={() => navigate(`/documents/${documentId}/chat`)}
     />
@@ -76,14 +74,13 @@ function DocumentSummaryRoute() {
   return (
     <DocumentSummaryPage
       onLogout={() => { clearAuth(); navigate('/login'); }}
-      onBack={() => navigateBackOr(navigate)}
     />
   );
 }
 
 function DocumentChatRoute() {
   const navigate = useNavigate();
-  return <DocumentChatPage onLogout={() => { clearAuth(); navigate('/login'); }} onBack={() => navigateBackOr(navigate)} />;
+  return <DocumentChatPage onLogout={() => { clearAuth(); navigate('/login'); }} />;
 }
 
 function UserRoute({ children }: { children: ReactNode }) {

@@ -9,11 +9,9 @@ import {
   Loader2,
   Lock,
   LogOut,
-  Menu,
   Monitor,
   Save,
   User,
-  X,
 } from 'lucide-react';
 
 import { fetchMe } from '../../api/auth';
@@ -256,14 +254,6 @@ export function UserSettingsPage({ onLogout }: UserSettingsPageProps) {
       <div className="flex-1 flex flex-col min-h-screen lg:ml-0">
         <header className="h-16 bg-[#15151c]/80 backdrop-blur-xl border-b border-white/10 flex items-center justify-between px-6 sticky top-0 z-20">
           <div className="flex items-center gap-4">
-            <button
-              type="button"
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-2 hover:bg-white/5 rounded-lg transition-colors"
-              aria-label="사이드바 열기"
-            >
-              {sidebarOpen ? <X className="w-5 h-5 text-zinc-300" /> : <Menu className="w-5 h-5 text-zinc-300" />}
-            </button>
             <div>
               <h1 className="text-xl font-bold text-white">사용자 설정</h1>
               <p className="text-sm text-zinc-400">계정 정보, 보안, 환경설정</p>

@@ -11,8 +11,6 @@ import {
   FileText,
   Upload,
   MessageSquare,
-  Menu,
-  X,
   Search,
   Bell,
   Download,
@@ -88,12 +86,12 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
   const statusParam = searchParams.get('status');
   const [sidebarOpen, setSidebarOpen] = usePersistentSidebar();
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<FilterStatus>(() => getFilterStatusFromParam(statusParam));
   const [sortBy, setSortBy] = useState<SortBy>('recent');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [documents, setDocuments] = useState<Document[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const filterStatus = getFilterStatusFromParam(statusParam);
   
   useEffect(() => {
     let isMounted = true;
@@ -170,8 +168,6 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
   const openDocumentStatus = (documentId: string) => navigate(`/documents/${documentId}/status`);
   const openDocumentWorkspace = (documentId: string) => navigate(`/documents/${documentId}/workspace`);
   const applyFilterStatus = (nextFilterStatus: FilterStatus) => {
-    setFilterStatus(nextFilterStatus);
-
     if (nextFilterStatus === 'completed') navigate('/documents?status=COMPLETED', { replace: true });
     else if (nextFilterStatus === 'processing') navigate('/documents?status=PROCESSING', { replace: true });
     else if (nextFilterStatus === 'failed') navigate('/documents?status=FAILED', { replace: true });
@@ -200,14 +196,6 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
         {/* Top navigation */}
         <header className="h-16 bg-[#15151c]/80 backdrop-blur-xl border-b border-white/10 flex items-center justify-between px-6 sticky top-0 z-20">
           <div className="flex items-center gap-4">
-            <button
-              type="button"
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-2 hover:bg-white/5 rounded-lg transition-colors"
-            >
-              {sidebarOpen ? <X className="w-5 h-5 text-zinc-300" /> : <Menu className="w-5 h-5 text-zinc-300" />}
-            </button>
-
             {/* Search */}
             <div className="relative hidden md:block">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />

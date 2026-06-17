@@ -68,7 +68,7 @@ export function DocumentUploadPage() {
             onClick={() => navigate('/documents')}
             className="text-sm text-gray-400 hover:text-white transition-colors mb-4"
           >
-            ← 문서 목록으로 돌아가기
+            ← 돌아가기
           </button>
           <h1 className="text-3xl font-bold">문서 업로드</h1>
           <p className="text-gray-400 mt-2">
