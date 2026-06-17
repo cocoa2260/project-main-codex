@@ -67,6 +67,7 @@
 | FE-USER-002 | User Document Actions Finalization | High | DONE |
 | FE-USER-003 | User Settings Finalization | High | DONE |
 | BE-USER-004 | User Settings APIs | High | DONE |
+| USER-005 | User Document Download/Delete | High | DONE |
 
 ---
 

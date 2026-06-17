@@ -18,9 +18,10 @@ import {
   Sparkles,
   Zap,
   LogOut,
+  AlertCircle,
 } from 'lucide-react';
 import type { DocumentItem } from '@/types/document';
-import { getDocuments } from '@/api/document';
+import { downloadDocumentOriginal, getDocuments } from '@/api/document';
 import { getDocumentProgress } from '@/utils/documentStatus'
 import { formatDateTime } from '@/utils/date'
 
@@ -38,10 +39,24 @@ function formatBytes(bytes?: number | null) {
   return `${value.toFixed(value >= 10 || index === 0 ? 0 : 1)} ${units[index]}`;
 }
 
+function getApiErrorMessage(error: unknown, fallback: string) {
+  if (typeof error === 'object' && error !== null && 'response' in error) {
+    const response = (error as { response?: { data?: { detail?: string; message?: string } } }).response;
+    return response?.data?.detail ?? response?.data?.message ?? fallback;
+  }
+
+  if (error instanceof Error) return error.message;
+
+  return fallback;
+}
+
 export function DashboardPage({ onLogout }: DashboardPageProps) {
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = usePersistentSidebar();
   const [documents,setDocuments] = useState<DocumentItem[]>([])
+  const [downloadMessage, setDownloadMessage] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [downloadingDocumentId, setDownloadingDocumentId] = useState<string | null>(null);
 
   useEffect(() => {
     const loadDocuments = async () => {
@@ -91,6 +106,20 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
   if (totalCount === 0) return 0;
   return Math.round((count / totalCount) * 100);
 };
+
+  const handleDownload = async (doc: { id: string; name: string }) => {
+    try {
+      setDownloadMessage(null);
+      setDownloadError(null);
+      setDownloadingDocumentId(doc.id);
+      const fileName = await downloadDocumentOriginal(doc.id, doc.name);
+      setDownloadMessage(`${fileName} 다운로드를 시작했습니다.`);
+    } catch (error) {
+      setDownloadError(getApiErrorMessage(error, '원본 파일을 다운로드하지 못했습니다.'));
+    } finally {
+      setDownloadingDocumentId(null);
+    }
+  };
 
   return (
     <div className="min-h-screen w-full bg-[#0f0f17] flex">
@@ -281,6 +310,20 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
                     </button>
                   </div>
 
+                  {downloadMessage && (
+                    <div className="mb-4 flex items-center gap-2 rounded-lg border border-green-500/20 bg-green-500/10 px-3 py-2 text-xs text-green-200">
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      {downloadMessage}
+                    </div>
+                  )}
+
+                  {downloadError && (
+                    <div className="mb-4 flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+                      <AlertCircle className="h-3.5 w-3.5" />
+                      {downloadError}
+                    </div>
+                  )}
+
                   <div className="space-y-3">
                     {recentDocuments.map((doc) => {
                       return (
@@ -346,12 +389,17 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
                                   </button>
                                   <button
                                     type="button"
-                                    disabled
-                                    title="사용자 원본 다운로드 API 준비 중"
-                                    className="flex cursor-not-allowed items-center gap-1.5 rounded-lg bg-white/5 px-3 py-1.5 text-xs text-zinc-400 opacity-70"
+                                    onClick={() => void handleDownload(doc)}
+                                    disabled={downloadingDocumentId === doc.id}
+                                    title="원본 다운로드"
+                                    className="flex items-center gap-1.5 rounded-lg bg-white/5 px-3 py-1.5 text-xs text-zinc-200 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
                                   >
-                                    <Download className="w-3.5 h-3.5" />
-                                    다운로드 준비 중
+                                    {downloadingDocumentId === doc.id ? (
+                                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    ) : (
+                                      <Download className="w-3.5 h-3.5" />
+                                    )}
+                                    다운로드
                                   </button>
                                   <button
                                     type="button"

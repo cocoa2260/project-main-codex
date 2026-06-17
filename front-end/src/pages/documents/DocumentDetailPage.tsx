@@ -17,7 +17,7 @@ import {
   Trash2,
 } from 'lucide-react';
 
-import { getDocumentSummary } from '../../api/document';
+import { deleteUserDocument, downloadDocumentOriginal, getDocumentSummary } from '../../api/document';
 import { PageTopNav } from '../../components/common/PageTopNav';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import type { DocumentSummaryResponse } from '../../types/document';
@@ -63,6 +63,11 @@ export function DocumentDetailPage() {
   const [documentData, setDocumentData] = useState<DocumentSummaryResponse | null>(null);
   const [isLoading, setIsLoading] = useState(Boolean(documentId));
   const [error, setError] = useState<string | null>(documentId ? null : '문서 ID가 없습니다.');
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
   useEffect(() => {
     if (!documentId) {
@@ -94,11 +99,48 @@ export function DocumentDetailPage() {
   const normalizedStatus = normalizeDocumentStatus(documentData?.status);
   const canOpenCompletedViews = normalizedStatus === 'COMPLETED';
   const canOpenReview = normalizedStatus === 'REVIEW_REQUIRED';
+  const canDelete = normalizedStatus === 'REVIEW_REQUIRED' || normalizedStatus === 'COMPLETED' || normalizedStatus === 'FAILED';
   const summaryPreview = useMemo(() => {
     const summary = documentData?.summary?.trim();
     if (!summary) return '저장된 요약이 없습니다. 처리 상태를 확인하거나 OCR 검토를 진행해주세요.';
     return summary.length > 420 ? `${summary.slice(0, 420)}...` : summary;
   }, [documentData?.summary]);
+
+  const handleDownload = async () => {
+    if (!documentId || !documentData) return;
+
+    try {
+      setActionError(null);
+      setActionMessage(null);
+      setIsDownloading(true);
+      const fileName = await downloadDocumentOriginal(documentId, documentData.file_name);
+      setActionMessage(`${fileName} 다운로드를 시작했습니다.`);
+    } catch (downloadError) {
+      setActionError(getErrorMessage(downloadError));
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!documentId) return;
+
+    try {
+      setActionError(null);
+      setActionMessage(null);
+      setIsDeleting(true);
+      await deleteUserDocument(documentId);
+      navigate('/documents', {
+        replace: true,
+        state: { message: '문서를 삭제했습니다.' },
+      });
+    } catch (deleteError) {
+      setActionError(getErrorMessage(deleteError));
+      setIsDeleteModalOpen(false);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[#0f0f17] text-white">
@@ -129,6 +171,20 @@ export function DocumentDetailPage() {
             <div className="flex items-center gap-3 rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-red-200">
               <AlertCircle className="h-5 w-5" />
               {error}
+            </div>
+          )}
+
+          {actionMessage && (
+            <div className="flex items-center gap-3 rounded-xl border border-green-500/20 bg-green-500/10 p-4 text-green-200">
+              <CheckCircle2 className="h-5 w-5" />
+              {actionMessage}
+            </div>
+          )}
+
+          {actionError && (
+            <div className="flex items-center gap-3 rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-red-200">
+              <AlertCircle className="h-5 w-5" />
+              {actionError}
             </div>
           )}
 
@@ -214,12 +270,13 @@ export function DocumentDetailPage() {
                   </button>
                   <button
                     type="button"
-                    disabled
-                    title="사용자 원본 다운로드 API 준비 중"
-                    className="flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-zinc-400 opacity-70"
+                    onClick={() => void handleDownload()}
+                    disabled={!documentId || isDownloading}
+                    title="원본 다운로드"
+                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    <Download className="h-4 w-4" />
-                    원본 다운로드 준비 중
+                    {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                    원본 다운로드
                   </button>
                   <button
                     type="button"
@@ -232,12 +289,13 @@ export function DocumentDetailPage() {
                   </button>
                   <button
                     type="button"
-                    disabled
-                    title="사용자 문서 삭제 API 준비 중"
-                    className="flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm font-medium text-red-300 opacity-70"
+                    onClick={() => setIsDeleteModalOpen(true)}
+                    disabled={!canDelete || isDeleting}
+                    title={canDelete ? '문서 삭제' : '처리 대기/진행 중인 문서는 삭제할 수 없습니다.'}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm font-medium text-red-300 transition-colors hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <Trash2 className="h-4 w-4" />
-                    삭제 준비 중
+                    삭제
                   </button>
                 </aside>
               </section>
@@ -263,6 +321,45 @@ export function DocumentDetailPage() {
           )}
         </div>
       </main>
+
+      {isDeleteModalOpen && documentData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="w-full max-w-md rounded-xl border border-white/10 bg-[#15151c] p-6 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-500/10">
+                <Trash2 className="h-5 w-5 text-red-300" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-lg font-semibold text-white">문서 삭제 확인</h3>
+                <p className="mt-2 text-sm leading-6 text-zinc-300">
+                  <span className="font-medium text-white">{documentData.file_name}</span> 문서를 삭제합니다.
+                  삭제된 문서와 처리 데이터는 복구할 수 없습니다.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setIsDeleteModalOpen(false)}
+                disabled={isDeleting}
+                className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-zinc-200 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleDelete()}
+                disabled={isDeleting}
+                className="inline-flex items-center gap-2 rounded-lg bg-red-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-400 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isDeleting && <Loader2 className="h-4 w-4 animate-spin" />}
+                삭제
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
