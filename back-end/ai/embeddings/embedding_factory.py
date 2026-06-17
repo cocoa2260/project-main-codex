@@ -8,19 +8,6 @@ from pathlib import Path
 """
 
 EMBEDDING_REGISTRY = {
-    # "nomic-embed-text": {
-    #     OllamaEmbeddingProvider,
-    #     "adapter_path": None,
-    # },
-    # "bge-m3": {
-    #     OllamaEmbeddingProvider,
-    #     "adapter_path": None,
-    # },
-    # "e5-large": {
-    #     OllamaEmbeddingProvider,
-    #     "adapter_path": None,
-    # },
-
     "snowflake-ko": {
         "base_model": "dragonkue/snowflake-arctic-embed-l-v2.0-ko",
         "adapter_path": None,
