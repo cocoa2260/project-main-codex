@@ -45,7 +45,7 @@ function formatNow() {
   }).format(new Date());
 }
 
-export function useDocumentStatus(documentId?: string): UseDocumentStatusResult {
+export function useDocumentStatus(documentId?: string, refreshKey = 0): UseDocumentStatusResult {
   const [status, setStatus] = useState<DocumentStatusResponse | null>(null);
   const [activityLog, setActivityLog] = useState<DocumentActivityLog[]>([]);
   const [isConnected, setIsConnected] = useState(false);
@@ -155,7 +155,7 @@ export function useDocumentStatus(documentId?: string): UseDocumentStatusResult 
       if (pollingTimer) window.clearInterval(pollingTimer);
       socket?.close();
     };
-  }, [documentId]);
+  }, [documentId, refreshKey]);
 
   const normalizedStatus = useMemo(() => normalizeStatus(status?.status), [status?.status]);
   const progress = Math.max(0, Math.min(100, status?.progress ?? 0));

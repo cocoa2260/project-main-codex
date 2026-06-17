@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   FileText,
@@ -19,7 +19,9 @@ import {
   TrendingUp,
   PauseCircle,
   LogOut,
+  RefreshCw,
 } from 'lucide-react';
+import { cancelDocument, reprocessDocument } from '../../api/document';
 import { useDocumentStatus } from '../../hooks/useDocumentStatus';
 import { usePersistentSidebar } from '../../hooks/usePersistentSidebar';
 import { PageTopNav } from '../../components/common/PageTopNav';
@@ -41,11 +43,35 @@ interface DocumentStatusPageProps {
   onOpenChat?: () => void;
 }
 
+function getActionErrorMessage(error: unknown, fallback: string) {
+  if (typeof error === 'object' && error !== null && 'response' in error) {
+    const response = (error as { response?: { data?: { detail?: string; message?: string } } }).response;
+    return response?.data?.detail ?? response?.data?.message ?? fallback;
+  }
+
+  if (error instanceof Error) return error.message;
+
+  return fallback;
+}
+
+function canReprocessDocument(status: string) {
+  return status === 'REVIEW_REQUIRED' || status === 'COMPLETED' || status === 'FAILED';
+}
+
+function canCancelDocument(status: string) {
+  return status === 'PROCESSING';
+}
+
 export function DocumentStatusPage({ onBack, onLogout, onOpenSummary, onOpenChat }: DocumentStatusPageProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { documentId } = useParams();
   const [sidebarOpen, setSidebarOpen] = usePersistentSidebar();
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [isReprocessing, setIsReprocessing] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const {
     status,
     activityLog,
@@ -55,12 +81,14 @@ export function DocumentStatusPage({ onBack, onLogout, onOpenSummary, onOpenChat
     progress,
     normalizedStatus,
     currentStageLabel,
-  } = useDocumentStatus(documentId);
+  } = useDocumentStatus(documentId, refreshKey);
 
   const isProcessing = normalizedStatus === 'PENDING' || normalizedStatus === 'PROCESSING';
   const isReviewRequired = normalizedStatus === 'REVIEW_REQUIRED';
   const isFailed = normalizedStatus === 'FAILED';
   const isCompleted = normalizedStatus === 'COMPLETED';
+  const canReprocess = canReprocessDocument(normalizedStatus);
+  const canCancel = canCancelDocument(normalizedStatus);
 
   useEffect(() => {
     if (!documentId || normalizedStatus !== 'REVIEW_REQUIRED') return;
@@ -82,6 +110,44 @@ export function DocumentStatusPage({ onBack, onLogout, onOpenSummary, onOpenChat
     }
 
     navigate(getSafeFromPath(location, '/documents'));
+  };
+
+  const refreshStatus = () => {
+    setRefreshKey((key) => key + 1);
+  };
+
+  const handleReprocess = async () => {
+    if (!documentId || !canReprocess) return;
+
+    try {
+      setActionMessage(null);
+      setActionError(null);
+      setIsReprocessing(true);
+      const response = await reprocessDocument(documentId);
+      setActionMessage(response.message || '문서 재처리를 시작했습니다.');
+      refreshStatus();
+    } catch (reprocessError) {
+      setActionError(getActionErrorMessage(reprocessError, '문서 재처리를 요청하지 못했습니다.'));
+    } finally {
+      setIsReprocessing(false);
+    }
+  };
+
+  const handleCancelProcessing = async () => {
+    if (!documentId || !canCancel) return;
+
+    try {
+      setActionMessage(null);
+      setActionError(null);
+      setIsCancelling(true);
+      const response = await cancelDocument(documentId);
+      setActionMessage(response.message || '문서 처리를 취소했습니다.');
+      refreshStatus();
+    } catch (cancelError) {
+      setActionError(getActionErrorMessage(cancelError, '문서 처리를 취소하지 못했습니다.'));
+    } finally {
+      setIsCancelling(false);
+    }
   };
 
   const getActivityIcon = (type: ActivityLog['type']) => {
@@ -149,6 +215,18 @@ export function DocumentStatusPage({ onBack, onLogout, onOpenSummary, onOpenChat
               <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 text-red-300 flex items-center gap-3">
                 <AlertCircle className="w-5 h-5" />
                 <span>{error}</span>
+              </div>
+            )}
+            {actionMessage && (
+              <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-4 text-green-300 flex items-center gap-3">
+                <CheckCircle2 className="w-5 h-5" />
+                <span>{actionMessage}</span>
+              </div>
+            )}
+            {actionError && (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 text-red-300 flex items-center gap-3">
+                <AlertCircle className="w-5 h-5" />
+                <span>{actionError}</span>
               </div>
             )}
             {/* Document header */}
@@ -282,11 +360,13 @@ export function DocumentStatusPage({ onBack, onLogout, onOpenSummary, onOpenChat
                       </button>
                       <button
                         type="button"
-                        disabled
-                        title="사용자 작업 취소 API 준비 중"
-                        className="px-6 py-3 bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg transition-colors font-medium opacity-50 cursor-not-allowed"
+                        onClick={handleCancelProcessing}
+                        disabled={!canCancel || isCancelling}
+                        title={canCancel ? '처리 취소' : '처리 중인 문서만 취소할 수 있습니다.'}
+                        className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg transition-colors font-medium hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        취소 준비 중
+                        {isCancelling && <Loader2 className="w-4 h-4 animate-spin" />}
+                        처리 취소
                       </button>
                     </>
                   ) : isCompleted ? (
@@ -315,7 +395,28 @@ export function DocumentStatusPage({ onBack, onLogout, onOpenSummary, onOpenChat
                       >
                         <Download className="w-5 h-5" />
                       </button>
+                      <button
+                        type="button"
+                        onClick={handleReprocess}
+                        disabled={!canReprocess || isReprocessing}
+                        title={canReprocess ? '문서 재처리' : '처리 대기/진행 중인 문서는 재처리할 수 없습니다.'}
+                        className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-yellow-500/10 border border-yellow-500/20 text-yellow-300 rounded-lg transition-colors font-medium hover:bg-yellow-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {isReprocessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                        재처리
+                      </button>
                     </>
+                  ) : isFailed ? (
+                    <button
+                      type="button"
+                      onClick={handleReprocess}
+                      disabled={!canReprocess || isReprocessing}
+                      title={canReprocess ? '문서 재처리' : '처리 대기/진행 중인 문서는 재처리할 수 없습니다.'}
+                      className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-3 bg-yellow-500/10 border border-yellow-500/20 text-yellow-300 rounded-lg transition-colors font-medium hover:bg-yellow-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {isReprocessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                      재처리
+                    </button>
                   ) : (
                     null
                   )}
