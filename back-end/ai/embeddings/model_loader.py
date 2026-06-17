@@ -4,7 +4,7 @@ from peft import PeftModel
 
 def load_merged_model(
     base_model_name: str,
-    adapter_path: str
+    # adapter_path: str
 ):
     # base 모델 호출
     model = SentenceTransformer(
@@ -18,7 +18,8 @@ def load_merged_model(
     # Lora adapter 추가
     peft_model = PeftModel.from_pretrained(
         base_transformer,
-        adapter_path
+        # adapter_path,
+        is_trainable=True,
     )
 
     merged_model = (

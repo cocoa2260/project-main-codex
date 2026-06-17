@@ -17,10 +17,10 @@ class HFEmbeddingProvider(BaseEmbeddingProvider):
     def __init__(
         self,
         model_name: str,
-        adapter_path: str | None = None
+        # adapter_path: str | None = None
     ):
         self.model_name = model_name
-        self.adapter_path = adapter_path
+        # self.adapter_path = adapter_path
 
         self._model = None
 
@@ -30,17 +30,17 @@ class HFEmbeddingProvider(BaseEmbeddingProvider):
 
         if self._model is None:
 
-            if self.adapter_path != None:
+            # if self.adapter_path != None:
 
-                self._model = load_merged_model(
-                    self.model_name,
-                    self.adapter_path
-                )
-            else:
+            #     self._model = load_merged_model(
+            #         self.model_name,
+            #         self.adapter_path
+            #     )
+            # else:
 
-                self._model = SentenceTransformer(
-                    self.model_name
-                )
+            self._model = SentenceTransformer(
+                self.model_name
+            )
 
         return self._model
 

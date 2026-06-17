@@ -1,16 +1,98 @@
 # chatbot을 통해 들어온 질문에 대한 답변 task 내용이 들어갈 파일
+from uuid import UUID
+
 from app.celery_app import celery_app
+from core.config import settings
 from db.database import SessionLocal
 
 from models.document import (Document, DocumentStatus)
+from models.document_chunk import DocumentChunk
 from models.task_tracker import (TaskTracker, TaskStatus)
 
+from ai.llms.llm_factory import get_llm_provider
 from ai.rerankers.reranking_factory import ( get_reranker_provider, RERANKING_REGISTRY )
 
 from ai.embeddings.embedding_factory import (
     get_embedding_provider,
     EMBEDDING_REGISTRY
 )
+
+
+def normalize_keyword(keyword: str) -> str:
+    return (keyword or "").strip().lower().replace(" ", "")
+
+
+def keyword_match_score(question_keywords: list[str], chunk_keywords: list[str]) -> int:
+    score = 0
+    normalized_question_keywords = [
+        normalize_keyword(keyword)
+        for keyword in question_keywords
+        if normalize_keyword(keyword)
+    ]
+    normalized_chunk_keywords = [
+        normalize_keyword(keyword)
+        for keyword in chunk_keywords
+        if normalize_keyword(keyword)
+    ]
+
+    for question_keyword in normalized_question_keywords:
+        for chunk_keyword in normalized_chunk_keywords:
+            if question_keyword == chunk_keyword:
+                score += 3
+            elif question_keyword in chunk_keyword or chunk_keyword in question_keyword:
+                score += 1
+
+    return score
+
+
+def keyword_retrieval(db, document_id: str, question: str, top_k: int = 5) -> list[str]:
+    """
+    LLM으로 질문 키워드를 추출한 뒤 document_chunks.keywords와 비교해
+    관련 chunk.content를 embedding_retrieval과 같은 list[str] 형태로 반환한다.
+    """
+    try:
+        llm_provider = get_llm_provider(settings.DEFAULT_LLM_MODEL)
+        question_keywords = llm_provider.extract_question_keywords(question)
+
+        if not question_keywords:
+            return []
+
+        document_uuid = UUID(document_id)
+        chunk_rows = (
+            db.query(DocumentChunk)
+            .filter(DocumentChunk.document_id == document_uuid)
+            .order_by(DocumentChunk.chunk_index.asc())
+            .all()
+        )
+
+        scored_chunks = []
+
+        for chunk in chunk_rows:
+            score = keyword_match_score(question_keywords, chunk.keywords or [])
+            if score > 0:
+                scored_chunks.append((score, chunk.chunk_index, chunk.content))
+
+        scored_chunks.sort(key=lambda row: (-row[0], row[1]))
+
+        return [content for _, _, content in scored_chunks[:top_k]]
+
+    except Exception as exc:
+        print(exc)
+        return []
+
+
+def merge_retrieved_chunks(*chunk_lists: list[str]) -> list[str]:
+    merged_chunks = []
+    seen_chunks = set()
+
+    for chunks in chunk_lists:
+        for chunk in chunks or []:
+            if not chunk or chunk in seen_chunks:
+                continue
+            merged_chunks.append(chunk)
+            seen_chunks.add(chunk)
+
+    return merged_chunks
 
 def embedding_retrieval(db, document_id:str, task_id:str, input_question:str , embedding_model:str = "snowflake-ko", top_k:int = 5):
     chunks = []
@@ -106,10 +188,14 @@ def process_search_chunks(document_id:str, task_id:str, question:str, embedding_
         '''
         
         # 2. llm Retriever
+        chunks2 = keyword_retrieval(db, document_id, question, top_k*2)
+        '''
+        chunk 결과 = ['string', 'string', 'string']
+        '''
 
 
         # 3. embedding Retriever + llm Retriever
-        chunk_set = list(set(chunks) | set(chunks2))
+        chunk_set = merge_retrieved_chunks(chunks, chunks2)
 
         # 4. rerank(embed + llm)
         rerank_chunks = reranking(chunk_set, question, "BAAI/bge-m3", top_k)

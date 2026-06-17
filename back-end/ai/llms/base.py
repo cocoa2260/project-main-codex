@@ -24,3 +24,6 @@ class BaseLLMProvider(ABC):
 
     def extract_keywords(self, text: str) -> list[str]:
         return []
+
+    def extract_question_keywords(self, question: str) -> list[str]:
+        return self.extract_keywords(question)

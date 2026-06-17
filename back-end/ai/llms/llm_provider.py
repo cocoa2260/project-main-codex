@@ -15,6 +15,11 @@ class OllamaLLMProvider(BaseLLMProvider):
             model=model_name,
             temperature=0.2,
         )
+        self.keyword_client = ChatOllama(
+            base_url=settings.OLLAMA_URL,
+            model=model_name,
+            temperature=0,
+        )
 
     # 이전 프롬프트: 문서 전문을 한 번에 요약하던 방식입니다.
     def summarize(self, markdown: str) -> str:
@@ -160,12 +165,15 @@ class OllamaLLMProvider(BaseLLMProvider):
         return str(response.content).strip()
 
     def extract_keywords(self, text: str) -> list[str]:
-        response = self.client.invoke(
+        response = self.keyword_client.invoke(
             [
                 SystemMessage(
                     content=(
                         "당신은 법률/계약 문서 chunk에서 검색용 핵심 키워드를 추출하는 전문가입니다. "
-                        "한국어 명사구 중심으로 3~8개만 뽑으세요. "
+                        "문서 chunk 안에 실제로 등장하거나 명확히 근거가 있는 핵심 개념만 한국어 명사구 중심으로 3~8개 뽑으세요. "
+                        "명백한 OCR 오타, 깨진 띄어쓰기, 분리된 영문 약어는 자연스러운 전문 용어로 보정하세요. "
+                        "동일 의미의 표현은 하나의 대표 키워드로 통합하세요. "
+                        "단, 문서에 근거가 없는 유사어, 상위 개념, 관련 법률 용어를 새로 확장해서 만들지 마세요. "
                         "설명하지 말고 쉼표로 구분된 키워드만 출력하세요. /no_think"
                     )
                 ),
@@ -188,14 +196,102 @@ class OllamaLLMProvider(BaseLLMProvider):
 
         return keywords[:8]
 
+    def extract_question_keywords(self, question: str) -> list[str]:
+        response = self.keyword_client.invoke(
+            [
+                SystemMessage(
+                    content=(
+                        "당신은 법률 RAG 검색어를 생성하는 전문가입니다.\n\n"
+                        "사용자의 자연어 질문을 법률 문서 검색에 적합한 핵심 키워드로 변환하세요.\n\n"
+                        "규칙:\n"
+                        "질문에 명시된 사실관계만 사용하세요.\n"
+                        "질문에 없는 사실을 추론하지 마세요.\n"
+                        "범죄, 위법성, 책임, 분쟁 발생 여부를 단정하거나 가정하지 마세요.\n"
+                        "질문과 직접 관련된 법률 개념, 권리, 의무, 절차, 제도, 법률 용어를 우선 추출하세요.\n"
+                        "질문에 드러난 사실을 단정하지 않는 범위에서, 문서 검색에 도움이 되는 중립적 법률 개념은 포함하세요.\n"
+                        "질문 속 구체 정보가 법률 문서에서 더 넓은 중립적 개념으로 분류된다면 해당 개념도 포함하세요.\n"
+                        "사용자의 일상 표현은 가능하면 법률 문서에서 실제 사용되는 표준 용어로 변환하세요.\n"
+                        "복합 개념보다 독립적으로 검색 가능한 원자적 키워드를 우선 사용하세요.\n"
+                        "지나치게 포괄적이거나 추상적인 용어는 제외하세요.\n"
+                        "질문과 직접 관련 없는 법률 분야로 확장하지 마세요.\n"
+                        "명백한 오타 및 띄어쓰기 오류는 자연스럽게 보정하세요.\n"
+                        "동일 의미의 중복 키워드는 제거하세요.\n\n"
+                        "좋은 예시\n\n"
+                        "질문:\n"
+                        "회사에서 짤렸어요\n\n"
+                        "출력:\n"
+                        "해고, 근로계약, 퇴직, 고용관계\n\n"
+                        "질문:\n"
+                        "월급을 못 받았어요\n\n"
+                        "출력:\n"
+                        "임금체불, 급여, 임금지급, 근로기준법\n\n"
+                        "질문:\n"
+                        "남편이 애를 데리고 나갔어요\n\n"
+                        "출력:\n"
+                        "배우자, 자녀, 양육권, 친권\n\n"
+                        "질문:\n"
+                        "집주인이 보증금을 안 돌려줘요\n\n"
+                        "출력:\n"
+                        "전세보증금, 보증금반환, 임대차계약, 임차인\n\n"
+                        "질문:\n"
+                        "중고차를 샀는데 침수차였어요\n\n"
+                        "출력:\n"
+                        "중고차, 하자, 계약해제, 손해배상\n\n"
+                        "나쁜 예시\n\n"
+                        "질문:\n"
+                        "회사에서 짤렸어요\n\n"
+                        "출력:\n"
+                        "부당해고, 해고무효소송, 손해배상\n\n"
+                        "부당 여부가 확인되지 않았으므로 부적절합니다.\n\n"
+                        "질문:\n"
+                        "남편이 애를 데리고 나갔어요\n\n"
+                        "출력:\n"
+                        "양육권 분쟁, 아동보호, 아동학대\n\n"
+                        "질문에 없는 사실을 추론했으므로 부적절합니다.\n\n"
+                        "질문:\n"
+                        "월급을 못 받았어요\n\n"
+                        "출력:\n"
+                        "사기, 횡령, 형사처벌\n\n"
+                        "위법행위를 단정했으므로 부적절합니다.\n\n"
+                        "출력 형식:\n"
+                        "3~8개의 키워드만 출력\n"
+                        "쉼표(,)로만 구분\n"
+                        "설명 금지\n"
+                        "번호 금지\n"
+                        "문장 금지\n"
+                        "따옴표 금지\n"
+                        "줄바꿈 금지\n\n"
+                        "/no_think"
+                    )
+                ),
+                HumanMessage(content=f"질문:\n{question}\n\n/no_think"),
+            ]
+        )
+
+        raw_keywords = str(response.content).strip()
+        keywords: list[str] = []
+
+        for keyword in re.split(r"[,，|/·\n]", raw_keywords):
+            cleaned_keyword = (
+                keyword.strip()
+                .strip("`*_\"'")
+                .lstrip("-*0123456789. ")
+                .strip()
+            )
+            if cleaned_keyword and cleaned_keyword not in keywords:
+                keywords.append(cleaned_keyword)
+
+        return keywords[:8]
+
     def extract_representative_keyword(self, text: str) -> str | None:
-        response = self.client.invoke(
+        response = self.keyword_client.invoke(
             [
                 SystemMessage(
                     content=(
                         "당신은 OCR 문서 chunk에서 문서 대표 키워드 후보를 고르는 전문가입니다. "
-                        "이 chunk를 가장 잘 대표하는 핵심 키워드 1개만 한국어 명사구로 작성하세요. "
+                        "이 chunk 안에 실제로 등장하거나 명확히 근거가 있는 내용 중, 문서 전체 주제를 설명하는 데 도움이 되는 대표 키워드 1개만 한국어 명사구로 작성하세요. "
                         "명백한 OCR 오타는 자연스러운 전문 용어로 보정하세요. "
+                        "단, 문서에 근거가 없는 유사어, 상위 개념, 관련 개념을 새로 만들지 마세요. "
                         "설명, 번호, 따옴표, 문장부호 없이 키워드만 출력하세요. /no_think"
                     )
                 ),

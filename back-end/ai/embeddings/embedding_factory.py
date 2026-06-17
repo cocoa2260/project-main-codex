@@ -10,12 +10,10 @@ from pathlib import Path
 EMBEDDING_REGISTRY = {
     "snowflake-ko": {
         "base_model": "dragonkue/snowflake-arctic-embed-l-v2.0-ko",
-        "adapter_path": None,
     },
 
     "snowflake-ko-lora": {
-        "base_model": "dragonkue/snowflake-arctic-embed-l-v2.0-ko",
-        "adapter_path": "skdiwlsdn5/snowflake-Lora-Adapter-512",
+        "base_model": "skdiwlsdn5/snowflake-Lora-512",
     },
 }
 
@@ -43,7 +41,6 @@ def get_embedding_provider(model_name: str):
     
     provider = HFEmbeddingProvider(
         model_name=config["base_model"],
-        adapter_path=config["adapter_path"]
     )
 
     _provider_cache[
