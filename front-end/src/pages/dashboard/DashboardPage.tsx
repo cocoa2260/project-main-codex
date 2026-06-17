@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sidebar } from '../../components/common/Sidebar';
 import { StatusBadge } from '@/components/common/StatusBadge';
+import { usePersistentSidebar } from '../../hooks/usePersistentSidebar';
 import {
   FileText,
   Upload,
@@ -17,8 +18,8 @@ import {
   Download,
   MoreVertical,
   Sparkles,
-  Brain,
   Zap,
+  LogOut,
 } from 'lucide-react';
 import type { DocumentItem } from '@/types/document';
 import { getDocuments } from '@/api/document';
@@ -41,7 +42,7 @@ function formatBytes(bytes?: number | null) {
 
 export function DashboardPage({ onLogout }: DashboardPageProps) {
   const navigate = useNavigate();
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = usePersistentSidebar();
   const [documents,setDocuments] = useState<DocumentItem[]>([])
 
   useEffect(() => {
@@ -73,6 +74,21 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
   const processingCount = documents.filter((doc) => doc.status === 'PROCESSING').length;
   const reviewRequiredCount = documents.filter((doc) => doc.status === 'REVIEW_REQUIRED').length;
   const completedCount = documents.filter((doc) => doc.status === 'COMPLETED').length;
+  const failedCount = documents.filter((doc) => doc.status === 'FAILED').length;
+  const weekCompletedCount = useMemo(() => {
+    const now = new Date();
+    const day = now.getDay();
+    const diffToMonday = (day + 6) % 7;
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - diffToMonday);
+    startOfWeek.setHours(0, 0, 0, 0);
+
+    return documents.filter((doc) => {
+      if (doc.status !== 'COMPLETED') return false;
+      const uploadedAt = new Date(doc.upload_at);
+      return !Number.isNaN(uploadedAt.getTime()) && uploadedAt >= startOfWeek;
+    }).length;
+  }, [documents]);
   const getRatio = (count: number) => {
   if (totalCount === 0) return 0;
   return Math.round((count / totalCount) * 100);
@@ -84,6 +100,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
       <Sidebar
         variant="user"
         sidebarOpen={sidebarOpen}
+        onToggle={() => setSidebarOpen((open) => !open)}
         onLogout={onLogout}
       />
 
@@ -95,7 +112,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
             <button
               type="button"
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-2 hover:bg-white/5 rounded-lg transition-colors lg:hidden"
+              className="p-2 hover:bg-white/5 rounded-lg transition-colors"
             >
               {sidebarOpen ? <X className="w-5 h-5 text-zinc-300" /> : <Menu className="w-5 h-5 text-zinc-300" />}
             </button>
@@ -123,8 +140,9 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
             <button
               type="button"
               onClick={onLogout}
-              className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors text-zinc-300 hover:text-white text-sm"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors text-zinc-300 hover:text-white text-sm"
             >
+              <LogOut className="h-4 w-4" />
               로그아웃
             </button>
           </div>
@@ -147,7 +165,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
               <div className="relative group cursor-pointer">
                 <div className="absolute -inset-0.5 bg-gradient-to-r from-primary to-blue-500 rounded-xl opacity-0 group-hover:opacity-20 blur transition-opacity" />
                 <div 
-                  onClick={() => navigate('/documents')}
+                  onClick={() => navigate('/documents?status=FAILED')}
                   className="relative bg-[#15151c] border border-white/10 rounded-xl p-5 hover:border-white/20 transition-colors"
                 >
                   <div className="flex items-center justify-between mb-4">
@@ -209,9 +227,9 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
                     </div>
                     <TrendingUp className="w-4 h-4 text-green-400" />
                   </div>
-                  <p className="text-zinc-300 text-sm mb-1">이번 주 처리</p>
-                  <p className="text-3xl font-bold text-white mb-2">45</p>
-                  <p className="text-green-400 text-sm">+23% 증가</p>
+	                  <p className="text-zinc-300 text-sm mb-1">실패</p>
+	                  <p className="text-3xl font-bold text-white mb-2">{failedCount}</p>
+	                  <p className="text-zinc-400 text-sm">이번 주 완료 {weekCompletedCount}</p>
                 </div>
               </div>
             </div>
@@ -367,60 +385,35 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
               {/* Right column - Activity and Quick Actions */}
               <div className="space-y-6">
                 {/* Processing pipeline */}
-                <div className="bg-[#15151c] border border-white/10 rounded-xl p-5">
-                  <h3 className="text-white font-semibold text-lg mb-4">AI 처리 파이프라인</h3>
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-green-500/10 rounded-lg">
-                        <CheckCircle2 className="w-4 h-4 text-green-400" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-white text-sm font-medium">PDF 업로드</p>
-                        <p className="text-zinc-400 text-xs">완료</p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-blue-500/10 rounded-lg">
-                        <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-white text-sm font-medium">OCR 처리</p>
-                        <p className="text-zinc-400 text-xs">진행 중... 65%</p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-white/5 rounded-lg">
-                        <Brain className="w-4 h-4 text-zinc-400" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-zinc-300 text-sm font-medium">AI 요약</p>
-                        <p className="text-zinc-400 text-xs">대기 중</p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-white/5 rounded-lg">
-                        <Sparkles className="w-4 h-4 text-zinc-400" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-zinc-300 text-sm font-medium">벡터 임베딩</p>
-                        <p className="text-zinc-400 text-xs">대기 중</p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-white/5 rounded-lg">
-                        <CheckCircle2 className="w-4 h-4 text-zinc-400" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-zinc-300 text-sm font-medium">완료</p>
-                        <p className="text-zinc-400 text-xs">대기 중</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+	                <div className="bg-[#15151c] border border-white/10 rounded-xl p-5">
+	                  <h3 className="text-white font-semibold text-lg mb-4">AI 처리 파이프라인</h3>
+	                  <div className="space-y-3">
+	                    {[
+	                      ['OCR', 'PDF 텍스트 추출 및 Markdown 생성'],
+	                      ['Review', 'OCR Markdown 검토 대기/확정'],
+	                      ['Summary', 'AI 요약 및 키워드 생성'],
+	                      ['Embedding', '문서 검색용 벡터 준비'],
+	                      ['Completed', '요약과 채팅 화면 사용 가능'],
+	                    ].map(([label, description], index) => (
+	                      <div key={label} className="flex items-center gap-3">
+	                        <div className={`flex h-8 w-8 items-center justify-center rounded-lg border ${
+	                          index === 0
+	                            ? 'border-blue-300/30 bg-blue-500/10 text-blue-300'
+	                            : 'border-white/10 bg-white/5 text-zinc-300'
+	                        }`}>
+	                          {index === 0 ? <Loader2 className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+	                        </div>
+	                        <div className="flex-1">
+	                          <p className="text-white text-sm font-medium">{label}</p>
+	                          <p className="text-zinc-400 text-xs">{description}</p>
+	                        </div>
+	                      </div>
+	                    ))}
+	                  </div>
+	                  <p className="mt-4 rounded-lg bg-white/5 p-3 text-xs leading-5 text-zinc-300">
+	                    단계별 실시간 API가 연결되기 전까지는 표준 처리 흐름을 기준으로 표시합니다.
+	                  </p>
+	                </div>
 
                 {/* Recent activity */}
                 <div className="bg-[#15151c] border border-white/10 rounded-xl p-5">

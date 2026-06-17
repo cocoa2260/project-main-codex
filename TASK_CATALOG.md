@@ -717,3 +717,20 @@ Status: DONE
 
 Priority: Medium
 Status: DONE
+
+### UX-001 User UI Fix Pack
+
+- 좌측 Sidebar 로그아웃 제거 및 우측 상단 로그아웃 버튼 아이콘 표시
+- User/Admin 공통 Sidebar 접기/펼치기 및 localStorage 상태 유지 추가
+- Sidebar 접힘 상태에서 아이콘 중심 메뉴와 실제 사용자 정보 표시 유지
+- 문서 상세/상태/리뷰/요약/워크스페이스/채팅 화면 뒤로가기 UX를 history 기반 + `/documents` fallback으로 보정
+- Dashboard 문서 상태 카드 이동 URL 및 DocumentListPage 초기 status query 반영 수정
+- Dashboard 처리 현황 카운트를 문서 목록 데이터 기준으로 정리하고 AI Pipeline 영역을 OCR/Review/Summary/Embedding/Completed 흐름으로 명시
+- DocumentListPage 목록형 table overflow, min-width, 문서명 truncate 적용
+- DocumentSummaryPage OCR Markdown 보기 버튼 유지 및 `/documents/{documentId}/review` 이동 제공
+- DocumentWorkspacePage 간략히 보기 동작을 채팅 화면 이동으로 변경
+- DocumentChatPage 접힌 문서정보 패널 재펼침 버튼 가시성/동작 보강
+- Chat/RAG/Summary-Embedding 실행 순서/DB migration/Admin 신규 기능 변경 없음
+
+Priority: High
+Status: DONE

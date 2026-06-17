@@ -19,6 +19,7 @@ import {
 } from '../../api/document';
 import type { DocumentMarkdownResponse } from '../../types/document';
 import { normalizeDocumentStatus } from '../../utils/documentStatus';
+import { navigateBackOr } from '../../utils/navigation';
 
 function getErrorMessage(error: unknown) {
   if (typeof error === 'object' && error !== null && 'response' in error) {
@@ -128,7 +129,7 @@ export function DocumentReviewPage() {
           <div>
             <button
               type="button"
-              onClick={() => navigate('/documents')}
+              onClick={() => navigateBackOr(navigate)}
               className="inline-flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors mb-4"
             >
               <ArrowLeft className="w-4 h-4" />
@@ -186,7 +187,7 @@ export function DocumentReviewPage() {
         {reviewData && !isReviewRequired && (
           <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 text-amber-200 flex items-center gap-3">
             <AlertCircle className="w-5 h-5" />
-            <span>현재 문서는 검토 대기 상태가 아닙니다. 상태를 확인한 뒤 필요한 작업을 진행해주세요.</span>
+	            <span>현재 문서는 검토 대기 상태가 아니므로 읽기 전용으로 표시됩니다.</span>
           </div>
         )}
 

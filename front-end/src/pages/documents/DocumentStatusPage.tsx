@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   FileText,
@@ -20,11 +20,14 @@ import {
   Layers,
   Activity,
   TrendingUp,
-  PauseCircle
+  PauseCircle,
+  LogOut,
 } from 'lucide-react';
 import { useDocumentStatus } from '../../hooks/useDocumentStatus';
+import { usePersistentSidebar } from '../../hooks/usePersistentSidebar';
 import { Sidebar } from '../../components/common/Sidebar';
 import { PipelineStepper } from '../../components/document/PipelineStepper';
+import { navigateBackOr } from '../../utils/navigation';
 
 interface ActivityLog {
   id: string;
@@ -43,7 +46,7 @@ interface DocumentStatusPageProps {
 export function DocumentStatusPage({ onBack, onLogout, onOpenSummary, onOpenChat }: DocumentStatusPageProps) {
   const navigate = useNavigate();
   const { documentId } = useParams();
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = usePersistentSidebar();
   const {
     status,
     activityLog,
@@ -73,6 +76,15 @@ export function DocumentStatusPage({ onBack, onLogout, onOpenSummary, onOpenChat
     pages: '-',
   };
 
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+      return;
+    }
+
+    navigateBackOr(navigate);
+  };
+
   const getActivityIcon = (type: ActivityLog['type']) => {
     switch (type) {
       case 'success':
@@ -92,6 +104,7 @@ export function DocumentStatusPage({ onBack, onLogout, onOpenSummary, onOpenChat
       <Sidebar
         variant="user"
         sidebarOpen={sidebarOpen}
+        onToggle={() => setSidebarOpen((open) => !open)}
         onLogout={onLogout}
       />
 
@@ -103,14 +116,14 @@ export function DocumentStatusPage({ onBack, onLogout, onOpenSummary, onOpenChat
             <button
               type="button"
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-2 hover:bg-white/5 rounded-lg transition-colors lg:hidden"
+              className="p-2 hover:bg-white/5 rounded-lg transition-colors"
             >
               {sidebarOpen ? <X className="w-5 h-5 text-zinc-300" /> : <Menu className="w-5 h-5 text-zinc-300" />}
             </button>
 
             <button
               type="button"
-              onClick={onBack}
+              onClick={handleBack}
               className="flex items-center gap-2 px-3 py-2 hover:bg-white/5 rounded-lg transition-colors"
             >
               <ChevronLeft className="w-5 h-5 text-zinc-300" />
@@ -130,8 +143,9 @@ export function DocumentStatusPage({ onBack, onLogout, onOpenSummary, onOpenChat
             <button
               type="button"
               onClick={onLogout}
-              className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors text-zinc-300 hover:text-white text-sm"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors text-zinc-300 hover:text-white text-sm"
             >
+              <LogOut className="h-4 w-4" />
               로그아웃
             </button>
           </div>
@@ -276,7 +290,7 @@ export function DocumentStatusPage({ onBack, onLogout, onOpenSummary, onOpenChat
                     <>
                       <button
                         type="button"
-                        onClick={onBack}
+	                        onClick={handleBack}
                         className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-white/5 border border-white/10 text-white rounded-lg hover:bg-white/10 transition-colors"
                       >
                         <PauseCircle className="w-4 h-4" />

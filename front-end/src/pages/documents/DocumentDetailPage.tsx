@@ -22,6 +22,7 @@ import { getDocumentSummary } from '../../api/document';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import type { DocumentSummaryResponse } from '../../types/document';
 import { normalizeDocumentStatus } from '../../utils/documentStatus';
+import { navigateBackOr } from '../../utils/navigation';
 
 function formatBytes(bytes?: number | null) {
   if (!bytes) return '-';
@@ -106,7 +107,7 @@ export function DocumentDetailPage() {
         <div className="flex h-full items-center justify-between px-6">
           <button
             type="button"
-            onClick={() => navigate('/documents')}
+            onClick={() => navigateBackOr(navigate)}
             className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-zinc-300 transition-colors hover:bg-white/5 hover:text-white"
           >
             <ArrowLeft className="h-4 w-4" />

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getAdminSettings } from '../../api/admin';
 import { Sidebar } from '../../components/common/Sidebar';
+import { usePersistentSidebar } from '../../hooks/usePersistentSidebar';
 import type { AdminSettingItem, AdminSettingsCategory } from '../../types/admin';
 import {
   Settings,
@@ -26,6 +27,7 @@ import {
   RefreshCw,
   Loader2,
   AlertCircle,
+  LogOut,
 } from 'lucide-react';
 
 interface SettingCategoryNavigationItem {
@@ -150,7 +152,7 @@ function renderSettingControl(setting: AdminSettingItem) {
 }
 
 export function AdminSettingsPage({ onLogout }: AdminSettingsPageProps) {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = usePersistentSidebar();
   const [activeCategory, setActiveCategory] = useState('ocr');
   const [categories, setCategories] = useState<AdminSettingsCategory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -238,6 +240,7 @@ export function AdminSettingsPage({ onLogout }: AdminSettingsPageProps) {
       <Sidebar
         variant="admin"
         sidebarOpen={sidebarOpen}
+        onToggle={() => setSidebarOpen((open) => !open)}
         onLogout={onLogout}
       />
 
@@ -249,7 +252,7 @@ export function AdminSettingsPage({ onLogout }: AdminSettingsPageProps) {
             <button
               type="button"
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-2 hover:bg-white/5 rounded-lg transition-colors lg:hidden"
+              className="p-2 hover:bg-white/5 rounded-lg transition-colors"
             >
               {sidebarOpen ? <X className="w-5 h-5 text-gray-400" /> : <Menu className="w-5 h-5 text-gray-400" />}
             </button>
@@ -286,8 +289,9 @@ export function AdminSettingsPage({ onLogout }: AdminSettingsPageProps) {
             <button
               type="button"
               onClick={onLogout}
-              className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors text-gray-400 hover:text-white text-sm"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors text-gray-400 hover:text-white text-sm"
             >
+              <LogOut className="h-4 w-4" />
               로그아웃
             </button>
           </div>

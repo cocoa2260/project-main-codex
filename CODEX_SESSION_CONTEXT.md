@@ -964,3 +964,28 @@ Scope notes:
 - No Chat/RAG changes.
 - No Admin feature changes.
 - No Pipeline structure changes.
+
+## 2026-06-17 UX-001 User UI Fix Pack
+
+Branch: feature/ux-001-user-ui-fix-pack
+
+Implemented:
+
+- Removed the duplicate bottom-left Sidebar logout action and kept the top-right logout flow.
+- Added `LogOut` icons to top-right logout buttons across User and Admin top bars.
+- Added persistent Sidebar collapse/expand behavior with `localStorage` and desktop-visible toggle controls.
+- Preserved Sidebar menu permission logic, including USER hiding the Admin menu.
+- Added history-aware back navigation with `/documents` fallback for document detail/status/review/summary/workspace/chat flows.
+- Fixed Dashboard document status navigation to use `/documents?status=COMPLETED|PROCESSING|FAILED` and aligned DocumentListPage initial filtering with the query param.
+- Replaced Dashboard hardcoded weekly count with document-data-based counts and made the AI Pipeline panel explicitly show OCR, Review, Summary, Embedding, and Completed steps.
+- Hardened DocumentListPage list view with horizontal overflow, stable column widths, and truncated document names.
+- Ensured Summary can open OCR Markdown Review, including read-only review for non-REVIEW_REQUIRED documents.
+- Changed Workspace simple-view action to navigate to the chat screen.
+- Fixed the Chat document info panel so it can be expanded again after being collapsed.
+
+Scope notes:
+
+- No DB migration.
+- No Chat/RAG logic change.
+- No Summary/Embedding pipeline order change.
+- No new Admin feature surface.

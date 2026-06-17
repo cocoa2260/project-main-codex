@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Sidebar } from '../../components/common/Sidebar';
 import { StatusBadge } from '@/components/common/StatusBadge';
 import { getDocuments } from '@/api/document';
+import { usePersistentSidebar } from '../../hooks/usePersistentSidebar';
 import type { DocumentItem, DocumentStatus, TaskStage } from '@/types/document';
 import { formatDateTime } from '@/utils/date';
 import { getDocumentProgress, normalizeDocumentStatus } from '@/utils/documentStatus';
@@ -28,10 +29,12 @@ import {
   FileType,
   Layers,
   Activity,
-  Trash2
+  Trash2,
+  LogOut,
 } from 'lucide-react';
 
 type SortBy = 'recent' | 'oldest' | 'name';
+type FilterStatus = 'all' | 'processing' | 'completed' | 'failed';
 
 interface Document {
   id: string;
@@ -63,19 +66,34 @@ function formatBytes(bytes?: number | null) {
   return `${value.toFixed(value >= 10 || index === 0 ? 0 : 1)} ${units[index]}`;
 }
 
+function getFilterStatusFromParam(statusParam: string | null): FilterStatus {
+  const normalizedStatus = statusParam ? normalizeDocumentStatus(statusParam) : null;
+
+  if (normalizedStatus === 'COMPLETED') return 'completed';
+  if (normalizedStatus === 'FAILED') return 'failed';
+  if (
+    normalizedStatus === 'PENDING' ||
+    normalizedStatus === 'PROCESSING' ||
+    normalizedStatus === 'REVIEW_REQUIRED'
+  ) {
+    return 'processing';
+  }
+
+  return 'all';
+}
+
 export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: DocumentListPageProps) {
   const navigate = useNavigate();
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [searchParams] = useSearchParams();
+  const statusParam = searchParams.get('status');
+  const [sidebarOpen, setSidebarOpen] = usePersistentSidebar();
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<'all' | 'processing' | 'completed' | 'failed'>('all');
+  const [filterStatus, setFilterStatus] = useState<FilterStatus>(() => getFilterStatusFromParam(statusParam));
   const [sortBy, setSortBy] = useState<SortBy>('recent');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [documents, setDocuments] = useState<Document[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [searchParams] = useSearchParams();
-  const statusParam = searchParams.get('status');
-  const normalizedStatusParam = statusParam ? normalizeDocumentStatus(statusParam) : null;
   
   useEffect(() => {
     let isMounted = true;
@@ -128,15 +146,13 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
     const matchesSearch = doc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          doc.category?.toLowerCase().includes(searchQuery.toLowerCase());
 
-    const matchesStatus = !normalizedStatusParam || doc.status === normalizedStatusParam;
-
     const matchesFilter =
       filterStatus === 'all' ? true :
       filterStatus === 'processing' ? doc.status === 'PENDING' || doc.status === 'PROCESSING' || doc.status === 'REVIEW_REQUIRED' :
       filterStatus === 'completed' ? doc.status === 'COMPLETED' :
       filterStatus === 'failed' ? doc.status === 'FAILED' : true;
 
-    return matchesSearch && matchesStatus && matchesFilter;
+    return matchesSearch && matchesFilter;
   });
 
   const sortedDocuments = [...filteredDocuments].sort((a, b) => {
@@ -153,6 +169,14 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
   const openDocumentDetail = (documentId: string) => navigate(`/documents/${documentId}`);
   const openDocumentStatus = (documentId: string) => navigate(`/documents/${documentId}/status`);
   const openDocumentWorkspace = (documentId: string) => navigate(`/documents/${documentId}/workspace`);
+  const applyFilterStatus = (nextFilterStatus: FilterStatus) => {
+    setFilterStatus(nextFilterStatus);
+
+    if (nextFilterStatus === 'completed') navigate('/documents?status=COMPLETED', { replace: true });
+    else if (nextFilterStatus === 'processing') navigate('/documents?status=PROCESSING', { replace: true });
+    else if (nextFilterStatus === 'failed') navigate('/documents?status=FAILED', { replace: true });
+    else navigate('/documents', { replace: true });
+  };
 
   const stats = {
     total: documents.length,
@@ -167,6 +191,7 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
       <Sidebar
         variant="user"
         sidebarOpen={sidebarOpen}
+        onToggle={() => setSidebarOpen((open) => !open)}
         onLogout={onLogout}
       />
 
@@ -178,7 +203,7 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
             <button
               type="button"
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-2 hover:bg-white/5 rounded-lg transition-colors lg:hidden"
+              className="p-2 hover:bg-white/5 rounded-lg transition-colors"
             >
               {sidebarOpen ? <X className="w-5 h-5 text-zinc-300" /> : <Menu className="w-5 h-5 text-zinc-300" />}
             </button>
@@ -208,8 +233,9 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
             <button
               type="button"
               onClick={onLogout}
-              className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors text-zinc-300 hover:text-white text-sm"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors text-zinc-300 hover:text-white text-sm"
             >
+              <LogOut className="h-4 w-4" />
               로그아웃
             </button>
           </div>
@@ -283,7 +309,7 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setFilterStatus('all')}
+	                  onClick={() => applyFilterStatus('all')}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                     filterStatus === 'all'
                       ? 'bg-primary text-white'
@@ -294,7 +320,7 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                 </button>
                 <button
                   type="button"
-                  onClick={() => setFilterStatus('processing')}
+	                  onClick={() => applyFilterStatus('processing')}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                     filterStatus === 'processing'
                       ? 'bg-primary text-white'
@@ -305,7 +331,7 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                 </button>
                 <button
                   type="button"
-                  onClick={() => setFilterStatus('completed')}
+	                  onClick={() => applyFilterStatus('completed')}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                     filterStatus === 'completed'
                       ? 'bg-primary text-white'
@@ -316,7 +342,7 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                 </button>
                 <button
                   type="button"
-                  onClick={() => setFilterStatus('failed')}
+	                  onClick={() => applyFilterStatus('failed')}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                     filterStatus === 'failed'
                       ? 'bg-primary text-white'
@@ -556,7 +582,15 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
               // List view
               <div className="bg-[#15151c] border border-white/10 rounded-xl overflow-hidden">
                 <div className="overflow-x-auto">
-                  <table className="w-full">
+                  <table className="w-full min-w-[920px] table-fixed">
+                    <colgroup>
+                      <col className="w-[34%]" />
+                      <col className="w-[18%]" />
+                      <col className="w-[10%]" />
+                      <col className="w-[8%]" />
+                      <col className="w-[14%]" />
+                      <col className="w-[16%]" />
+                    </colgroup>
                     <thead className="bg-white/5 border-b border-white/10">
                       <tr>
                         <th className="px-6 py-3 text-left text-xs font-medium text-zinc-300 uppercase tracking-wider">
@@ -583,13 +617,13 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                       {sortedDocuments.map((doc) => {
                         return (
                           <tr key={doc.id} className="hover:bg-white/5 transition-colors">
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="flex items-center gap-3">
-                                <div className="p-2 bg-primary/10 rounded-lg">
+                            <td className="px-6 py-4">
+                              <div className="flex min-w-0 items-center gap-3">
+                                <div className="shrink-0 p-2 bg-primary/10 rounded-lg">
                                   <FileText className="w-4 h-4 text-primary" />
                                 </div>
-                                <div>
-                                  <p className="text-white font-medium text-sm">{doc.name}</p>
+                                <div className="min-w-0">
+                                  <p className="truncate text-white font-medium text-sm" title={doc.name}>{doc.name}</p>
                                   {doc.category && (
                                     <span className="inline-block px-2 py-0.5 bg-white/5 border border-white/10 rounded text-xs text-zinc-300 mt-1">
                                       {doc.category}

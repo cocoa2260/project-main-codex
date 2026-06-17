@@ -19,6 +19,7 @@ import {
 import { fetchMe } from '../../api/auth';
 import { updateMyPassword, updateMyProfile } from '../../api/user';
 import { Sidebar } from '../../components/common/Sidebar';
+import { usePersistentSidebar } from '../../hooks/usePersistentSidebar';
 import { getAuthUser, type AuthUser } from '../../utils/auth';
 
 interface UserSettingsPageProps {
@@ -125,7 +126,7 @@ function TextInputField({
 
 export function UserSettingsPage({ onLogout }: UserSettingsPageProps) {
   const navigate = useNavigate();
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = usePersistentSidebar();
   const [user, setUser] = useState<AuthUser | null>(() => getAuthUser());
   const [userSource, setUserSource] = useState<UserSource>(() => (getAuthUser() ? 'local' : 'none'));
   const [isLoading, setIsLoading] = useState(true);
@@ -246,6 +247,7 @@ export function UserSettingsPage({ onLogout }: UserSettingsPageProps) {
       <Sidebar
         variant="user"
         sidebarOpen={sidebarOpen}
+        onToggle={() => setSidebarOpen((open) => !open)}
         onLogout={onLogout}
         userName={displayName}
         userEmail={displayEmail}
@@ -257,7 +259,7 @@ export function UserSettingsPage({ onLogout }: UserSettingsPageProps) {
             <button
               type="button"
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-2 hover:bg-white/5 rounded-lg transition-colors lg:hidden"
+              className="p-2 hover:bg-white/5 rounded-lg transition-colors"
               aria-label="사이드바 열기"
             >
               {sidebarOpen ? <X className="w-5 h-5 text-zinc-300" /> : <Menu className="w-5 h-5 text-zinc-300" />}

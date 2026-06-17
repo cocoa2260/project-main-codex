@@ -10,6 +10,7 @@ import {
   FileText,
   Layers,
   Loader2,
+  LogOut,
   Menu,
   MessageSquare,
   Send,
@@ -19,6 +20,7 @@ import {
 } from 'lucide-react';
 
 import { chatWithDocument, getDocumentSummary } from '../../api/document';
+import { usePersistentSidebar } from '../../hooks/usePersistentSidebar';
 import { Sidebar } from '../../components/common/Sidebar';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import type { DocumentChatCitation, DocumentSummaryResponse } from '../../types/document';
@@ -99,7 +101,7 @@ function makeSuggestedQuestions(summaryData: DocumentSummaryResponse | null) {
 export function DocumentChatPage({ onBack, onLogout }: DocumentChatPageProps) {
   const navigate = useNavigate();
   const { documentId } = useParams();
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = usePersistentSidebar();
   const [contextPanelExpanded, setContextPanelExpanded] = useState(true);
   const [message, setMessage] = useState('');
   const [summaryData, setSummaryData] = useState<DocumentSummaryResponse | null>(null);
@@ -209,6 +211,7 @@ export function DocumentChatPage({ onBack, onLogout }: DocumentChatPageProps) {
       <Sidebar
         variant="user"
         sidebarOpen={sidebarOpen}
+        onToggle={() => setSidebarOpen((open) => !open)}
         onLogout={onLogout}
       />
 
@@ -218,7 +221,7 @@ export function DocumentChatPage({ onBack, onLogout }: DocumentChatPageProps) {
             <button
               type="button"
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-2 hover:bg-white/5 rounded-lg transition-colors lg:hidden"
+              className="p-2 hover:bg-white/5 rounded-lg transition-colors"
             >
               {sidebarOpen ? <X className="w-5 h-5 text-zinc-300" /> : <Menu className="w-5 h-5 text-zinc-300" />}
             </button>
@@ -254,14 +257,15 @@ export function DocumentChatPage({ onBack, onLogout }: DocumentChatPageProps) {
             <button
               type="button"
               onClick={onLogout}
-              className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors text-zinc-300 hover:text-white text-sm"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors text-zinc-300 hover:text-white text-sm"
             >
+              <LogOut className="h-4 w-4" />
               로그아웃
             </button>
           </div>
         </header>
 
-        <main className="flex-1 flex overflow-hidden">
+        <main className="relative flex-1 flex overflow-hidden">
           <div className={`
             ${contextPanelExpanded ? 'w-80' : 'w-0'}
             bg-[#15151c] border-r border-white/10 transition-all duration-300 overflow-hidden
@@ -361,7 +365,9 @@ export function DocumentChatPage({ onBack, onLogout }: DocumentChatPageProps) {
             <button
               type="button"
               onClick={() => setContextPanelExpanded(true)}
-              className="absolute left-0 top-24 z-10 p-2 bg-[#15151c] border border-white/10 rounded-r-lg hover:bg-white/5 transition-colors"
+	              className="absolute left-0 top-6 z-10 inline-flex items-center gap-1 rounded-r-lg border border-white/10 bg-[#15151c] px-2 py-2 text-zinc-200 shadow-lg shadow-black/20 transition-colors hover:bg-white/10 hover:text-white"
+                title="문서 정보 펼치기"
+                aria-label="문서 정보 펼치기"
             >
               <ChevronLeft className="w-4 h-4 rotate-180 text-zinc-300" />
             </button>
