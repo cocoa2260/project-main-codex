@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Sidebar } from '../../components/common/Sidebar';
 import { StatusBadge } from '@/components/common/StatusBadge';
-import { getDocuments } from '@/api/document';
+import { deleteUserDocument, downloadDocumentOriginal, getDocuments } from '@/api/document';
 import { usePersistentSidebar } from '../../hooks/usePersistentSidebar';
 import type { DocumentItem, DocumentStatus, TaskStage } from '@/types/document';
 import { formatDateTime } from '@/utils/date';
@@ -80,8 +80,43 @@ function getFilterStatusFromParam(statusParam: string | null): FilterStatus {
   return 'all';
 }
 
+function mapDocument(doc: DocumentItem): Document {
+  const status = normalizeDocumentStatus(doc.status);
+
+  return {
+    id: doc.id,
+    name: doc.file_name,
+    uploadDate: formatDateTime(doc.upload_at),
+    uploadedAtRaw: doc.upload_at,
+    size: formatBytes(doc.file_size),
+    pages: doc.page_count ?? 0,
+    status,
+    category: doc.category ?? undefined,
+    summary: doc.summary ?? undefined,
+    progress: getDocumentProgress(status),
+  };
+}
+
+function getApiErrorMessage(error: unknown, fallback: string) {
+  if (typeof error === 'object' && error !== null && 'response' in error) {
+    const response = (error as { response?: { data?: { detail?: string; message?: string } } }).response;
+    return response?.data?.detail ?? response?.data?.message ?? fallback;
+  }
+
+  if (error instanceof Error) return error.message;
+
+  return fallback;
+}
+
+function canDeleteDocument(status: DocumentStatus) {
+  return status === 'REVIEW_REQUIRED' || status === 'COMPLETED' || status === 'FAILED';
+}
+
 export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: DocumentListPageProps) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const routeState = location.state as { message?: string } | null;
+  const routeMessage = routeState?.message;
   const [searchParams] = useSearchParams();
   const statusParam = searchParams.get('status');
   const [sidebarOpen, setSidebarOpen] = usePersistentSidebar();
@@ -91,49 +126,56 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
   const [documents, setDocuments] = useState<Document[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(routeMessage ?? null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [downloadingDocumentId, setDownloadingDocumentId] = useState<string | null>(null);
+  const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Document | null>(null);
   const filterStatus = getFilterStatusFromParam(statusParam);
-  
+
+  useEffect(() => {
+    if (routeMessage) {
+      navigate(location.pathname + location.search, { replace: true, state: null });
+    }
+  }, [location.pathname, location.search, navigate, routeMessage]);
+
+  const loadDocuments = async (options?: { showLoading?: boolean }) => {
+    try {
+      if (options?.showLoading ?? true) {
+        setIsLoading(true);
+      }
+      setError(null);
+
+      const docs = await getDocuments();
+      setDocuments(docs.map(mapDocument));
+    } catch (loadError) {
+      console.error('문서 목록을 불러오는 중 오류 발생:', loadError);
+      setError('문서 목록을 불러오지 못했습니다.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
     let isMounted = true;
 
-    const mapDocument = (doc: DocumentItem): Document => {
-      const status = normalizeDocumentStatus(doc.status);
-
-      return {
-        id: doc.id,
-        name: doc.file_name,
-        uploadDate: formatDateTime(doc.upload_at),
-        uploadedAtRaw: doc.upload_at,
-        size: formatBytes(doc.file_size),
-        pages: doc.page_count ?? 0,
-        status,
-        category: doc.category ?? undefined,
-        summary: doc.summary ?? undefined,
-        progress: getDocumentProgress(status),
-      };
-    };
-
-    const loadDocuments = async () => {
+    const loadMountedDocuments = async () => {
       try {
         setIsLoading(true);
         setError(null);
-
         const docs = await getDocuments();
-
-        if (!isMounted) return;
-        setDocuments(docs.map(mapDocument));
+        if (isMounted) setDocuments(docs.map(mapDocument));
       } catch (loadError) {
-        if (!isMounted) return;
-        console.error('문서 목록을 불러오는 중 오류 발생:', loadError);
-        setError('문서 목록을 불러오지 못했습니다.');
-      } finally {
         if (isMounted) {
-          setIsLoading(false);
+          console.error('문서 목록을 불러오는 중 오류 발생:', loadError);
+          setError('문서 목록을 불러오지 못했습니다.');
         }
+      } finally {
+        if (isMounted) setIsLoading(false);
       }
     };
 
-    void loadDocuments();
+    void loadMountedDocuments();
 
     return () => {
       isMounted = false;
@@ -167,6 +209,38 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
   const openDocumentDetail = (documentId: string) => navigate(`/documents/${documentId}`);
   const openDocumentStatus = (documentId: string) => navigate(`/documents/${documentId}/status`);
   const openDocumentWorkspace = (documentId: string) => navigate(`/documents/${documentId}/workspace`);
+  const handleDownload = async (doc: Document) => {
+    try {
+      setActionError(null);
+      setActionMessage(null);
+      setDownloadingDocumentId(doc.id);
+      const fileName = await downloadDocumentOriginal(doc.id, doc.name);
+      setActionMessage(`${fileName} 다운로드를 시작했습니다.`);
+    } catch (downloadError) {
+      setActionError(getApiErrorMessage(downloadError, '원본 파일을 다운로드하지 못했습니다.'));
+    } finally {
+      setDownloadingDocumentId(null);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+
+    try {
+      setActionError(null);
+      setActionMessage(null);
+      setDeletingDocumentId(deleteTarget.id);
+      const response = await deleteUserDocument(deleteTarget.id);
+      setActionMessage(response.message || `${response.file_name} 문서를 삭제했습니다.`);
+      setDeleteTarget(null);
+      await loadDocuments({ showLoading: false });
+    } catch (deleteError) {
+      setActionError(getApiErrorMessage(deleteError, '문서를 삭제하지 못했습니다.'));
+    } finally {
+      setDeletingDocumentId(null);
+    }
+  };
+
   const applyFilterStatus = (nextFilterStatus: FilterStatus) => {
     if (nextFilterStatus === 'completed') navigate('/documents?status=COMPLETED', { replace: true });
     else if (nextFilterStatus === 'processing') navigate('/documents?status=PROCESSING', { replace: true });
@@ -377,6 +451,20 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
               </div>
             </div>
 
+            {actionMessage && (
+              <div className="flex items-center gap-3 rounded-lg border border-green-500/20 bg-green-500/10 px-4 py-3 text-sm text-green-200">
+                <CheckCircle2 className="h-4 w-4" />
+                {actionMessage}
+              </div>
+            )}
+
+            {actionError && (
+              <div className="flex items-center gap-3 rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                <AlertCircle className="h-4 w-4" />
+                {actionError}
+              </div>
+            )}
+
             {/* Document list */}
             {isLoading ? (
               <div className="flex items-center justify-center gap-3 py-20 text-zinc-300">
@@ -484,6 +572,7 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                       )}
 
                       {/* Actions */}
+                      <div className="space-y-2">
                       {doc.status !== 'COMPLETED' && doc.status !== 'REVIEW_REQUIRED' && doc.status !== 'FAILED' && (
                         <button
                           type="button"
@@ -496,14 +585,38 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                       )}
 
                       {doc.status === 'REVIEW_REQUIRED' && (
-                        <button
-                          type="button"
-                          onClick={() => navigate(`/documents/${doc.id}/review`)}
-                          className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 rounded-lg transition-colors text-sm text-purple-300"
-                        >
-                          <Eye className="w-4 h-4" />
-                          검토하기
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/documents/${doc.id}/review`)}
+                            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 rounded-lg transition-colors text-sm text-purple-300"
+                          >
+                            <Eye className="w-4 h-4" />
+                            검토하기
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleDownload(doc)}
+                            disabled={downloadingDocumentId === doc.id}
+                            className="p-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                            title="원본 다운로드"
+                          >
+                            {downloadingDocumentId === doc.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin text-zinc-200" />
+                            ) : (
+                              <Download className="w-4 h-4 text-zinc-200" />
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeleteTarget(doc)}
+                            disabled={!canDeleteDocument(doc.status) || deletingDocumentId === doc.id}
+                            className="p-2 bg-red-500/10 hover:bg-red-500/20 rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                            title="문서 삭제"
+                          >
+                            <Trash2 className="w-4 h-4 text-red-300" />
+                          </button>
+                        </div>
                       )}
 
                       {doc.status === 'COMPLETED' && (
@@ -534,17 +647,23 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                           </button>
                           <button
                             type="button"
-                            disabled
-                            title="사용자 원본 다운로드 API 준비 중"
-                            className="p-2 bg-white/5 rounded-lg transition-colors opacity-40 cursor-not-allowed"
+                            onClick={() => void handleDownload(doc)}
+                            disabled={downloadingDocumentId === doc.id}
+                            title="원본 다운로드"
+                            className="p-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                           >
-                            <Download className="w-3.5 h-3.5 text-zinc-200" />
+                            {downloadingDocumentId === doc.id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin text-zinc-200" />
+                            ) : (
+                              <Download className="w-3.5 h-3.5 text-zinc-200" />
+                            )}
                           </button>
                           <button
                             type="button"
-                            disabled
-                            title="사용자 문서 삭제 API 준비 중"
-                            className="p-2 bg-red-500/10 rounded-lg transition-colors opacity-50 cursor-not-allowed"
+                            onClick={() => setDeleteTarget(doc)}
+                            disabled={!canDeleteDocument(doc.status) || deletingDocumentId === doc.id}
+                            title="문서 삭제"
+                            className="p-2 bg-red-500/10 hover:bg-red-500/20 rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             <Trash2 className="w-3.5 h-3.5 text-red-300" />
                           </button>
@@ -552,16 +671,41 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                       )}
 
                       {doc.status === 'FAILED' && (
-                        <button
-                          type="button"
-                          disabled
-                          title="사용자 재처리 API 준비 중"
-                          className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-red-500/10 border border-red-500/20 rounded-lg transition-colors text-sm text-red-400 opacity-50 cursor-not-allowed"
-                        >
-                          <RefreshCw className="w-4 h-4" />
-                          재처리
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            disabled
+                            title="사용자 재처리 API 준비 중"
+                            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-red-500/10 border border-red-500/20 rounded-lg transition-colors text-sm text-red-400 opacity-50 cursor-not-allowed"
+                          >
+                            <RefreshCw className="w-4 h-4" />
+                            재처리
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleDownload(doc)}
+                            disabled={downloadingDocumentId === doc.id}
+                            className="p-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                            title="원본 다운로드"
+                          >
+                            {downloadingDocumentId === doc.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin text-zinc-200" />
+                            ) : (
+                              <Download className="w-4 h-4 text-zinc-200" />
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeleteTarget(doc)}
+                            disabled={!canDeleteDocument(doc.status) || deletingDocumentId === doc.id}
+                            className="p-2 bg-red-500/10 hover:bg-red-500/20 rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                            title="문서 삭제"
+                          >
+                            <Trash2 className="w-4 h-4 text-red-300" />
+                          </button>
+                        </div>
                       )}
+                      </div>
                     </div>
                   );
                 })}
@@ -662,17 +806,23 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                                     </button>
                                     <button
                                       type="button"
-                                      disabled
-                                      className="p-2 rounded-lg opacity-40 cursor-not-allowed"
-                                      title="사용자 원본 다운로드 API 준비 중"
+                                      onClick={() => void handleDownload(doc)}
+                                      disabled={downloadingDocumentId === doc.id}
+                                      className="p-2 hover:bg-white/10 rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                                      title="원본 다운로드"
                                     >
-                                      <Download className="w-4 h-4 text-zinc-300" />
+                                      {downloadingDocumentId === doc.id ? (
+                                        <Loader2 className="w-4 h-4 animate-spin text-zinc-300" />
+                                      ) : (
+                                        <Download className="w-4 h-4 text-zinc-300" />
+                                      )}
                                     </button>
                                     <button
                                       type="button"
-                                      disabled
-                                      className="p-2 rounded-lg opacity-50 cursor-not-allowed"
-                                      title="사용자 문서 삭제 API 준비 중"
+                                      onClick={() => setDeleteTarget(doc)}
+                                      disabled={!canDeleteDocument(doc.status) || deletingDocumentId === doc.id}
+                                      className="p-2 hover:bg-red-500/10 rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                                      title="문서 삭제"
                                     >
                                       <Trash2 className="w-4 h-4 text-red-300" />
                                     </button>
@@ -699,6 +849,32 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                                     <RefreshCw className="w-4 h-4 text-red-400" />
                                   </button>
                                 )}
+                                {doc.status !== 'COMPLETED' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleDownload(doc)}
+                                    disabled={downloadingDocumentId === doc.id}
+                                    className="p-2 hover:bg-white/10 rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                                    title="원본 다운로드"
+                                  >
+                                    {downloadingDocumentId === doc.id ? (
+                                      <Loader2 className="w-4 h-4 animate-spin text-zinc-300" />
+                                    ) : (
+                                      <Download className="w-4 h-4 text-zinc-300" />
+                                    )}
+                                  </button>
+                                )}
+                                {doc.status !== 'COMPLETED' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setDeleteTarget(doc)}
+                                    disabled={!canDeleteDocument(doc.status) || deletingDocumentId === doc.id}
+                                    className="p-2 hover:bg-red-500/10 rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                                    title={canDeleteDocument(doc.status) ? '문서 삭제' : '처리 대기/진행 중인 문서는 삭제할 수 없습니다.'}
+                                  >
+                                    <Trash2 className="w-4 h-4 text-red-300" />
+                                  </button>
+                                )}
                                 <button
                                   type="button"
                                   onClick={() => openDocumentDetail(doc.id)}
@@ -720,6 +896,45 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
           </div>
         </main>
       </div>
+
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="w-full max-w-md rounded-xl border border-white/10 bg-[#15151c] p-6 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-500/10">
+                <Trash2 className="h-5 w-5 text-red-300" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-lg font-semibold text-white">문서 삭제 확인</h3>
+                <p className="mt-2 text-sm leading-6 text-zinc-300">
+                  <span className="font-medium text-white">{deleteTarget.name}</span> 문서를 삭제합니다.
+                  삭제된 문서와 처리 데이터는 복구할 수 없습니다.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                disabled={deletingDocumentId === deleteTarget.id}
+                className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-zinc-200 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleConfirmDelete()}
+                disabled={deletingDocumentId === deleteTarget.id}
+                className="inline-flex items-center gap-2 rounded-lg bg-red-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-400 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {deletingDocumentId === deleteTarget.id && <Loader2 className="h-4 w-4 animate-spin" />}
+                삭제
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

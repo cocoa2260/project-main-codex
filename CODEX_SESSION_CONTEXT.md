@@ -153,6 +153,23 @@ Summary:
 - Preserved Admin, Chat, RAG, and QA behavior
 - No DB migration or schema change
 
+### USER-005
+User Document Download/Delete
+Status: DONE
+Summary:
+- Added authenticated user original PDF download API at GET `/api/documents/{document_id}/download`
+- Added authenticated user document delete API at DELETE `/api/documents/{document_id}`
+- Enforced owner-only access using existing user document lookup policy
+- Returned original PDFs as attachments without exposing `storage_path`
+- Blocked PENDING and PROCESSING document deletes with 409
+- Allowed REVIEW_REQUIRED, COMPLETED, and FAILED document deletes with DB cascade and storage/sidecar cleanup
+- Recorded document download/delete audit logs without storing file body or storage paths
+- Added frontend document API client helpers for blob download and user delete
+- Connected download/delete actions in DocumentListPage and DocumentDetailPage with confirmation, loading, success, and error states
+- Connected DashboardPage recent document download action
+- Preserved Admin APIs, Chat/RAG behavior, and Summary/Embedding pipeline order
+- No DB migration or schema change
+
 ### FE-016
 Admin Task Monitoring API Integration
 Status: DONE

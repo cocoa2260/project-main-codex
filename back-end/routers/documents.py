@@ -6,9 +6,11 @@ from fastapi import Depends
 from fastapi import File
 from fastapi import Form
 from fastapi import HTTPException
+from fastapi import Request
 from fastapi import UploadFile
 from fastapi import WebSocket
 from fastapi import WebSocketDisconnect
+from fastapi.responses import FileResponse
 
 from sqlalchemy.orm import Session
 
@@ -27,6 +29,7 @@ from schemas.document import (
     DocumentChatCitation,
     DocumentChatRequest,
     DocumentChatResponse,
+    DocumentDeleteResponse,
     DocumentMarkdownResponse,
     DocumentSummaryResponse,
     DocumentStatusResponse,
@@ -46,9 +49,12 @@ from services.document_service import (
     build_status_message,
     create_document_from_upload,
     create_document_task,
+    delete_user_document,
     get_document_for_user,
     get_latest_document_task,
+    prepare_user_document_original_download,
     set_chunks,
+    UserDocumentDownloadError,
 )
 from tasks.ocr_tasks import process_document_ocr
 from tasks.summary_tasks import process_document_summary
@@ -56,6 +62,18 @@ from tasks.summary_tasks import process_document_summary
 
 router = APIRouter()
 logger = get_logger(__name__)
+
+
+def _client_ip(request: Request) -> str | None:
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        return forwarded_for.split(",", 1)[0].strip() or None
+
+    return request.client.host if request.client else None
+
+
+def _user_agent(request: Request) -> str | None:
+    return request.headers.get("user-agent")
 
 @router.get("/embedding-models")
 def get_embedding_models():
@@ -86,6 +104,61 @@ def list_documents(
         .order_by(Document.upload_at.desc())
         .all()
     )
+
+
+@router.get(
+    "/{document_id}/download",
+    response_class=FileResponse,
+)
+def download_document_original(
+    document_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        download_file = prepare_user_document_original_download(
+            db=db,
+            document_id=document_id,
+            actor=current_user,
+            ip_address=_client_ip(request),
+            user_agent=_user_agent(request),
+        )
+    except UserDocumentDownloadError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail)
+
+    return FileResponse(
+        path=download_file.path,
+        media_type=download_file.content_type,
+        filename=download_file.file_name,
+    )
+
+
+@router.delete(
+    "/{document_id}",
+    response_model=DocumentDeleteResponse,
+)
+def delete_document(
+    document_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        result = delete_user_document(
+            db=db,
+            document_id=document_id,
+            actor=current_user,
+            ip_address=_client_ip(request),
+            user_agent=_user_agent(request),
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error))
+
+    if result is None:
+        raise HTTPException(status_code=404, detail="문서를 찾을 수 없습니다.")
+
+    return result
 
 @router.post("/upload", response_model=DocumentUploadResponse)
 async def upload_document(

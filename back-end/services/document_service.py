@@ -1,4 +1,5 @@
 import os
+import shutil
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -10,14 +11,24 @@ from sqlalchemy.orm import Session
 from ai.embeddings.embedding_factory import resolve_embedding_model
 from core.config import settings
 from models.document import Document, DocumentStatus
+from models.audit_log import AuditAction, AuditTargetType
 from models.task_tracker import TaskStage, TaskTracker, TaskStatus, TaskType
 from models.document_chunk import DocumentChunk
 from models.document_embedding import DocumentEmbedding
+from models.user import User
+from schemas.document import DocumentDeleteResponse
+from services.audit_service import record_admin_action
 
 from utils.text_chunk import split_text
 
 STORAGE_DIR = "/storage/uploads"
 MAX_UPLOAD_SIZE = 30 * 1024 * 1024
+DOCUMENT_DOWNLOAD_CONTENT_TYPE_PDF = "application/pdf"
+DOCUMENT_DELETE_MESSAGE = "문서가 삭제되었습니다."
+DOCUMENT_DELETE_BLOCKED_STATUSES = {
+    DocumentStatus.PENDING,
+    DocumentStatus.PROCESSING,
+}
 
 
 async def save_upload_file(file: UploadFile) -> tuple[str, int]:
@@ -128,6 +139,182 @@ def get_document_for_user(
         )
         .first()
     )
+
+
+class UserDocumentDownloadError(Exception):
+    def __init__(self, status_code: int, detail: str):
+        self.status_code = status_code
+        self.detail = detail
+
+
+class UserDocumentOriginalDownload:
+    def __init__(
+        self,
+        path: Path,
+        file_name: str,
+        content_type: str,
+    ):
+        self.path = path
+        self.file_name = file_name
+        self.content_type = content_type
+
+
+def _document_cleanup_paths(storage_path: str | None) -> list[Path]:
+    if not storage_path:
+        return []
+
+    original_path = Path(storage_path)
+    paths = [
+        original_path,
+        original_path.with_suffix(f"{original_path.suffix}.ocr.json"),
+        original_path.with_suffix(".ocr.json"),
+        original_path.with_suffix(".ocr.md"),
+        original_path.with_suffix(".md"),
+        original_path.with_name(f"{original_path.name}.ocr"),
+        original_path.with_name(f"{original_path.stem}.ocr"),
+    ]
+
+    unique_paths: list[Path] = []
+    seen: set[str] = set()
+    for path in paths:
+        path_key = str(path)
+        if path_key not in seen:
+            seen.add(path_key)
+            unique_paths.append(path)
+
+    return unique_paths
+
+
+def _delete_storage_path_if_exists(path: Path) -> None:
+    try:
+        if path.is_dir():
+            shutil.rmtree(path)
+            return
+
+        path.unlink()
+    except FileNotFoundError:
+        return
+
+
+def prepare_user_document_original_download(
+    db: Session,
+    document_id,
+    actor: User,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> UserDocumentOriginalDownload:
+    document = get_document_for_user(
+        db=db,
+        document_id=document_id,
+        user_id=actor.id,
+    )
+    if document is None:
+        raise UserDocumentDownloadError(
+            status_code=404,
+            detail="문서를 찾을 수 없습니다.",
+        )
+
+    if not document.storage_path:
+        raise UserDocumentDownloadError(
+            status_code=404,
+            detail="원본 파일을 찾을 수 없습니다.",
+        )
+
+    storage_path = Path(document.storage_path)
+    if not storage_path.exists() or not storage_path.is_file():
+        raise UserDocumentDownloadError(
+            status_code=404,
+            detail="원본 파일을 찾을 수 없습니다.",
+        )
+
+    file_size = storage_path.stat().st_size
+    record_admin_action(
+        db=db,
+        actor_user=actor,
+        action=AuditAction.DOCUMENT_EXPORTED,
+        target_type=AuditTargetType.DOCUMENT,
+        target_id=document.id,
+        old_value={
+            "document_id": str(document.id),
+            "file_name": document.file_name,
+            "status": document.status,
+            "owner_id": str(document.user_id),
+        },
+        new_value={
+            "downloaded": True,
+            "format": "original",
+        },
+        reason="User downloaded own document.",
+        ip_address=ip_address,
+        user_agent=user_agent,
+        metadata={
+            "format": "original",
+            "content_type": DOCUMENT_DOWNLOAD_CONTENT_TYPE_PDF,
+            "file_size": file_size,
+        },
+    )
+    db.commit()
+
+    return UserDocumentOriginalDownload(
+        path=storage_path,
+        file_name=document.file_name,
+        content_type=DOCUMENT_DOWNLOAD_CONTENT_TYPE_PDF,
+    )
+
+
+def delete_user_document(
+    db: Session,
+    document_id,
+    actor: User,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> DocumentDeleteResponse | None:
+    document = get_document_for_user(
+        db=db,
+        document_id=document_id,
+        user_id=actor.id,
+    )
+
+    if document is None:
+        return None
+
+    if document.status in DOCUMENT_DELETE_BLOCKED_STATUSES:
+        raise ValueError("처리 대기/진행 중인 문서는 삭제할 수 없습니다.")
+
+    old_value = {
+        "document_id": str(document.id),
+        "file_name": document.file_name,
+        "status": document.status,
+        "owner_id": str(document.user_id),
+    }
+    cleanup_paths = _document_cleanup_paths(document.storage_path)
+    response = DocumentDeleteResponse(
+        document_id=document.id,
+        file_name=document.file_name,
+        deleted=True,
+        message=DOCUMENT_DELETE_MESSAGE,
+    )
+
+    for path in cleanup_paths:
+        _delete_storage_path_if_exists(path)
+
+    record_admin_action(
+        db=db,
+        actor_user=actor,
+        action=AuditAction.DOCUMENT_DELETED,
+        target_type=AuditTargetType.DOCUMENT,
+        target_id=document.id,
+        old_value=old_value,
+        new_value={"deleted": True},
+        reason="User deleted own document.",
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
+
+    db.delete(document)
+    db.commit()
+
+    return response
 
 
 def get_latest_document_task(

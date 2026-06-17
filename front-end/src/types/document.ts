@@ -143,6 +143,13 @@ export interface DocumentActionResponse {
   message: string;
 }
 
+export interface DocumentDeleteResponse {
+  document_id: string;
+  file_name: string;
+  deleted: boolean;
+  message: string;
+}
+
 export interface DocumentChatRequest {
   message: string;
 }

@@ -50,6 +50,13 @@ class DocumentActionResponse(BaseModel):
     message: str
 
 
+class DocumentDeleteResponse(BaseModel):
+    document_id: UUID
+    file_name: str
+    deleted: bool
+    message: str
+
+
 class DocumentChatRequest(BaseModel):
     message: str
 
