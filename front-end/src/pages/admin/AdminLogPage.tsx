@@ -85,6 +85,11 @@ const auditActionOptions: Array<{ label: string; value: AuditActionFilter }> = [
   { label: 'All', value: 'all' },
   { label: 'Role 변경', value: 'USER_ROLE_CHANGED' },
   { label: 'Status 변경', value: 'USER_STATUS_CHANGED' },
+  { label: '작업 재시도', value: 'FAILED_TASK_RETRY' },
+  { label: '문서 다운로드', value: 'DOCUMENT_EXPORTED' },
+  { label: '문서 삭제', value: 'DOCUMENT_DELETED' },
+  { label: '문서 재처리', value: 'DOCUMENT_REPROCESS_REQUESTED' },
+  { label: '문서 처리 취소', value: 'DOCUMENT_CANCELLED' },
 ];
 
 const emptySummary: AdminLogSummaryResponse = {
@@ -437,6 +442,11 @@ export function AdminLogPage({ onLogout }: AdminLogPageProps) {
     switch (action) {
       case 'USER_ROLE_CHANGED': return 'Role 변경';
       case 'USER_STATUS_CHANGED': return 'Status 변경';
+      case 'FAILED_TASK_RETRY': return '작업 재시도';
+      case 'DOCUMENT_EXPORTED': return '문서 다운로드';
+      case 'DOCUMENT_DELETED': return '문서 삭제';
+      case 'DOCUMENT_REPROCESS_REQUESTED': return '문서 재처리';
+      case 'DOCUMENT_CANCELLED': return '문서 처리 취소';
       default: return action;
     }
   };
@@ -445,6 +455,11 @@ export function AdminLogPage({ onLogout }: AdminLogPageProps) {
     switch (action) {
       case 'USER_ROLE_CHANGED': return 'border-blue-500/20 bg-blue-500/10 text-blue-300';
       case 'USER_STATUS_CHANGED': return 'border-purple-500/20 bg-purple-500/10 text-purple-300';
+      case 'FAILED_TASK_RETRY': return 'border-amber-500/20 bg-amber-500/10 text-amber-300';
+      case 'DOCUMENT_EXPORTED': return 'border-cyan-500/20 bg-cyan-500/10 text-cyan-300';
+      case 'DOCUMENT_DELETED': return 'border-red-500/20 bg-red-500/10 text-red-300';
+      case 'DOCUMENT_REPROCESS_REQUESTED': return 'border-indigo-500/20 bg-indigo-500/10 text-indigo-300';
+      case 'DOCUMENT_CANCELLED': return 'border-orange-500/20 bg-orange-500/10 text-orange-300';
       default: return 'border-white/10 bg-white/5 text-gray-300';
     }
   };

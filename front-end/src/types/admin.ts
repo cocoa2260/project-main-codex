@@ -123,6 +123,7 @@ export type AdminAuditAction =
   | 'FAILED_TASK_RETRY'
   | 'DOCUMENT_REPROCESS_REQUESTED'
   | 'DOCUMENT_DELETED'
+  | 'DOCUMENT_CANCELLED'
   | 'DOCUMENT_EXPORTED';
 
 export type AdminAuditTargetType = 'USER' | 'DOCUMENT' | 'TASK';
