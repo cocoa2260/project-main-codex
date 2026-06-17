@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getAdminUserDetail, getAdminUsers, updateAdminUserRole, updateAdminUserStatus } from '../../api/admin';
 import { Sidebar } from '../../components/common/Sidebar';
+import { usePersistentSidebar } from '../../hooks/usePersistentSidebar';
 import type { AdminUserDetail, AdminUserItem, AdminUserRecentTask, AdminUserStatus } from '../../types/admin';
 import type { TaskStatus } from '../../types/document';
 import type { UserRole } from '../../utils/auth';
@@ -30,6 +31,7 @@ import {
   UserX,
   X,
   XCircle,
+  LogOut,
 } from 'lucide-react';
 
 type FilterStatus = 'all' | 'user' | 'admin' | 'active' | 'suspended' | 'inactive';
@@ -191,7 +193,7 @@ function getTaskStatusLabel(status: string) {
 }
 
 export function AdminUserPage({ onLogout }: AdminUserPageProps) {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = usePersistentSidebar();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
   const [users, setUsers] = useState<AdminUserItem[]>([]);
@@ -441,6 +443,7 @@ export function AdminUserPage({ onLogout }: AdminUserPageProps) {
       <Sidebar
         variant="admin"
         sidebarOpen={sidebarOpen}
+        onToggle={() => setSidebarOpen((open) => !open)}
         onLogout={onLogout}
       />
 
@@ -450,7 +453,7 @@ export function AdminUserPage({ onLogout }: AdminUserPageProps) {
             <button
               type="button"
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-2 hover:bg-white/5 rounded-lg transition-colors lg:hidden"
+              className="p-2 hover:bg-white/5 rounded-lg transition-colors"
             >
               {sidebarOpen ? <X className="w-5 h-5 text-gray-400" /> : <Menu className="w-5 h-5 text-gray-400" />}
             </button>
@@ -480,8 +483,9 @@ export function AdminUserPage({ onLogout }: AdminUserPageProps) {
             <button
               type="button"
               onClick={onLogout}
-              className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors text-gray-400 hover:text-white text-sm"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors text-gray-400 hover:text-white text-sm"
             >
+              <LogOut className="h-4 w-4" />
               로그아웃
             </button>
           </div>

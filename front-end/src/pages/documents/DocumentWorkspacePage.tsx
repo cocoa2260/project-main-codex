@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   AlertCircle,
+  ArrowLeft,
   Bot,
   FileText,
   Layers,
@@ -9,12 +10,13 @@ import {
   Send,
   Sparkles,
 } from 'lucide-react';
-import { VIEW_TEXT } from '../../constants/text';
+import { usePersistentSidebar } from '../../hooks/usePersistentSidebar';
 import { Sidebar } from '../../components/common/Sidebar';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { chatWithDocument, getDocumentSummary } from '../../api/document';
 import type { DocumentChatCitation, DocumentSummaryResponse } from '../../types/document';
 import { normalizeDocumentStatus } from '../../utils/documentStatus';
+import { navigateBackOr } from '../../utils/navigation';
 
 interface DocumentWorkspacePageProps {
   onLogout?: () => void;
@@ -68,7 +70,7 @@ function getChatErrorMessage(error: unknown) {
 export function DocumentWorkspacePage({ onLogout }: DocumentWorkspacePageProps) {
   const navigate = useNavigate();
   const { documentId } = useParams();
-  const [sidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = usePersistentSidebar();
   const [message, setMessage] = useState('');
   const [summaryData, setSummaryData] = useState<DocumentSummaryResponse | null>(null);
   const [isLoading, setIsLoading] = useState(Boolean(documentId));
@@ -131,6 +133,7 @@ export function DocumentWorkspacePage({ onLogout }: DocumentWorkspacePageProps) 
     <div className="min-h-screen w-full bg-[#0f0f17] flex">
       <Sidebar
         sidebarOpen={sidebarOpen}
+        onToggle={() => setSidebarOpen((open) => !open)}
         onLogout={onLogout}
       />
 
@@ -138,8 +141,16 @@ export function DocumentWorkspacePage({ onLogout }: DocumentWorkspacePageProps) 
           <div className="max-w-[1680px] mx-auto h-[calc(100vh-6.5rem)] grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px] gap-5">
             <section className="min-h-0 flex flex-col bg-[#15151c] border border-white/10 rounded-2xl overflow-hidden">
               <div className="p-5 border-b border-white/10 flex items-start justify-between gap-4">
-                <div>
-                  <div className="flex items-center gap-3 mb-2">
+	                <div className="min-w-0">
+                    <button
+                      type="button"
+                      onClick={() => navigateBackOr(navigate)}
+                      className="mb-3 inline-flex items-center gap-2 rounded-lg px-2 py-1 text-sm text-zinc-300 transition-colors hover:bg-white/5 hover:text-white"
+                    >
+                      <ArrowLeft className="h-4 w-4" />
+                      돌아가기
+                    </button>
+	                  <div className="flex items-center gap-3 mb-2">
                     <div className="p-2.5 bg-primary/10 rounded-xl">
                       <FileText className="w-5 h-5 text-primary" />
                     </div>
@@ -163,11 +174,11 @@ export function DocumentWorkspacePage({ onLogout }: DocumentWorkspacePageProps) 
                 <div className="flex items-center gap-2 shrink-0">
                   <button
                     type="button"
-                    onClick={() => documentId && navigate(`/documents/${documentId}/summary`)}
-                    disabled={!canOpenSummary}
+	                    onClick={() => documentId && navigate(`/documents/${documentId}/chat`)}
+	                    disabled={!canOpenSummary}
                     className="px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm font-medium hover:bg-white/15 transition-colors"
                   >
-                    {VIEW_TEXT.SIMPLE_VIEW}
+	                    채팅 화면으로 보기
                   </button>
                   <StatusBadge status={summaryData?.status} />
                 </div>

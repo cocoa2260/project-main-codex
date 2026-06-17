@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { getAdminDashboardSummary, getAdminSystemHealth } from '../../api/admin';
 import { Sidebar } from '../../components/common/Sidebar';
+import { usePersistentSidebar } from '../../hooks/usePersistentSidebar';
 import type {
   AdminDashboardSummaryResponse,
   AdminHealthService,
@@ -33,6 +34,7 @@ import {
   Cpu,
   HardDrive,
   Layers,
+  LogOut,
 } from 'lucide-react';
 
 interface SystemService {
@@ -144,7 +146,7 @@ function formatRelativeTime(value?: string | null): string {
 }
 
 export function AdminDashboardPage({ onLogout }: AdminDashboardPageProps) {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = usePersistentSidebar();
   const [searchQuery, setSearchQuery] = useState('');
   const [summary, setSummary] = useState<AdminDashboardSummaryResponse | null>(null);
   const [healthServices, setHealthServices] = useState<AdminHealthService[]>([]);
@@ -439,6 +441,7 @@ export function AdminDashboardPage({ onLogout }: AdminDashboardPageProps) {
       <Sidebar
         variant="admin"
         sidebarOpen={sidebarOpen}
+        onToggle={() => setSidebarOpen((open) => !open)}
         onLogout={onLogout}
       />
 
@@ -450,7 +453,7 @@ export function AdminDashboardPage({ onLogout }: AdminDashboardPageProps) {
             <button
               type="button"
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-2 hover:bg-white/5 rounded-lg transition-colors lg:hidden"
+              className="p-2 hover:bg-white/5 rounded-lg transition-colors"
             >
               {sidebarOpen ? <X className="w-5 h-5 text-gray-400" /> : <Menu className="w-5 h-5 text-gray-400" />}
             </button>
@@ -492,8 +495,9 @@ export function AdminDashboardPage({ onLogout }: AdminDashboardPageProps) {
             <button
               type="button"
               onClick={onLogout}
-              className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors text-gray-400 hover:text-white text-sm"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors text-gray-400 hover:text-white text-sm"
             >
+              <LogOut className="h-4 w-4" />
               로그아웃
             </button>
           </div>

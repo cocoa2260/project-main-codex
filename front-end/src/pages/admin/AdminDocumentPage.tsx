@@ -8,6 +8,7 @@ import {
 } from '../../api/admin';
 import { Sidebar } from '../../components/common/Sidebar';
 import { StatusBadge } from '../../components/common/StatusBadge';
+import { usePersistentSidebar } from '../../hooks/usePersistentSidebar';
 import type { AdminDocumentDetailResponse, AdminDocumentItem, AdminDocumentRetryStage } from '../../types/admin';
 import type { DocumentStatus, TaskType } from '../../types/document';
 import {
@@ -33,6 +34,7 @@ import {
   Loader2,
   AlertCircle,
   MoreVertical,
+  LogOut,
   Calendar,
   FileType,
   TrendingUp,
@@ -173,7 +175,7 @@ function canRetryDocument(status?: string | null): boolean {
 }
 
 export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = usePersistentSidebar();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
   const [sortBy, setSortBy] = useState<'upload_at' | 'updated_at' | 'file_name' | 'file_size' | 'page_count' | 'status'>('updated_at');
@@ -412,6 +414,7 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
       <Sidebar
         variant="admin"
         sidebarOpen={sidebarOpen}
+        onToggle={() => setSidebarOpen((open) => !open)}
         onLogout={onLogout}
       />
 
@@ -421,7 +424,7 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
             <button
               type="button"
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-2 hover:bg-white/5 rounded-lg transition-colors lg:hidden"
+              className="p-2 hover:bg-white/5 rounded-lg transition-colors"
             >
               {sidebarOpen ? <X className="w-5 h-5 text-gray-400" /> : <Menu className="w-5 h-5 text-gray-400" />}
             </button>
@@ -459,8 +462,9 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
             <button
               type="button"
               onClick={onLogout}
-              className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors text-gray-400 hover:text-white text-sm"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors text-gray-400 hover:text-white text-sm"
             >
+              <LogOut className="h-4 w-4" />
               로그아웃
             </button>
           </div>

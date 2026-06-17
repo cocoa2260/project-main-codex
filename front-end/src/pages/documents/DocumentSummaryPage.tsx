@@ -11,6 +11,7 @@ import {
   FileText,
   FileType,
   Loader2,
+  LogOut,
   MessageSquare,
   RefreshCw,
   Sparkles,
@@ -20,6 +21,7 @@ import {
 import { getDocumentSummary } from '../../api/document';
 import type { DocumentSummaryResponse } from '../../types/document';
 import { normalizeDocumentStatus } from '../../utils/documentStatus';
+import { navigateBackOr } from '../../utils/navigation';
 
 interface DocumentSummaryPageProps {
   onBack?: () => void;
@@ -185,7 +187,7 @@ export function DocumentSummaryPage({ onBack, onLogout }: DocumentSummaryPagePro
       return;
     }
 
-    navigate('/documents');
+    navigateBackOr(navigate);
   };
 
   const handleCopy = async () => {
@@ -231,8 +233,9 @@ export function DocumentSummaryPage({ onBack, onLogout }: DocumentSummaryPagePro
           <button
             type="button"
             onClick={onLogout}
-            className="rounded-lg bg-white/5 px-4 py-2 text-sm text-zinc-300 transition-colors hover:bg-white/10 hover:text-white"
+            className="inline-flex items-center gap-2 rounded-lg bg-white/5 px-4 py-2 text-sm text-zinc-300 transition-colors hover:bg-white/10 hover:text-white"
           >
+            <LogOut className="h-4 w-4" />
             로그아웃
           </button>
         </div>

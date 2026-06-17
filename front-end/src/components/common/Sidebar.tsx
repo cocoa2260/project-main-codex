@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Activity,
+  ChevronLeft,
+  ChevronRight,
   Cpu,
   FileText,
   Home,
-  LogOut,
   Settings,
   Shield,
   Upload,
@@ -27,6 +28,7 @@ interface SidebarMenuItem {
 interface SidebarProps {
   variant?: 'user' | 'admin';
   sidebarOpen: boolean;
+  onToggle?: () => void;
   onLogout?: () => void;
   userName?: string;
   userEmail?: string;
@@ -63,7 +65,7 @@ function isActivePath(pathname: string, item: SidebarMenuItem, variant: 'user' |
 export function Sidebar({
   variant = 'user',
   sidebarOpen,
-  onLogout,
+  onToggle,
   userName,
   userEmail,
 }: SidebarProps) {
@@ -100,15 +102,6 @@ export function Sidebar({
     };
   }, []);
 
-  const handleLogout = () => {
-    if (onLogout) {
-      onLogout();
-      return;
-    }
-
-    navigate('/login');
-  };
-
   return (
     <aside
       className={`
@@ -118,14 +111,14 @@ export function Sidebar({
       `}
     >
       {/* Logo */}
-      <div className="h-16 flex items-center px-4 border-b border-white/10">
+      <div className="h-16 flex items-center gap-2 px-4 border-b border-white/10">
         {sidebarOpen ? (
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
             <div className="p-2 bg-blue-500/20 border border-blue-300/30 rounded-lg">
               <FileText className="w-5 h-5 text-blue-200" />
             </div>
-            <div>
-              <h1 className="text-white font-semibold text-sm">
+            <div className="min-w-0">
+              <h1 className="truncate text-white font-semibold text-sm">
                 {isAdmin ? '관리자 콘솔' : 'AI 문서 자동화'}
               </h1>
               <p className="text-zinc-400 text-xs">Platform</p>
@@ -135,6 +128,17 @@ export function Sidebar({
           <div className="p-2 bg-blue-500/20 border border-blue-300/30 rounded-lg mx-auto">
             <FileText className="w-5 h-5 text-blue-200" />
           </div>
+        )}
+        {onToggle && (
+          <button
+            type="button"
+            onClick={onToggle}
+            className="hidden rounded-lg p-2 text-zinc-300 transition-colors hover:bg-white/10 hover:text-white lg:inline-flex"
+            aria-label={sidebarOpen ? '사이드바 접기' : '사이드바 펼치기'}
+            title={sidebarOpen ? '사이드바 접기' : '사이드바 펼치기'}
+          >
+            {sidebarOpen ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+          </button>
         )}
       </div>
 
@@ -188,7 +192,9 @@ export function Sidebar({
       <div className="p-3 border-t border-white/10">
         <button
           type="button"
+          onClick={() => navigate('/settings')}
           className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-white/5 transition-colors"
+          title={sidebarOpen ? undefined : displayName || displayEmail || '사용자'}
         >
           <div className="w-8 h-8 bg-gradient-to-br from-primary to-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
             <User className="w-4 h-4 text-white" />
@@ -199,14 +205,6 @@ export function Sidebar({
               <p className="truncate text-zinc-400 text-xs">{displayEmail || '-'}</p>
             </div>
           )}
-        </button>
-        <button
-          type="button"
-          onClick={handleLogout}
-          className="mt-2 w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-zinc-300 hover:bg-white/5 hover:text-white transition-colors"
-        >
-          <LogOut className={`w-4 h-4 shrink-0 ${sidebarOpen ? '' : 'mx-auto'}`} />
-          {sidebarOpen && <span className="text-sm font-medium">로그아웃</span>}
         </button>
       </div>
     </aside>
