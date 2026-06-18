@@ -13,6 +13,7 @@ from fastapi import WebSocketDisconnect
 from fastapi.responses import FileResponse
 
 from sqlalchemy.orm import Session
+from sqlalchemy.orm import joinedload
 
 from ai.embeddings.embedding_factory import EMBEDDING_REGISTRY
 from ai.embeddings.embedding_factory import resolve_embedding_model
@@ -44,6 +45,7 @@ from services.chat_service import (
     DocumentChatNotFoundError,
     answer_document_question,
 )
+from services.category_service import get_document_category_payload
 from services.document_service import (
     attach_celery_task_id,
     build_status_message,
@@ -105,6 +107,7 @@ def list_documents(
 ):
     return (
         db.query(Document)
+        .options(joinedload(Document.document_categories))
         .filter(Document.user_id == current_user.id)
         .order_by(Document.upload_at.desc())
         .all()
@@ -345,6 +348,13 @@ def get_document_markdown(
         document_id=document_id,
         user_id=current_user.id,
     )
+    if document is not None:
+        document = (
+            db.query(Document)
+            .options(joinedload(Document.document_categories))
+            .filter(Document.id == document.id)
+            .first()
+        )
 
     if document is None:
         raise HTTPException(status_code=404, detail="문서를 찾을 수 없습니다.")
@@ -389,6 +399,7 @@ def get_document_summary(
         process_at=document.process_at,
         embedding_model=document.selected_embedding_model,
         llm_model=settings.DEFAULT_LLM_MODEL,
+        category=get_document_category_payload(document),
     )
 
 

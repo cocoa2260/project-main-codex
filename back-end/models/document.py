@@ -167,3 +167,17 @@ class Document(Base):
         back_populates="document",
         cascade="all, delete-orphan",
     )
+
+    document_categories = relationship(
+        "DocumentCategory",
+        back_populates="document",
+        cascade="all, delete-orphan",
+    )
+
+    @property
+    def category_confidence(self) -> float | None:
+        if not self.document_categories:
+            return None
+
+        confidence = self.document_categories[0].confidence
+        return float(confidence) if confidence is not None else None

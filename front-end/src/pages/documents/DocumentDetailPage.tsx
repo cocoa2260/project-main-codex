@@ -5,6 +5,7 @@ import {
   Bot,
   Calendar,
   CheckCircle2,
+  Tag,
   ClipboardCheck,
   Download,
   FileText,
@@ -70,6 +71,11 @@ function canReprocessDocument(status: string) {
 
 function canCancelDocument(status: string) {
   return status === 'PROCESSING';
+}
+
+function formatConfidence(confidence?: number | null) {
+  if (confidence === null || confidence === undefined) return '-';
+  return `${Math.round(confidence * 100)}%`;
 }
 
 export function DocumentDetailPage() {
@@ -285,6 +291,12 @@ export function DocumentDetailPage() {
                           <Layers className="h-4 w-4" />
                           {documentData.page_count ?? 0} 페이지
                         </span>
+                        {documentData.category && (
+                          <span className="inline-flex items-center gap-1.5 rounded border border-white/10 bg-white/5 px-2 py-1 text-zinc-200">
+                            <Tag className="h-4 w-4" />
+                            {documentData.category.name}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -375,7 +387,7 @@ export function DocumentDetailPage() {
                 </aside>
               </section>
 
-              <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <section className="grid grid-cols-1 gap-4 md:grid-cols-4">
                 <div className="rounded-xl border border-white/10 bg-[#15151c] p-5">
                   <CheckCircle2 className="mb-3 h-5 w-5 text-green-300" />
                   <p className="text-sm text-zinc-400">처리 완료 시간</p>
@@ -390,6 +402,12 @@ export function DocumentDetailPage() {
                   <Layers className="mb-3 h-5 w-5 text-blue-300" />
                   <p className="text-sm text-zinc-400">임베딩 모델</p>
                   <p className="mt-1 font-semibold text-white">{documentData.embedding_model ?? '-'}</p>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-[#15151c] p-5">
+                  <Tag className="mb-3 h-5 w-5 text-cyan-300" />
+                  <p className="text-sm text-zinc-400">카테고리</p>
+                  <p className="mt-1 font-semibold text-white">{documentData.category?.name ?? '-'}</p>
+                  <p className="mt-1 text-xs text-zinc-400">신뢰도 {formatConfidence(documentData.category?.confidence)}</p>
                 </div>
               </section>
             </>

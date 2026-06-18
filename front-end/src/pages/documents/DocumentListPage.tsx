@@ -50,6 +50,7 @@ interface Document {
   status: DocumentStatus;
   stage?: TaskStage;
   category?: string;
+  categoryConfidence?: number | null;
   summary?: string;
   progress?: number;
 }
@@ -98,9 +99,15 @@ function mapDocument(doc: DocumentItem): Document {
     pages: doc.page_count ?? 0,
     status,
     category: doc.category ?? undefined,
+    categoryConfidence: doc.category_confidence ?? null,
     summary: doc.summary ?? undefined,
     progress: getDocumentProgress(status),
   };
+}
+
+function formatConfidence(confidence?: number | null) {
+  if (confidence === null || confidence === undefined) return null;
+  return `${Math.round(confidence * 100)}%`;
 }
 
 function getApiErrorMessage(error: unknown, fallback: string) {
@@ -598,7 +605,10 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                         <StatusBadge status={doc.status} stage={doc.stage} />
 
                         {doc.category && (
-                          <span className="inline-flex items-center gap-1.5 ml-2 px-2 py-1 bg-white/5 border border-white/10 rounded text-xs text-zinc-200">
+                          <span
+                            className="inline-flex items-center gap-1.5 ml-2 px-2 py-1 bg-white/5 border border-white/10 rounded text-xs text-zinc-200"
+                            title={formatConfidence(doc.categoryConfidence) ? `분류 신뢰도 ${formatConfidence(doc.categoryConfidence)}` : undefined}
+                          >
                             {doc.category}
                           </span>
                         )}
@@ -848,7 +858,10 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                                 <div className="min-w-0">
                                   <p className="truncate text-white font-medium text-sm" title={doc.name}>{doc.name}</p>
                                   {doc.category && (
-                                    <span className="inline-block px-2 py-0.5 bg-white/5 border border-white/10 rounded text-xs text-zinc-300 mt-1">
+                                    <span
+                                      className="inline-block px-2 py-0.5 bg-white/5 border border-white/10 rounded text-xs text-zinc-300 mt-1"
+                                      title={formatConfidence(doc.categoryConfidence) ? `분류 신뢰도 ${formatConfidence(doc.categoryConfidence)}` : undefined}
+                                    >
                                       {doc.category}
                                     </span>
                                   )}

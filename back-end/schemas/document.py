@@ -41,6 +41,7 @@ class DocumentSummaryResponse(BaseModel):
     process_at: datetime | None = None
     embedding_model: str | None = None
     llm_model: str | None = None
+    category: dict[str, str | float | None] | None = None
 
 
 class DocumentActionResponse(BaseModel):
@@ -81,6 +82,7 @@ class DocumentResponse(BaseModel):
     file_size: int
     status: str
     category: str | None = None
+    category_confidence: float | None = None
     summary: str | None = None
     page_count: int | None = 0
     selected_embedding_model: str | None = None

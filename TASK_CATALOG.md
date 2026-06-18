@@ -781,3 +781,23 @@ Status: DONE
 
 Priority: High
 Status: DONE
+
+### DOC-001 Category System Implementation
+
+- Added normalized legal document category tables: `categories` and `document_categories`
+- Seeded fixed legal categories: 민법, 형법, 민사소송법, 형사소송법, 상법, 행정법, 노동법, 조세법, 헌법, 지식재산권법, 개인정보보호법, 기타
+- Enforced one category per document with a unique `document_categories.document_id` policy
+- Added Category and DocumentCategory SQLAlchemy models and relationships
+- Added LLM category classification prompt using OCR markdown + summary only
+- Connected Summary completion flow to classify category before embedding pipeline starts
+- Saved normalized category mapping in `document_categories` and legacy `documents.category` simultaneously
+- Kept `documents.category` for legacy compatibility
+- Extended user Document List response with `category_confidence`
+- Extended Document Detail summary response with structured category name/confidence
+- Updated DocumentListPage to keep category display and reflect confidence metadata
+- Updated DocumentDetailPage to show category and confidence
+- Admin category CRUD/search/statistics/management intentionally not included
+- Multi category / primary-secondary category intentionally not included
+
+Priority: High
+Status: DONE

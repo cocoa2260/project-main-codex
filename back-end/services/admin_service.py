@@ -28,6 +28,7 @@ from core.security import ALGORITHM
 from models.document import Document
 from models.document import DocumentStatus
 from models.document_chunk import DocumentChunk
+from models.document_category import DocumentCategory
 from models.document_embedding import DocumentEmbedding
 from models.audit_log import AuditAction
 from models.audit_log import AuditTargetType
@@ -2018,7 +2019,16 @@ def _clear_document_retry_artifacts(
         cleared_artifacts.append("ocr_markdown")
 
     document.summary = None
+    document.keywords = None
+    document.category = None
     cleared_artifacts.append("summary")
+    cleared_artifacts.append("keywords")
+    cleared_artifacts.append("category")
+
+    db.query(DocumentCategory).filter(
+        DocumentCategory.document_id == document.id,
+    ).delete(synchronize_session=False)
+    cleared_artifacts.append("document_categories")
 
     db.query(DocumentEmbedding).filter(
         DocumentEmbedding.document_id == document.id,

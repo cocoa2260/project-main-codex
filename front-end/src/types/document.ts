@@ -70,6 +70,7 @@ export interface DocumentItem {
   file_size: number;
   status: DocumentStatus;
   category: string | null;
+  category_confidence?: number | null;
   summary?: string | null;
   page_count: number | null;
   selected_embedding_model: string | null;
@@ -134,6 +135,10 @@ export interface DocumentSummaryResponse {
   process_at: string | null;
   embedding_model: string | null;
   llm_model: string | null;
+  category?: {
+    name: string;
+    confidence: number | null;
+  } | null;
 }
 
 export interface DocumentActionResponse {
