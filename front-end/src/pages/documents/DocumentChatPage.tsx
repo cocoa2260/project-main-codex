@@ -13,17 +13,33 @@ import {
   Loader2,
   LogOut,
   MessageSquare,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Plus,
   Send,
   Sparkles,
   Tag,
+  Trash2,
 } from 'lucide-react';
 
-import { chatWithDocument, getDocumentSummary } from '../../api/document';
+import {
+  createDocumentChatSession,
+  deleteDocumentChatSession,
+  getDocumentChatSession,
+  getDocumentChatSessions,
+  getDocumentSummary,
+  sendDocumentChatSessionMessage,
+} from '../../api/document';
 import { usePersistentSidebar } from '../../hooks/usePersistentSidebar';
 import { PageTopNav } from '../../components/common/PageTopNav';
 import { Sidebar } from '../../components/common/Sidebar';
 import { StatusBadge } from '../../components/common/StatusBadge';
-import type { DocumentChatCitation, DocumentSummaryResponse } from '../../types/document';
+import type {
+  DocumentChatCitation,
+  DocumentChatMessageResponse,
+  DocumentChatSessionListItem,
+  DocumentSummaryResponse,
+} from '../../types/document';
 import { normalizeDocumentStatus } from '../../utils/documentStatus';
 
 interface Message {
@@ -70,6 +86,16 @@ function formatNow() {
   }).format(new Date());
 }
 
+function formatTime(value?: string | null) {
+  if (!value) return formatNow();
+
+  return new Intl.DateTimeFormat('ko-KR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(new Date(value));
+}
+
 function getErrorMessage(error: unknown) {
   if (typeof error === 'object' && error !== null && 'response' in error) {
     const response = (error as { response?: { data?: { detail?: string; message?: string } } }).response;
@@ -108,6 +134,15 @@ function makeSuggestedQuestions(summaryData: DocumentSummaryResponse | null) {
   ].slice(0, 4);
 }
 
+function mapStoredMessage(message: DocumentChatMessageResponse): Message {
+  return {
+    id: message.id,
+    type: message.role === 'user' ? 'user' : 'ai',
+    content: message.content,
+    timestamp: formatTime(message.created_at),
+  };
+}
+
 export function DocumentChatPage({ onBack, onLogout }: DocumentChatPageProps) {
   const navigate = useNavigate();
   const { documentId } = useParams();
@@ -117,9 +152,13 @@ export function DocumentChatPage({ onBack, onLogout }: DocumentChatPageProps) {
   const [message, setMessage] = useState('');
   const [summaryData, setSummaryData] = useState<DocumentSummaryResponse | null>(null);
   const [isLoading, setIsLoading] = useState(Boolean(documentId));
+  const [isLoadingSessions, setIsLoadingSessions] = useState(false);
+  const [isSessionPanelOpen, setIsSessionPanelOpen] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(documentId ? null : '문서 ID가 없습니다.');
   const [chatError, setChatError] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<DocumentChatSessionListItem[]>([]);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [introTimestamp] = useState(() => formatNow());
   const messageIdRef = useRef(0);
@@ -135,6 +174,9 @@ export function DocumentChatPage({ onBack, onLogout }: DocumentChatPageProps) {
       try {
         setIsLoading(true);
         setError(null);
+        setSessions([]);
+        setSelectedSessionId(null);
+        setMessages([]);
         const data = await getDocumentSummary(documentId);
         if (isMounted) setSummaryData(data);
       } catch (loadError) {
@@ -153,9 +195,99 @@ export function DocumentChatPage({ onBack, onLogout }: DocumentChatPageProps) {
 
   const normalizedStatus = normalizeDocumentStatus(summaryData?.status);
   const isChatPrepared = normalizedStatus === 'COMPLETED';
+
+  useEffect(() => {
+    if (!documentId || !isChatPrepared) {
+      return;
+    }
+
+    let isMounted = true;
+
+    const loadSessions = async () => {
+      try {
+        setIsLoadingSessions(true);
+        setChatError(null);
+        const data = await getDocumentChatSessions(documentId);
+        if (!isMounted) return;
+
+        if (data.length === 0) {
+          const created = await createDocumentChatSession(documentId);
+          if (!isMounted) return;
+          const createdSession = {
+            id: created.id,
+            title: created.title,
+            message_count: created.message_count,
+            created_at: created.created_at,
+            updated_at: created.updated_at,
+          };
+          setSessions([createdSession]);
+          setSelectedSessionId(created.id);
+          setMessages([]);
+          return;
+        }
+
+        setSessions(data);
+        setSelectedSessionId((current) => {
+          if (current && data.some((session) => session.id === current)) return current;
+          return data[0]?.id ?? null;
+        });
+      } catch (loadError) {
+        if (isMounted) setChatError(getChatErrorMessage(loadError));
+      } finally {
+        if (isMounted) setIsLoadingSessions(false);
+      }
+    };
+
+    void loadSessions();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [documentId, isChatPrepared]);
+
+  useEffect(() => {
+    if (!documentId || !selectedSessionId || !isChatPrepared) {
+      return;
+    }
+
+    let isMounted = true;
+
+    const loadSessionMessages = async () => {
+      try {
+        setIsLoadingSessions(true);
+        setChatError(null);
+        const session = await getDocumentChatSession(documentId, selectedSessionId);
+        if (!isMounted) return;
+        setMessages(session.messages.map(mapStoredMessage));
+        setSessions((current) => current.map((item) => (
+          item.id === session.id
+            ? {
+              id: session.id,
+              title: session.title,
+              message_count: session.message_count,
+              created_at: session.created_at,
+              updated_at: session.updated_at,
+            }
+            : item
+        )));
+      } catch (loadError) {
+        if (isMounted) setChatError(getChatErrorMessage(loadError));
+      } finally {
+        if (isMounted) setIsLoadingSessions(false);
+      }
+    };
+
+    void loadSessionMessages();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [documentId, selectedSessionId, isChatPrepared]);
+
   const keywords = summaryData?.keywords ?? [];
   const suggestedQuestions = useMemo(() => makeSuggestedQuestions(summaryData), [summaryData]);
-  const canSendMessage = Boolean(documentId) && isChatPrepared && !isSending && message.trim().length > 0;
+  const selectedSession = sessions.find((session) => session.id === selectedSessionId) ?? null;
+  const canSendMessage = Boolean(documentId) && Boolean(selectedSessionId) && isChatPrepared && !isSending && message.trim().length > 0;
   const visibleMessages = messages.length > 0
     ? messages
     : [
@@ -186,7 +318,24 @@ export function DocumentChatPage({ onBack, onLogout }: DocumentChatPageProps) {
     setChatError(null);
 
     try {
-      const response = await chatWithDocument(documentId, { message: trimmedQuestion });
+      let sessionId = selectedSessionId;
+      if (!sessionId) {
+        const created = await createDocumentChatSession(documentId);
+        sessionId = created.id;
+        setSelectedSessionId(created.id);
+        setSessions((current) => [
+          {
+            id: created.id,
+            title: created.title,
+            message_count: created.message_count,
+            created_at: created.created_at,
+            updated_at: created.updated_at,
+          },
+          ...current,
+        ]);
+      }
+
+      const response = await sendDocumentChatSessionMessage(documentId, sessionId, { message: trimmedQuestion });
       const aiMessage: Message = {
         id: response.message_id ?? `ai-${messageIdRef.current += 1}`,
         type: 'ai',
@@ -195,6 +344,8 @@ export function DocumentChatPage({ onBack, onLogout }: DocumentChatPageProps) {
         citations: response.citations,
       };
       setMessages((currentMessages) => [...currentMessages, aiMessage]);
+      const updatedSessions = await getDocumentChatSessions(documentId);
+      setSessions(updatedSessions);
     } catch (sendError) {
       setChatError(getChatErrorMessage(sendError));
     } finally {
@@ -213,6 +364,53 @@ export function DocumentChatPage({ onBack, onLogout }: DocumentChatPageProps) {
     }
 
     navigate('/documents');
+  };
+
+  const handleCreateSession = async () => {
+    if (!documentId || !isChatPrepared || isLoadingSessions) return;
+
+    try {
+      setIsLoadingSessions(true);
+      setChatError(null);
+      const created = await createDocumentChatSession(documentId);
+      setSessions((current) => [
+        {
+          id: created.id,
+          title: created.title,
+          message_count: created.message_count,
+          created_at: created.created_at,
+          updated_at: created.updated_at,
+        },
+        ...current,
+      ]);
+      setSelectedSessionId(created.id);
+      setMessages([]);
+    } catch (createError) {
+      setChatError(getChatErrorMessage(createError));
+    } finally {
+      setIsLoadingSessions(false);
+    }
+  };
+
+  const handleDeleteSession = async (sessionId: string) => {
+    if (!documentId || isLoadingSessions || sessions.length <= 1) return;
+
+    try {
+      setIsLoadingSessions(true);
+      setChatError(null);
+      await deleteDocumentChatSession(documentId, sessionId);
+      const updatedSessions = await getDocumentChatSessions(documentId);
+      setSessions(updatedSessions);
+      setSelectedSessionId((current) => {
+        if (current !== sessionId) return current;
+        return updatedSessions[0]?.id ?? null;
+      });
+      if (updatedSessions.length === 0) setMessages([]);
+    } catch (deleteError) {
+      setChatError(getChatErrorMessage(deleteError));
+    } finally {
+      setIsLoadingSessions(false);
+    }
   };
 
   const summaryPreview = summaryData?.summary?.trim() || '저장된 요약이 없습니다.';
@@ -272,9 +470,9 @@ export function DocumentChatPage({ onBack, onLogout }: DocumentChatPageProps) {
           }
         />
 
-        <main className="relative flex-1 flex overflow-hidden">
+        <main className="relative flex-1 flex flex-col overflow-hidden xl:flex-row">
           <div className={`
-            ${showContextPanel ? 'w-80' : 'w-0'}
+            ${showContextPanel ? 'w-full xl:w-80' : 'w-0'}
             bg-[#15151c] border-r border-white/10 transition-all duration-300 overflow-hidden
             flex flex-col
           `}>
@@ -390,6 +588,114 @@ export function DocumentChatPage({ onBack, onLogout }: DocumentChatPageProps) {
               </button>
             </div>
           </div>
+
+          <div className={`
+            ${isSessionPanelOpen ? 'w-full xl:w-72' : 'w-0'}
+            flex max-h-72 shrink-0 flex-col overflow-hidden border-b border-white/10 bg-[#111119] transition-all duration-300
+            xl:max-h-none xl:border-b-0 xl:border-r
+          `}>
+            <div className="flex items-center justify-between border-b border-white/10 p-4">
+              <div className="min-w-0">
+                <h3 className="text-sm font-semibold text-white">채팅 세션</h3>
+                <p className="mt-0.5 text-xs text-zinc-400">
+                  {selectedSession ? selectedSession.title : '세션을 선택해 주세요'}
+                </p>
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={handleCreateSession}
+                  disabled={!isChatPrepared || isLoadingSessions}
+                  className="rounded-lg p-2 text-zinc-200 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                  title="새 채팅"
+                  aria-label="새 채팅"
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsSessionPanelOpen(false)}
+                  className="rounded-lg p-2 text-zinc-300 transition-colors hover:bg-white/10"
+                  title="세션 목록 접기"
+                  aria-label="세션 목록 접기"
+                >
+                  <PanelLeftClose className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 space-y-2 overflow-auto p-3">
+              {isLoadingSessions && (
+                <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 p-3 text-xs text-zinc-300">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                  세션을 불러오는 중입니다.
+                </div>
+              )}
+
+              {sessions.map((session) => {
+                const isSelected = session.id === selectedSessionId;
+                return (
+                  <div
+                    key={session.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setSelectedSessionId(session.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        setSelectedSessionId(session.id);
+                      }
+                    }}
+                    className={`group flex w-full items-start gap-2 rounded-lg border p-3 text-left transition-colors ${
+                      isSelected
+                        ? 'border-primary/50 bg-primary/15'
+                        : 'border-white/10 bg-white/[0.03] hover:bg-white/10'
+                    }`}
+                  >
+                    <MessageSquare className={`mt-0.5 h-4 w-4 shrink-0 ${isSelected ? 'text-primary' : 'text-zinc-400'}`} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium text-zinc-100">{session.title}</span>
+                      <span className="mt-1 block text-xs text-zinc-400">
+                        {session.message_count}개 메시지 · {formatDate(session.updated_at)}
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void handleDeleteSession(session.id);
+                      }}
+                      className={`rounded-md p-1.5 text-zinc-400 transition-colors hover:bg-red-500/10 hover:text-red-200 ${
+                        sessions.length <= 1 ? 'pointer-events-none opacity-30' : 'opacity-100 xl:opacity-0 xl:group-hover:opacity-100'
+                      }`}
+                      title="세션 삭제"
+                      aria-label="세션 삭제"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                );
+              })}
+
+              {!isLoadingSessions && sessions.length === 0 && (
+                <div className="rounded-lg border border-white/10 bg-white/5 p-3 text-sm text-zinc-300">
+                  새 채팅을 만들어 질문을 시작하세요.
+                </div>
+              )}
+            </div>
+          </div>
+
+          {!isSessionPanelOpen && (
+            <button
+              type="button"
+              onClick={() => setIsSessionPanelOpen(true)}
+              className="absolute left-0 top-20 z-10 inline-flex items-center gap-1 rounded-r-lg border border-white/10 bg-[#111119] px-2 py-2 text-zinc-200 shadow-lg shadow-black/20 transition-colors hover:bg-white/10 hover:text-white"
+              title="세션 목록 펼치기"
+              aria-label="세션 목록 펼치기"
+            >
+              <PanelLeftOpen className="h-4 w-4" />
+            </button>
+          )}
 
           {isDetailedView && !contextPanelExpanded && (
             <button

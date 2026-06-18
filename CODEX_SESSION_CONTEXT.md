@@ -8,6 +8,21 @@ Generative AI Document Automation Platform
 
 ## Completed Tasks
 
+### CHAT-001 / CHAT-002
+Chat Session Management and Chat History Management
+Status: DONE
+Summary:
+- Added authenticated chat session APIs under `/api/documents/{document_id}/chat/sessions`
+- Implemented session list, create, detail with messages, delete, and session-scoped message send
+- Reused existing `ChatSession` and `ChatMessage` models without schema redesign
+- Preserved `POST /api/documents/{document_id}/chat` backward compatibility by sending messages to the latest session or creating a default session
+- Enforced login, owner-only document access, owner-only session access, document/session matching, and COMPLETED-only chat
+- Persisted both user questions and assistant answers as chat messages
+- Auto-renamed default "새 채팅" sessions from the first question prefix
+- Added frontend chat session list, create, select, delete, collapse, narrow-screen layout, and per-session history loading
+- Preserved existing concise/detailed view controls and dark-mode readability
+- Kept citation response behavior unchanged and did not redesign citation storage
+
 ### DOC-002
 Category Usage and Management
 Status: DONE

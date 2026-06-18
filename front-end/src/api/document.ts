@@ -3,6 +3,8 @@ import type {
   DocumentActionResponse,
   DocumentChatRequest,
   DocumentChatResponse,
+  DocumentChatSessionDetailResponse,
+  DocumentChatSessionListItem,
   DocumentDeleteResponse,
   DocumentMarkdownResponse,
   DocumentSummaryResponse,
@@ -182,5 +184,44 @@ export async function chatWithDocument(
   payload: DocumentChatRequest,
 ): Promise<DocumentChatResponse> {
   const response = await apiClient.post<DocumentChatResponse>(`/api/documents/${documentId}/chat`, payload);
+  return response.data;
+}
+
+export async function getDocumentChatSessions(documentId: string): Promise<DocumentChatSessionListItem[]> {
+  const response = await apiClient.get<DocumentChatSessionListItem[]>(`/api/documents/${documentId}/chat/sessions`);
+  return response.data;
+}
+
+export async function createDocumentChatSession(documentId: string): Promise<DocumentChatSessionDetailResponse> {
+  const response = await apiClient.post<DocumentChatSessionDetailResponse>(
+    `/api/documents/${documentId}/chat/sessions`,
+    {},
+  );
+  return response.data;
+}
+
+export async function getDocumentChatSession(
+  documentId: string,
+  sessionId: string,
+): Promise<DocumentChatSessionDetailResponse> {
+  const response = await apiClient.get<DocumentChatSessionDetailResponse>(
+    `/api/documents/${documentId}/chat/sessions/${sessionId}`,
+  );
+  return response.data;
+}
+
+export async function deleteDocumentChatSession(documentId: string, sessionId: string): Promise<void> {
+  await apiClient.delete(`/api/documents/${documentId}/chat/sessions/${sessionId}`);
+}
+
+export async function sendDocumentChatSessionMessage(
+  documentId: string,
+  sessionId: string,
+  payload: DocumentChatRequest,
+): Promise<DocumentChatResponse> {
+  const response = await apiClient.post<DocumentChatResponse>(
+    `/api/documents/${documentId}/chat/sessions/${sessionId}/messages`,
+    payload,
+  );
   return response.data;
 }
