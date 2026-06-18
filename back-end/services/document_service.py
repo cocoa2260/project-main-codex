@@ -16,6 +16,7 @@ from models.document_page import DocumentPage
 from models.task_tracker import TaskStage, TaskTracker, TaskStatus, TaskType
 from models.document_chunk import DocumentChunk
 from models.document_embedding import DocumentEmbedding
+from models.document_category import DocumentCategory
 from models.user import User
 from schemas.document import DocumentDeleteResponse
 from services.audit_service import record_admin_action
@@ -247,8 +248,14 @@ def _clear_user_document_reprocess_artifacts(
     document.ocr_markdown = None
     document.summary = None
     document.keywords = None
+    document.category = None
     document.process_at = None
-    cleared_artifacts.extend(["ocr_markdown", "summary", "keywords"])
+    cleared_artifacts.extend(["ocr_markdown", "summary", "keywords", "category"])
+
+    db.query(DocumentCategory).filter(
+        DocumentCategory.document_id == document.id,
+    ).delete(synchronize_session=False)
+    cleared_artifacts.append("document_categories")
 
     db.query(DocumentEmbedding).filter(
         DocumentEmbedding.document_id == document.id,

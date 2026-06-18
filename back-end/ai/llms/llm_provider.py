@@ -1,3 +1,4 @@
+import json
 import re
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -5,6 +6,49 @@ from langchain_ollama import ChatOllama
 
 from ai.llms.base import BaseLLMProvider
 from core.config import settings
+
+
+LEGAL_CATEGORY_NAMES = [
+    "민법",
+    "형법",
+    "민사소송법",
+    "형사소송법",
+    "상법",
+    "행정법",
+    "노동법",
+    "조세법",
+    "헌법",
+    "지식재산권법",
+    "개인정보보호법",
+    "기타",
+]
+
+CATEGORY_PROMPT = (
+    "당신은 한국 법률 문서를 고정된 법률 카테고리 중 하나로 분류하는 전문가입니다.\n"
+    "반드시 아래 Seed 카테고리 중 하나만 선택하세요.\n\n"
+    "Seed 카테고리:\n"
+    "- 민법\n"
+    "- 형법\n"
+    "- 민사소송법\n"
+    "- 형사소송법\n"
+    "- 상법\n"
+    "- 행정법\n"
+    "- 노동법\n"
+    "- 조세법\n"
+    "- 헌법\n"
+    "- 지식재산권법\n"
+    "- 개인정보보호법\n"
+    "- 기타\n\n"
+    "규칙:\n"
+    "1. 임의 카테고리를 만들지 마세요.\n"
+    "2. 문서에 근거가 부족하면 기타를 선택하세요.\n"
+    "3. 키워드 추출 결과는 사용하지 말고 OCR 원문과 요약만 기준으로 판단하세요.\n"
+    "4. confidence는 0부터 1 사이의 숫자로 작성하세요.\n"
+    "5. 출력은 JSON 객체 하나만 작성하고 설명 문장을 붙이지 마세요.\n\n"
+    "출력 형식:\n"
+    '{"category":"노동법","confidence":0.91}\n'
+    "/no_think"
+)
 
 
 class OllamaLLMProvider(BaseLLMProvider):
@@ -305,3 +349,63 @@ class OllamaLLMProvider(BaseLLMProvider):
         keyword = re.split(r"[,，|/·\n]", keyword)[0].strip()
 
         return keyword or None
+
+    def classify_document_category(self, markdown: str, summary: str) -> dict[str, object]:
+        response = self.keyword_client.invoke(
+            [
+                SystemMessage(content=CATEGORY_PROMPT),
+                HumanMessage(
+                    content=(
+                        "OCR 원문:\n"
+                        f"{markdown or ''}\n\n"
+                        "Summary:\n"
+                        f"{summary or ''}\n\n"
+                        "위 OCR 원문과 Summary만 보고 문서 카테고리를 분류하세요.\n"
+                        "/no_think"
+                    )
+                ),
+            ]
+        )
+
+        raw_content = str(response.content).strip()
+        parsed = self._parse_category_response(raw_content)
+        category = str(parsed.get("category") or "").strip()
+        if category not in LEGAL_CATEGORY_NAMES:
+            category = "기타"
+
+        confidence = parsed.get("confidence")
+        try:
+            confidence_value = float(confidence) if confidence is not None else None
+        except (TypeError, ValueError):
+            confidence_value = None
+
+        if confidence_value is not None:
+            confidence_value = max(0.0, min(1.0, confidence_value))
+
+        return {
+            "category": category,
+            "confidence": confidence_value,
+        }
+
+    def _parse_category_response(self, raw_content: str) -> dict[str, object]:
+        normalized = (
+            raw_content
+            .replace("“", '"')
+            .replace("”", '"')
+            .replace("‘", "'")
+            .replace("’", "'")
+        )
+        match = re.search(r"\{.*\}", normalized, re.DOTALL)
+        json_text = match.group(0) if match else normalized
+
+        try:
+            parsed = json.loads(json_text)
+        except json.JSONDecodeError:
+            category = next((name for name in LEGAL_CATEGORY_NAMES if name in normalized), "기타")
+            confidence_match = re.search(r"0(?:\.\d+)?|1(?:\.0+)?", normalized)
+            return {
+                "category": category,
+                "confidence": float(confidence_match.group(0)) if confidence_match else None,
+            }
+
+        return parsed if isinstance(parsed, dict) else {}

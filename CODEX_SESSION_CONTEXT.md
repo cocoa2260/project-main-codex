@@ -1106,3 +1106,36 @@ Scope notes:
 - No DB migration.
 - No RAG logic changes.
 - No Admin feature changes.
+
+## 2026-06-18 DOC-001 Category System Implementation
+
+Branch: feature/doc-001-category-system-design-develop
+
+Implemented:
+
+- Added normalized category tables through Alembic migration `20260618_000001_create_document_categories`.
+- Added `categories` fields: id, name, slug, description, parent_id, is_active, sort_order, created_at, updated_at.
+- Added `document_categories` fields: id, document_id, category_id, confidence, source, created_at, updated_at.
+- Seeded fixed legal categories for 민법, 형법, 민사소송법, 형사소송법, 상법, 행정법, 노동법, 조세법, 헌법, 지식재산권법, 개인정보보호법, 기타.
+- Enforced one category per document with a unique document_id constraint.
+- Added Category and DocumentCategory models and Document relationships.
+- Added `CATEGORY_PROMPT` and LLM category parsing that only accepts seeded category names.
+- Category classification uses OCR markdown and summary only; keywords and embeddings are not used.
+- Connected Summary completion flow as Summary 생성 -> Category 분류 -> DB 저장 -> Embedding task enqueue.
+- Saved category to both normalized `document_categories` and legacy `documents.category`.
+- Kept `documents.category` intact for legacy compatibility.
+- Added `category_confidence` to user Document List responses.
+- Added structured category name/confidence to Document Detail summary response.
+- Updated DocumentListPage category display to retain the existing badge and include confidence metadata.
+- Updated DocumentDetailPage to show category and confidence.
+- Cleared stale normalized/legacy category values during user/admin document reprocessing.
+
+Scope notes:
+
+- No Category CRUD.
+- No Category Search.
+- No Category Statistics.
+- No Multi Category.
+- No Primary/Secondary Category.
+- No Admin Category Management.
+- No Prompt Management.

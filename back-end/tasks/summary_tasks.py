@@ -8,6 +8,8 @@ from db.database import SessionLocal
 from models.document import Document, DocumentStatus
 from models.document_chunk import DocumentChunk
 from models.task_tracker import TaskStage, TaskStatus, TaskTracker
+from services.category_service import CategoryClassification
+from services.category_service import save_document_category
 from services.document_service import trigger_embedding_pipeline
 from tasks.ocr_tasks import update_task_progress
 from utils.text_chunk import split_text
@@ -145,6 +147,20 @@ def process_document_summary(document_id: str, task_id: str):
         )
 
         document.summary = llm_provider.summarize_from_chunk_summaries(chunk_summaries)
+
+        category_result = llm_provider.classify_document_category(
+            markdown=document.ocr_markdown,
+            summary=document.summary,
+        )
+        save_document_category(
+            db=db,
+            document=document,
+            classification=CategoryClassification(
+                category=str(category_result.get("category") or "기타"),
+                confidence=category_result.get("confidence"),
+            ),
+        )
+
         document.status = DocumentStatus.PROCESSING
         document.process_at = datetime.utcnow()
 

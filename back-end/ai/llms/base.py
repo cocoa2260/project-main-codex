@@ -27,3 +27,9 @@ class BaseLLMProvider(ABC):
 
     def extract_question_keywords(self, question: str) -> list[str]:
         return self.extract_keywords(question)
+
+    def classify_document_category(self, markdown: str, summary: str) -> dict[str, object]:
+        return {
+            "category": "기타",
+            "confidence": None,
+        }
