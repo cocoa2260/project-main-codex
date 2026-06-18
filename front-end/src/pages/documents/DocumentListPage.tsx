@@ -198,6 +198,7 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
   const routeState = location.state as { message?: string } | null;
   const routeMessage = routeState?.message;
   const [searchParams, setSearchParams] = useSearchParams();
+  const searchParamsKey = searchParams.toString();
   const appliedFilters = getFilterFormFromParams(searchParams);
   const [sidebarOpen, setSidebarOpen] = usePersistentSidebar();
   const [draftFilters, setDraftFilters] = useState<DocumentFilterForm>(() => appliedFilters);
@@ -260,13 +261,15 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
   }, [location.pathname, location.search, navigate, routeMessage]);
 
   const loadDocuments = async (options?: { showLoading?: boolean }) => {
+    const currentFilters = getFilterFormFromParams(new URLSearchParams(searchParamsKey));
+
     try {
       if (options?.showLoading ?? true) {
         setIsLoading(true);
       }
       setError(null);
 
-      const docs = await getDocuments(getDocumentListParams(getFilterFormFromParams(searchParams)));
+      const docs = await getDocuments(getDocumentListParams(currentFilters));
       setDocuments(docs.map(mapDocument));
     } catch (loadError) {
       console.error('문서 목록을 불러오는 중 오류 발생:', loadError);
@@ -278,12 +281,13 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
 
   useEffect(() => {
     let isMounted = true;
+    const currentFilters = getFilterFormFromParams(new URLSearchParams(searchParamsKey));
 
     const loadMountedDocuments = async () => {
       try {
         setIsLoading(true);
         setError(null);
-        const docs = await getDocuments(getDocumentListParams(getFilterFormFromParams(searchParams)));
+        const docs = await getDocuments(getDocumentListParams(currentFilters));
         if (isMounted) setDocuments(docs.map(mapDocument));
       } catch (loadError) {
         if (isMounted) {
@@ -300,7 +304,7 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
     return () => {
       isMounted = false;
     };
-  }, [searchParams]);
+  }, [searchParamsKey]);
 
   useEffect(() => {
     let isMounted = true;
