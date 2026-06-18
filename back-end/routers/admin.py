@@ -43,6 +43,8 @@ from schemas.admin import AdminUserListResponse
 from schemas.admin import AdminUserRoleUpdateRequest
 from schemas.admin import AdminUserStatusUpdateRequest
 from schemas.admin import AdminWorkerListResponse
+from schemas.prompt import AdminPromptResponse
+from schemas.prompt import AdminPromptUpdateRequest
 from services.audit_service import list_admin_audit_logs
 from services.category_service import list_category_statistics
 from services.admin_service import delete_admin_document
@@ -71,6 +73,9 @@ from services.admin_service import retry_admin_document_from_stage
 from services.admin_service import retry_failed_task
 from services.admin_service import update_admin_user_role
 from services.admin_service import update_admin_user_status
+from services.prompt_service import get_admin_prompt
+from services.prompt_service import list_admin_prompts
+from services.prompt_service import update_admin_prompt
 
 
 router = APIRouter()
@@ -162,11 +167,13 @@ AUDIT_ACTIONS = {
     AuditAction.DOCUMENT_REPROCESS_REQUESTED,
     AuditAction.DOCUMENT_CANCELLED,
     AuditAction.DOCUMENT_EXPORTED,
+    AuditAction.PROMPT_UPDATED,
 }
 AUDIT_TARGET_TYPES = {
     AuditTargetType.USER,
     AuditTargetType.DOCUMENT,
     AuditTargetType.TASK,
+    AuditTargetType.PROMPT,
 }
 SORT_ORDERS = {"asc", "desc"}
 
@@ -235,6 +242,58 @@ def admin_settings(
     current_user: User = Depends(require_admin),
 ):
     return get_admin_settings()
+
+
+@router.get(
+    "/prompts",
+    response_model=list[AdminPromptResponse],
+)
+def list_prompts(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    return list_admin_prompts(db)
+
+
+@router.get(
+    "/prompts/{prompt_key}",
+    response_model=AdminPromptResponse,
+)
+def get_prompt(
+    prompt_key: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    prompt = get_admin_prompt(db=db, prompt_key=prompt_key)
+    if prompt is None:
+        raise HTTPException(status_code=404, detail="프롬프트를 찾을 수 없습니다.")
+
+    return prompt
+
+
+@router.put(
+    "/prompts/{prompt_key}",
+    response_model=AdminPromptResponse,
+)
+def update_prompt(
+    prompt_key: str,
+    req: AdminPromptUpdateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    prompt = update_admin_prompt(
+        db=db,
+        prompt_key=prompt_key,
+        content=req.content,
+        actor=current_user,
+        ip_address=_client_ip(request),
+        user_agent=_user_agent(request),
+    )
+    if prompt is None:
+        raise HTTPException(status_code=404, detail="프롬프트를 찾을 수 없습니다.")
+
+    return prompt
 
 
 @router.get(

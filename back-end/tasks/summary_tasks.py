@@ -11,6 +11,9 @@ from models.task_tracker import TaskStage, TaskStatus, TaskTracker
 from services.category_service import CategoryClassification
 from services.category_service import save_document_category
 from services.document_service import trigger_embedding_pipeline
+from services.prompt_defaults import CATEGORY_PROMPT_KEY
+from services.prompt_defaults import SUMMARY_PROMPT_KEY
+from services.prompt_service import get_active_prompt_content
 from tasks.ocr_tasks import update_task_progress
 from utils.text_chunk import split_text
 
@@ -128,6 +131,8 @@ def process_document_summary(document_id: str, task_id: str):
 
         chunks = build_document_chunks(document.ocr_markdown)
         llm_provider = get_llm_provider(settings.DEFAULT_LLM_MODEL)
+        summary_prompt = get_active_prompt_content(db, SUMMARY_PROMPT_KEY)
+        category_prompt = get_active_prompt_content(db, CATEGORY_PROMPT_KEY)
 
         chunk_summaries, keyword_count = summarize_chunks(
             db=db,
@@ -146,11 +151,15 @@ def process_document_summary(document_id: str, task_id: str):
             message="chunk별 요약을 바탕으로 문서 전체 요약을 생성하는 중입니다.",
         )
 
-        document.summary = llm_provider.summarize_from_chunk_summaries(chunk_summaries)
+        document.summary = llm_provider.summarize_from_chunk_summaries(
+            chunk_summaries,
+            prompt=summary_prompt,
+        )
 
         category_result = llm_provider.classify_document_category(
             markdown=document.ocr_markdown,
             summary=document.summary,
+            prompt=category_prompt,
         )
         save_document_category(
             db=db,

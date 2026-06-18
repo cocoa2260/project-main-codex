@@ -35,6 +35,20 @@ export interface AdminSettingsResponse {
   categories: AdminSettingsCategory[];
 }
 
+export type AdminPromptKey = 'SUMMARY_PROMPT' | 'CATEGORY_PROMPT' | 'QA_PROMPT';
+
+export interface AdminPrompt {
+  prompt_key: AdminPromptKey | string;
+  name: string;
+  description: string | null;
+  content: string;
+  updated_at: string;
+}
+
+export interface AdminPromptUpdateRequest {
+  content: string;
+}
+
 export type AdminWorkerStatus = 'ACTIVE' | 'IDLE' | 'OFFLINE' | 'WARNING';
 
 export interface AdminQueueItem {

@@ -23,12 +23,14 @@ SUPPORTED_AUDIT_ACTIONS = [
     AuditAction.DOCUMENT_REPROCESS_REQUESTED,
     AuditAction.DOCUMENT_DELETED,
     AuditAction.DOCUMENT_EXPORTED,
+    AuditAction.PROMPT_UPDATED,
 ]
 
 SUPPORTED_AUDIT_TARGET_TYPES = [
     AuditTargetType.USER,
     AuditTargetType.DOCUMENT,
     AuditTargetType.TASK,
+    AuditTargetType.PROMPT,
 ]
 
 

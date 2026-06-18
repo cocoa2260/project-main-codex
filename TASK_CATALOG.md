@@ -825,6 +825,22 @@ Status: DONE
 Priority: High
 Status: DONE
 
+### ADMIN-001 | Prompt Management | DONE
+
+- Added DB-backed `prompts` table with unique `prompt_key`
+- Seeded `SUMMARY_PROMPT`, `CATEGORY_PROMPT`, and `QA_PROMPT`
+- Added admin-only Prompt Management APIs:
+  - GET `/api/admin/prompts`
+  - GET `/api/admin/prompts/{prompt_key}`
+  - PUT `/api/admin/prompts/{prompt_key}`
+- Connected Summary, Category, and QA generation to prefer active DB prompts with existing hardcoded fallback
+- Added `PROMPT_UPDATED` audit logging with `prompt_key` and `updated_by` metadata
+- Added `/admin/prompts` frontend page with prompt list, detail loading, editing, save success, and save failure states
+- Prompt versioning/history/rollback/export/import/diff/template marketplace/user prompt management intentionally not included
+
+Priority: High
+Status: DONE
+
 ### DOC-001 Category System Implementation
 
 - Added normalized legal document category tables: `categories` and `document_categories`

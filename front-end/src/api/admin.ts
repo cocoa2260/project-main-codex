@@ -15,6 +15,8 @@ import type {
   AdminLogsResponse,
   AdminLogSummaryResponse,
   AdminHealthService,
+  AdminPrompt,
+  AdminPromptUpdateRequest,
   AdminQueueItem,
   AdminQueueListResponse,
   AdminSettingsResponse,
@@ -116,6 +118,22 @@ export async function getAdminSystemHealth(): Promise<AdminSystemHealthResponse>
 
 export async function getAdminSettings(): Promise<AdminSettingsResponse> {
   const response = await apiClient.get<AdminSettingsResponse>('/api/admin/settings');
+  return response.data;
+}
+
+export async function getAdminPrompts(): Promise<AdminPrompt[]> {
+  const response = await apiClient.get<AdminPrompt[]>('/api/admin/prompts');
+  return response.data;
+}
+
+export async function getAdminPrompt(promptKey: string): Promise<AdminPrompt> {
+  const response = await apiClient.get<AdminPrompt>(`/api/admin/prompts/${promptKey}`);
+  return response.data;
+}
+
+export async function updateAdminPrompt(promptKey: string, content: string): Promise<AdminPrompt> {
+  const payload: AdminPromptUpdateRequest = { content };
+  const response = await apiClient.put<AdminPrompt>(`/api/admin/prompts/${promptKey}`, payload);
   return response.data;
 }
 

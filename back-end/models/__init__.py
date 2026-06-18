@@ -9,3 +9,4 @@ from .task_tracker import *
 from .audit_log import *
 from .category import *
 from .document_category import *
+from .prompt import *

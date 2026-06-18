@@ -15,6 +15,9 @@ from models.chat_session import ChatSession
 from models.document import Document
 from models.document import DocumentStatus
 from models.document_chunk import DocumentChunk
+from services.prompt_defaults import DEFAULT_QA_PROMPT
+from services.prompt_defaults import QA_PROMPT_KEY
+from services.prompt_service import get_active_prompt_content
 
 COLAB_LLM_URL = "https://caravan-powdery-omen.ngrok-free.dev/generate"
 MAX_CONTEXT_CHARS = 12000
@@ -302,9 +305,9 @@ def _build_chat_context(document: Document, chunks: list[DocumentChunk]) -> tupl
     return context[:MAX_CONTEXT_CHARS], citations
 
 
-def _generate_answer(question: str, context: str) -> str:
+def _generate_answer(question: str, context: str, prompt: str | None = None) -> str:
     provider = get_llm_provider(settings.DEFAULT_LLM_MODEL)
-    return provider.answer_question(question=question, context=context).strip()
+    return provider.answer_question(question=question, context=context, prompt=prompt).strip()
 
 
 def answer_document_question(
@@ -325,6 +328,8 @@ def answer_document_question(
     if not context:
         raise DocumentChatContextError("질문에 사용할 문서 컨텍스트가 없습니다.")
 
+    qa_prompt = get_active_prompt_content(db, QA_PROMPT_KEY)
+
     if session_id is None:
         session = get_or_create_latest_chat_session(db, document, user_id)
     else:
@@ -340,7 +345,7 @@ def answer_document_question(
     db.flush()
 
     try:
-        answer = _generate_answer(question, context)
+        answer = _generate_answer(question, context, prompt=qa_prompt)
     except Exception as exc:
         db.rollback()
         raise DocumentChatGenerationError("LLM 답변 생성에 실패했습니다.") from exc
@@ -386,14 +391,15 @@ async def generate_rag_stream(user_message: str, document_id: str, db: Session):
     # (임시) 일단 기존 로직을 살려둡니다.
     context_text = "[관련 판례 내용] 피고인은 고의성 없이 영장 발부 사실을 몰랐으므로..."
     
-    # 2. QnA 목적에 맞는 프롬프트로 수정
-    prompt = f"""당신은 유능한 법률 전문가입니다. 아래 제공된 법률 판례 원문을 바탕으로 사용자의 질문에 정확하고 간결하게 답변해 주세요.
-    ### 원본 문서:
-    {context_text}
-    ### 질문:
-    {user_message}
-    ### 답변:
-    """
+    qa_prompt = get_active_prompt_content(db, QA_PROMPT_KEY) or DEFAULT_QA_PROMPT
+    prompt = (
+        f"{qa_prompt}\n\n"
+        "### 원본 문서:\n"
+        f"{context_text}\n"
+        "### 질문:\n"
+        f"{user_message}\n"
+        "### 답변:\n"
+    )
 
     # 3. 통신 시작
     async with httpx.AsyncClient(verify=False, timeout=120.0) as client:
