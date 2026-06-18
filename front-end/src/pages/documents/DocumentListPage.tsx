@@ -89,6 +89,11 @@ interface DocumentFilterForm {
   embeddingModel: string;
 }
 
+interface DocumentFilterDraftState {
+  key: string;
+  filters: DocumentFilterForm;
+}
+
 function getFilterFormFromParams(searchParams: URLSearchParams): DocumentFilterForm {
   return {
     search: searchParams.get('search') ?? '',
@@ -101,9 +106,14 @@ function getFilterFormFromParams(searchParams: URLSearchParams): DocumentFilterF
 }
 
 function getDocumentListParams(filters: DocumentFilterForm) {
+  const filterStatus = getFilterStatusFromParam(filters.status);
+
   return {
     search: filters.search.trim() || undefined,
-    status: filters.status !== 'all' ? normalizeDocumentStatus(filters.status) : undefined,
+    status:
+      filters.status !== 'all' && filterStatus !== 'processing'
+        ? normalizeDocumentStatus(filters.status)
+        : undefined,
     category: filters.category !== 'all' ? filters.category : undefined,
     date_from: filters.dateFrom || undefined,
     date_to: filters.dateTo || undefined,
@@ -201,7 +211,11 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
   const appliedFilters = getFilterFormFromParams(searchParams);
   const appliedFiltersKey = location.search;
   const [sidebarOpen, setSidebarOpen] = usePersistentSidebar();
-  const [draftFilters, setDraftFilters] = useState<DocumentFilterForm>(() => appliedFilters);
+  const [draftFilterState, setDraftFilterState] = useState<DocumentFilterDraftState>(() => ({
+    key: appliedFiltersKey,
+    filters: appliedFilters,
+  }));
+  const draftFilters = draftFilterState.key === appliedFiltersKey ? draftFilterState.filters : appliedFilters;
   const dateFromInputRef = useRef<HTMLInputElement | null>(null);
   const dateToInputRef = useRef<HTMLInputElement | null>(null);
   const [categoryNames, setCategoryNames] = useState<string[]>(DEFAULT_CATEGORY_NAMES);
@@ -223,9 +237,12 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
   const filterStatus = getFilterStatusFromParam(appliedFilters.status);
 
   const updateDraftFilter = (key: keyof DocumentFilterForm, value: string) => {
-    setDraftFilters((currentFilters) => ({
-      ...currentFilters,
-      [key]: value,
+    setDraftFilterState((currentDraft) => ({
+      key: appliedFiltersKey,
+      filters: {
+        ...(currentDraft.key === appliedFiltersKey ? currentDraft.filters : appliedFilters),
+        [key]: value,
+      },
     }));
   };
 
@@ -250,7 +267,10 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
 
   const resetFilters = () => {
     const emptyFilters = getFilterFormFromParams(new URLSearchParams());
-    setDraftFilters(emptyFilters);
+    setDraftFilterState({
+      key: '',
+      filters: emptyFilters,
+    });
     setSearchParams(new URLSearchParams(), { replace: true });
   };
 
