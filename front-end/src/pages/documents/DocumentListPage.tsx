@@ -106,14 +106,8 @@ function getFilterFormFromParams(searchParams: URLSearchParams): DocumentFilterF
 }
 
 function getDocumentListParams(filters: DocumentFilterForm) {
-  const filterStatus = getFilterStatusFromParam(filters.status);
-
   return {
     search: filters.search.trim() || undefined,
-    status:
-      filters.status !== 'all' && filterStatus !== 'processing'
-        ? normalizeDocumentStatus(filters.status)
-        : undefined,
     category: filters.category !== 'all' ? filters.category : undefined,
     date_from: filters.dateFrom || undefined,
     date_to: filters.dateTo || undefined,
@@ -225,7 +219,6 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
   const [sortBy, setSortBy] = useState<SortBy>('recent');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [documents, setDocuments] = useState<Document[]>([]);
-  const [allDocuments, setAllDocuments] = useState<Document[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(routeMessage ?? null);
@@ -292,12 +285,8 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
       }
       setError(null);
 
-      const [filteredDocs, allDocs] = await Promise.all([
-        getDocuments(getDocumentListParams(currentFilters)),
-        getDocuments(),
-      ]);
-      setDocuments(filteredDocs.map(mapDocument));
-      setAllDocuments(allDocs.map(mapDocument));
+      const docs = await getDocuments(getDocumentListParams(currentFilters));
+      setDocuments(docs.map(mapDocument));
     } catch (loadError) {
       console.error('문서 목록을 불러오는 중 오류 발생:', loadError);
       setError('문서 목록을 불러오지 못했습니다.');
@@ -314,13 +303,9 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
       try {
         setIsLoading(true);
         setError(null);
-        const [filteredDocs, allDocs] = await Promise.all([
-          getDocuments(getDocumentListParams(currentFilters)),
-          getDocuments(),
-        ]);
+        const docs = await getDocuments(getDocumentListParams(currentFilters));
         if (isMounted) {
-          setDocuments(filteredDocs.map(mapDocument));
-          setAllDocuments(allDocs.map(mapDocument));
+          setDocuments(docs.map(mapDocument));
         }
       } catch (loadError) {
         if (isMounted) {
@@ -474,10 +459,10 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
   };
 
   const stats = {
-    total: allDocuments.length,
-    completed: allDocuments.filter(d => d.status === 'COMPLETED').length,
-    processing: allDocuments.filter(d => d.status === 'PENDING' || d.status === 'PROCESSING' || d.status === 'REVIEW_REQUIRED').length,
-    failed: allDocuments.filter(d => d.status === 'FAILED').length
+    total: documents.length,
+    completed: documents.filter(d => d.status === 'COMPLETED').length,
+    processing: documents.filter(d => d.status === 'PENDING' || d.status === 'PROCESSING' || d.status === 'REVIEW_REQUIRED').length,
+    failed: documents.filter(d => d.status === 'FAILED').length
   };
   const visibleDocumentCount = filteredDocuments.length;
 
