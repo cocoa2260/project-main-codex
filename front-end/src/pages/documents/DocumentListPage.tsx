@@ -139,6 +139,8 @@ function formatBytes(bytes?: number | null) {
 }
 
 function getFilterStatusFromParam(statusParam: string | null): FilterStatus {
+  if (statusParam === 'processing') return 'processing';
+
   const normalizedStatus = statusParam ? normalizeDocumentStatus(statusParam) : null;
 
   if (normalizedStatus === 'COMPLETED') return 'completed';
@@ -223,6 +225,7 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
   const [sortBy, setSortBy] = useState<SortBy>('recent');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [documents, setDocuments] = useState<Document[]>([]);
+  const [allDocuments, setAllDocuments] = useState<Document[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(routeMessage ?? null);
@@ -289,8 +292,12 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
       }
       setError(null);
 
-      const docs = await getDocuments(getDocumentListParams(currentFilters));
-      setDocuments(docs.map(mapDocument));
+      const [filteredDocs, allDocs] = await Promise.all([
+        getDocuments(getDocumentListParams(currentFilters)),
+        getDocuments(),
+      ]);
+      setDocuments(filteredDocs.map(mapDocument));
+      setAllDocuments(allDocs.map(mapDocument));
     } catch (loadError) {
       console.error('문서 목록을 불러오는 중 오류 발생:', loadError);
       setError('문서 목록을 불러오지 못했습니다.');
@@ -307,8 +314,14 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
       try {
         setIsLoading(true);
         setError(null);
-        const docs = await getDocuments(getDocumentListParams(currentFilters));
-        if (isMounted) setDocuments(docs.map(mapDocument));
+        const [filteredDocs, allDocs] = await Promise.all([
+          getDocuments(getDocumentListParams(currentFilters)),
+          getDocuments(),
+        ]);
+        if (isMounted) {
+          setDocuments(filteredDocs.map(mapDocument));
+          setAllDocuments(allDocs.map(mapDocument));
+        }
       } catch (loadError) {
         if (isMounted) {
           console.error('문서 목록을 불러오는 중 오류 발생:', loadError);
@@ -461,11 +474,12 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
   };
 
   const stats = {
-    total: documents.length,
-    completed: documents.filter(d => d.status === 'COMPLETED').length,
-    processing: documents.filter(d => d.status === 'PENDING' || d.status === 'PROCESSING' || d.status === 'REVIEW_REQUIRED').length,
-    failed: documents.filter(d => d.status === 'FAILED').length
+    total: allDocuments.length,
+    completed: allDocuments.filter(d => d.status === 'COMPLETED').length,
+    processing: allDocuments.filter(d => d.status === 'PENDING' || d.status === 'PROCESSING' || d.status === 'REVIEW_REQUIRED').length,
+    failed: allDocuments.filter(d => d.status === 'FAILED').length
   };
+  const visibleDocumentCount = filteredDocuments.length;
 
   return (
     <div className="min-h-screen w-full bg-[#0f0f17] flex">
@@ -510,7 +524,7 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-2xl font-bold text-white mb-1">문서 관리</h2>
-                <p className="text-zinc-300">총 {stats.total}개의 문서</p>
+                <p className="text-zinc-300">총 {visibleDocumentCount}개의 문서</p>
               </div>
 
             </div>
@@ -597,7 +611,7 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                   >
                     <option value="all">전체</option>
                     <option value="PENDING">대기</option>
-                    <option value="PROCESSING">처리 중</option>
+                    <option value="processing">처리 중</option>
                     <option value="REVIEW_REQUIRED">검토 필요</option>
                     <option value="COMPLETED">완료</option>
                     <option value="FAILED">실패</option>
