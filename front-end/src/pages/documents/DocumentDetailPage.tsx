@@ -314,16 +314,6 @@ export function DocumentDetailPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => documentId && navigate(`/documents/${documentId}/workspace`)}
-                    disabled={!canOpenCompletedViews}
-                    title={canOpenCompletedViews ? undefined : '워크스페이스는 문서 처리 완료 후 사용할 수 있습니다.'}
-                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    <FileText className="h-4 w-4" />
-                    워크스페이스
-                  </button>
-                  <button
-                    type="button"
                     onClick={() => documentId && navigate(`/documents/${documentId}/chat`)}
                     disabled={!canOpenCompletedViews}
                     title={canOpenCompletedViews ? undefined : '채팅은 문서 처리 완료 후 준비됩니다.'}

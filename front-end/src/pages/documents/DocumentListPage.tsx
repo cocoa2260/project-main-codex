@@ -26,7 +26,6 @@ import {
   CheckCircle2,
   Loader2,
   AlertCircle,
-  Brain,
   Grid3x3,
   List,
   Calendar,
@@ -227,7 +226,6 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
 
   const openDocumentDetail = (documentId: string) => navigate(`/documents/${documentId}`);
   const openDocumentStatus = (documentId: string) => navigate(`/documents/${documentId}/status`);
-  const openDocumentWorkspace = (documentId: string) => navigate(`/documents/${documentId}/workspace`);
   const handleDownload = async (doc: Document) => {
     try {
       setActionError(null);
@@ -722,14 +720,6 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                           </button>
                           <button
                             type="button"
-                            onClick={() => openDocumentWorkspace(doc.id)}
-                            className="p-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors"
-                            title="워크스페이스"
-                          >
-                            <Brain className="w-3.5 h-3.5 text-zinc-200" />
-                          </button>
-                          <button
-                            type="button"
                             onClick={() => setReprocessTarget(doc)}
                             disabled={!canReprocessDocument(doc.status) || reprocessingDocumentId === doc.id}
                             title="문서 재처리"
@@ -896,14 +886,6 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                                       title="채팅"
                                     >
                                       <MessageSquare className="w-4 h-4 text-zinc-300" />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => openDocumentWorkspace(doc.id)}
-                                      className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-                                      title="워크스페이스"
-                                    >
-                                      <Brain className="w-4 h-4 text-zinc-300" />
                                     </button>
                                     <button
                                       type="button"

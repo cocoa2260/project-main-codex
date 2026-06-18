@@ -7,6 +7,7 @@ import {
   Bot,
   Calendar,
   ChevronLeft,
+  ChevronsLeftRight,
   FileText,
   Layers,
   Loader2,
@@ -49,6 +50,16 @@ function formatDate(value?: string | null) {
     minute: '2-digit',
     hour12: false,
   }).format(new Date(value));
+}
+
+function formatBytes(bytes?: number | null) {
+  if (!bytes) return '-';
+
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / 1024 ** index;
+
+  return `${value.toFixed(value >= 10 || index === 0 ? 0 : 1)} ${units[index]}`;
 }
 
 function formatNow() {
@@ -101,6 +112,7 @@ export function DocumentChatPage({ onBack, onLogout }: DocumentChatPageProps) {
   const navigate = useNavigate();
   const { documentId } = useParams();
   const [sidebarOpen, setSidebarOpen] = usePersistentSidebar();
+  const [isDetailedView, setIsDetailedView] = useState(false);
   const [contextPanelExpanded, setContextPanelExpanded] = useState(true);
   const [message, setMessage] = useState('');
   const [summaryData, setSummaryData] = useState<DocumentSummaryResponse | null>(null);
@@ -200,10 +212,11 @@ export function DocumentChatPage({ onBack, onLogout }: DocumentChatPageProps) {
       return;
     }
 
-    navigate(documentId ? `/documents/${documentId}/workspace` : '/documents');
+    navigate('/documents');
   };
 
   const summaryPreview = summaryData?.summary?.trim() || '저장된 요약이 없습니다.';
+  const showContextPanel = isDetailedView && contextPanelExpanded;
 
   return (
     <div className="min-h-screen w-full bg-[#0f0f17] flex">
@@ -221,6 +234,16 @@ export function DocumentChatPage({ onBack, onLogout }: DocumentChatPageProps) {
           description={summaryData?.file_name}
           rightActions={
             <>
+            <button
+              type="button"
+              onClick={() => setIsDetailedView((current) => !current)}
+              className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:bg-white/10 hover:text-white"
+              aria-pressed={isDetailedView}
+              title={isDetailedView ? '상세 보기 모드' : '간략 보기 모드'}
+            >
+              <ChevronsLeftRight className="h-4 w-4" />
+              {isDetailedView ? '상세히 보기' : '간략히 보기'}
+            </button>
             <div className="hidden md:flex min-w-0 items-center gap-3 px-4 py-2 bg-white/5 border border-white/10 rounded-lg">
               <BookOpen className="w-4 h-4 shrink-0 text-primary" />
               <span className="truncate text-white text-sm font-medium">{summaryData?.file_name ?? '문서 채팅'}</span>
@@ -251,7 +274,7 @@ export function DocumentChatPage({ onBack, onLogout }: DocumentChatPageProps) {
 
         <main className="relative flex-1 flex overflow-hidden">
           <div className={`
-            ${contextPanelExpanded ? 'w-80' : 'w-0'}
+            ${showContextPanel ? 'w-80' : 'w-0'}
             bg-[#15151c] border-r border-white/10 transition-all duration-300 overflow-hidden
             flex flex-col
           `}>
@@ -306,6 +329,29 @@ export function DocumentChatPage({ onBack, onLogout }: DocumentChatPageProps) {
                 </div>
               </div>
 
+              <div className="grid grid-cols-1 gap-3">
+                <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                  <p className="mb-1 text-xs text-zinc-400">상태</p>
+                  <StatusBadge status={summaryData?.status} size="sm" />
+                </div>
+                <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                  <p className="mb-1 text-xs text-zinc-400">파일 크기</p>
+                  <p className="text-sm font-medium text-white">{formatBytes(summaryData?.file_size)}</p>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                  <p className="mb-1 text-xs text-zinc-400">업로드일</p>
+                  <p className="text-sm font-medium text-white">{formatDate(summaryData?.upload_at)}</p>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                  <p className="mb-1 text-xs text-zinc-400">페이지 수</p>
+                  <p className="text-sm font-medium text-white">{summaryData?.page_count ?? '-'}</p>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                  <p className="mb-1 text-xs text-zinc-400">임베딩 모델</p>
+                  <p className="break-words text-sm font-medium text-white">{summaryData?.embedding_model ?? '-'}</p>
+                </div>
+              </div>
+
               <div>
                 <h4 className="text-white font-medium text-sm mb-2 flex items-center gap-2">
                   <Sparkles className="w-4 h-4 text-primary" />
@@ -345,7 +391,7 @@ export function DocumentChatPage({ onBack, onLogout }: DocumentChatPageProps) {
             </div>
           </div>
 
-          {!contextPanelExpanded && (
+          {isDetailedView && !contextPanelExpanded && (
             <button
               type="button"
               onClick={() => setContextPanelExpanded(true)}

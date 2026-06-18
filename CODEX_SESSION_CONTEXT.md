@@ -1075,3 +1075,34 @@ Scope notes:
 - No Admin API/UI changes.
 - No Summary/Embedding pipeline order changes.
 - Celery revoke was intentionally not implemented for MVP cancel.
+
+## 2026-06-18 UX-003 Chat Workspace Unification
+
+Branch: feature/ux-003-chat-workspace-unification
+
+Implemented:
+
+- Removed the standalone DocumentWorkspacePage frontend route and page.
+- Removed `/documents/:documentId/workspace` from the app router.
+- Removed Workspace entry points from DocumentListPage and DocumentDetailPage.
+- Made DocumentChatPage the single official document QA screen.
+- Added a top-right compact/detailed view toggle to DocumentChatPage.
+- Kept compact mode focused on document name, question input, answers, and citations.
+- Added detailed mode document information with status, upload date, page count, embedding model, summary, question input, answers, and citations.
+- Kept DashboardPage, SummaryPage, and ReviewPage chat navigation aligned to `/documents/:documentId/chat`.
+
+Verification:
+
+- `npm run lint`
+- `npm run build`
+- `git diff --check`
+- Static frontend search confirmed no remaining Workspace route, Workspace navigation, or DocumentWorkspacePage references.
+
+Scope notes:
+
+- Frontend only.
+- No backend changes.
+- No API changes.
+- No DB migration.
+- No RAG logic changes.
+- No Admin feature changes.
