@@ -24,7 +24,6 @@
 - Document Management
 - Review Flow
 - Summary
-- Workspace
 - Chat/RAG
 - Admin Dashboard
 - Admin User Management
@@ -69,6 +68,7 @@
 | BE-USER-004 | User Settings APIs | High | DONE |
 | USER-005 | User Document Download/Delete | High | DONE |
 | USER-006 | User Document Reprocess/Cancel | High | DONE |
+| UX-003 | Chat Workspace Unification | High | DONE |
 
 ---
 
@@ -765,6 +765,19 @@ Status: DONE
 - No Chat/RAG changes
 - No Admin changes
 - No Summary/Embedding pipeline order changes
+
+Priority: High
+Status: DONE
+
+### UX-003 Chat Workspace Unification
+
+- Removed the separate DocumentWorkspacePage frontend surface and `/documents/:id/workspace` route
+- Consolidated document QA into DocumentChatPage as the single official document chat screen
+- Added compact and detailed view modes to DocumentChatPage
+- Kept compact mode focused on document name, question input, answers, and citations
+- Added detailed mode document metadata, status, upload date, page count, embedding model, summary, questions, answers, and citations
+- Removed Workspace navigation/actions from document list and document detail screens
+- Preserved existing chat API, backend, DB, migrations, RAG logic, and Admin surfaces
 
 Priority: High
 Status: DONE

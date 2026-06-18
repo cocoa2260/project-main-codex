@@ -18,7 +18,6 @@ import { DocumentChatPage } from '../pages/documents/DocumentChatPage';
 import { DocumentUploadPage } from '../pages/documents/DocumentUploadPage';
 import { DocumentDetailPage } from '../pages/documents/DocumentDetailPage';
 import { DocumentReviewPage } from '../pages/documents/DocumentReviewPage';
-import { DocumentWorkspacePage } from '../pages/documents/DocumentWorkspacePage';
 import { UserSettingsPage } from '../pages/settings/UserSettingsPage';
 import { AdminDashboardPage } from '../pages/admin/AdminDashboardPage';
 import { AdminUserPage } from '../pages/admin/AdminUserPage';
@@ -110,7 +109,6 @@ function AppRoutes() {
       <Route path="/documents/:documentId" element={<UserRoute><DocumentDetailPage /></UserRoute>} />
       <Route path="/documents/:documentId/status" element={<UserRoute><DocumentStatusRoute /></UserRoute>} />
       <Route path="/documents/:documentId/review" element={<UserRoute><DocumentReviewPage /></UserRoute>} />
-      <Route path="/documents/:documentId/workspace" element={<UserRoute><DocumentWorkspacePage /></UserRoute>} />
       <Route path="/documents/:documentId/summary" element={<UserRoute><DocumentSummaryRoute /></UserRoute>} />
       <Route path="/documents/:documentId/chat" element={<UserRoute><DocumentChatRoute /></UserRoute>} />
       <Route path="/settings" element={<UserRoute><UserSettingsPage onLogout={logout} /></UserRoute>} />
