@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Sidebar } from '../../components/common/Sidebar';
 import { StatusBadge } from '@/components/common/StatusBadge';
+import { getCategories } from '@/api/category';
 import {
   cancelDocument,
   deleteUserDocument,
@@ -35,10 +36,26 @@ import {
   Trash2,
   LogOut,
   XCircle,
+  Tag,
 } from 'lucide-react';
 
 type SortBy = 'recent' | 'oldest' | 'name';
 type FilterStatus = 'all' | 'processing' | 'completed' | 'failed';
+
+const DEFAULT_CATEGORY_NAMES = [
+  '민법',
+  '형법',
+  '민사소송법',
+  '형사소송법',
+  '상법',
+  '행정법',
+  '노동법',
+  '조세법',
+  '헌법',
+  '지식재산권법',
+  '개인정보보호법',
+  '기타',
+];
 
 interface Document {
   id: string;
@@ -142,6 +159,8 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
   const statusParam = searchParams.get('status');
   const [sidebarOpen, setSidebarOpen] = usePersistentSidebar();
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [categoryNames, setCategoryNames] = useState<string[]>(DEFAULT_CATEGORY_NAMES);
   const [sortBy, setSortBy] = useState<SortBy>('recent');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -164,14 +183,17 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
     }
   }, [location.pathname, location.search, navigate, routeMessage]);
 
-  const loadDocuments = async (options?: { showLoading?: boolean }) => {
+  const loadDocuments = async (options?: { showLoading?: boolean; search?: string; category?: string }) => {
     try {
       if (options?.showLoading ?? true) {
         setIsLoading(true);
       }
       setError(null);
 
-      const docs = await getDocuments();
+      const docs = await getDocuments({
+        search: options?.search?.trim() || undefined,
+        category: options?.category && options.category !== 'all' ? options.category : undefined,
+      });
       setDocuments(docs.map(mapDocument));
     } catch (loadError) {
       console.error('문서 목록을 불러오는 중 오류 발생:', loadError);
@@ -188,7 +210,10 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
       try {
         setIsLoading(true);
         setError(null);
-        const docs = await getDocuments();
+        const docs = await getDocuments({
+          search: searchQuery.trim() || undefined,
+          category: selectedCategory === 'all' ? undefined : selectedCategory,
+        });
         if (isMounted) setDocuments(docs.map(mapDocument));
       } catch (loadError) {
         if (isMounted) {
@@ -200,7 +225,32 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
       }
     };
 
-    void loadMountedDocuments();
+    const timeoutId = window.setTimeout(() => {
+      void loadMountedDocuments();
+    }, 250);
+
+    return () => {
+      isMounted = false;
+      window.clearTimeout(timeoutId);
+    };
+  }, [searchQuery, selectedCategory]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadCategories = async () => {
+      try {
+        const categories = await getCategories();
+        const names = categories.map((category) => category.name).filter(Boolean);
+        if (isMounted && names.length > 0) {
+          setCategoryNames(names);
+        }
+      } catch (categoryError) {
+        console.error('카테고리 목록을 불러오는 중 오류 발생:', categoryError);
+      }
+    };
+
+    void loadCategories();
 
     return () => {
       isMounted = false;
@@ -208,16 +258,13 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
   }, []);
 
   const filteredDocuments = documents.filter(doc => {
-    const matchesSearch = doc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         doc.category?.toLowerCase().includes(searchQuery.toLowerCase());
-
     const matchesFilter =
       filterStatus === 'all' ? true :
       filterStatus === 'processing' ? doc.status === 'PENDING' || doc.status === 'PROCESSING' || doc.status === 'REVIEW_REQUIRED' :
       filterStatus === 'completed' ? doc.status === 'COMPLETED' :
       filterStatus === 'failed' ? doc.status === 'FAILED' : true;
 
-    return matchesSearch && matchesFilter;
+    return matchesFilter;
   });
 
   const sortedDocuments = [...filteredDocuments].sort((a, b) => {
@@ -257,7 +304,7 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
       const response = await deleteUserDocument(deleteTarget.id);
       setActionMessage(response.message || `${response.file_name} 문서를 삭제했습니다.`);
       setDeleteTarget(null);
-      await loadDocuments({ showLoading: false });
+      await loadDocuments({ showLoading: false, search: searchQuery, category: selectedCategory });
     } catch (deleteError) {
       setActionError(getApiErrorMessage(deleteError, '문서를 삭제하지 못했습니다.'));
     } finally {
@@ -275,7 +322,7 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
       const response = await reprocessDocument(reprocessTarget.id);
       setActionMessage(response.message || '문서 재처리를 시작했습니다.');
       setReprocessTarget(null);
-      await loadDocuments({ showLoading: false });
+      await loadDocuments({ showLoading: false, search: searchQuery, category: selectedCategory });
     } catch (reprocessError) {
       setActionError(getApiErrorMessage(reprocessError, '문서 재처리를 요청하지 못했습니다.'));
     } finally {
@@ -293,7 +340,7 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
       const response = await cancelDocument(cancelTarget.id);
       setActionMessage(response.message || '문서 처리를 취소했습니다.');
       setCancelTarget(null);
-      await loadDocuments({ showLoading: false });
+      await loadDocuments({ showLoading: false, search: searchQuery, category: selectedCategory });
     } catch (cancelError) {
       setActionError(getApiErrorMessage(cancelError, '문서 처리를 취소하지 못했습니다.'));
     } finally {
@@ -427,8 +474,8 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
             </div>
 
             {/* Filters and controls */}
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
 	                  onClick={() => applyFilterStatus('all')}
@@ -473,6 +520,23 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                 >
                   실패
                 </button>
+
+                <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                  <Tag className="h-4 w-4 text-zinc-400" />
+                  <select
+                    value={selectedCategory}
+                    onChange={(event) => setSelectedCategory(event.target.value)}
+                    className="bg-transparent text-sm text-zinc-200 focus:outline-none"
+                    title="카테고리 필터"
+                  >
+                    <option value="all">전체</option>
+                    {categoryNames.map((categoryName) => (
+                      <option key={categoryName} value={categoryName}>
+                        {categoryName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <div className="flex items-center gap-2">

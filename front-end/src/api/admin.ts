@@ -2,6 +2,7 @@ import { apiClient } from './client';
 import type {
   AdminAuditLogListParams,
   AdminAuditLogsResponse,
+  AdminCategoryStatsItem,
   AdminDashboardSummaryResponse,
   AdminDocumentDetailResponse,
   AdminDocumentDeleteResponse,
@@ -166,6 +167,11 @@ export async function getAdminLogSummary(): Promise<AdminLogSummaryResponse> {
 
 export async function getAdminAuditLogs(params?: AdminAuditLogListParams): Promise<AdminAuditLogsResponse> {
   const response = await apiClient.get<AdminAuditLogsResponse>('/api/admin/audit-logs', { params });
+  return response.data;
+}
+
+export async function getAdminCategoryStats(): Promise<AdminCategoryStatsItem[]> {
+  const response = await apiClient.get<AdminCategoryStatsItem[]>('/api/admin/categories/stats');
   return response.data;
 }
 

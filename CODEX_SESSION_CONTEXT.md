@@ -8,6 +8,19 @@ Generative AI Document Automation Platform
 
 ## Completed Tasks
 
+### DOC-002
+Category Usage and Management
+Status: DONE
+Summary:
+- Added GET `/api/categories` for authenticated read-only category options
+- Added GET `/api/admin/categories/stats` for admin category document counts and active flags
+- Added category query filtering to user and admin document list APIs
+- Extended user and admin document search to match DOC-001 `categories.name` as well as legacy `documents.category`
+- Added category filter controls to DocumentListPage and AdminDocumentPage
+- Added read-only category statistics display in AdminDocumentPage with category name, document count, and active status
+- Kept category create/update/delete, multi-category, approval, reclassification, drag/drop, auto category creation, and prompt management out of scope
+- Verified API category list, admin category stats, user category filter/search, admin category filter, frontend lint/build, backend compile, and git diff check
+
 ### FE-001 - StatusBadge Integration
 Status: DONE
 Summary:

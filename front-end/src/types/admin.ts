@@ -291,11 +291,19 @@ export interface AdminDocumentListParams {
   limit?: number;
   status?: DocumentStatus;
   owner_id?: string;
+  category?: string;
   search?: string;
   uploaded_from?: string;
   uploaded_to?: string;
   sort_by?: 'upload_at' | 'updated_at' | 'file_name' | 'file_size' | 'page_count' | 'status';
   sort_order?: 'asc' | 'desc';
+}
+
+export interface AdminCategoryStatsItem {
+  id: string;
+  name: string;
+  document_count: number;
+  is_active: boolean;
 }
 
 export interface AdminTaskDocumentResponse {

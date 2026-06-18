@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   deleteAdminDocument,
   downloadAdminDocumentOriginal,
+  getAdminCategoryStats,
   getAdminDocumentDetail,
   getAdminDocuments,
   retryAdminDocumentFromStage,
@@ -9,7 +10,7 @@ import {
 import { Sidebar } from '../../components/common/Sidebar';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { usePersistentSidebar } from '../../hooks/usePersistentSidebar';
-import type { AdminDocumentDetailResponse, AdminDocumentItem, AdminDocumentRetryStage } from '../../types/admin';
+import type { AdminCategoryStatsItem, AdminDocumentDetailResponse, AdminDocumentItem, AdminDocumentRetryStage } from '../../types/admin';
 import type { DocumentStatus, TaskType } from '../../types/document';
 import {
   getDocumentStatusPresentation,
@@ -40,6 +41,7 @@ import {
   TrendingUp,
   AlertTriangle,
   Trash2,
+  Tag,
 } from 'lucide-react';
 
 type FilterStatus = 'all' | 'processing' | 'review_required' | 'completed' | 'failed';
@@ -178,8 +180,10 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
   const [sidebarOpen, setSidebarOpen] = usePersistentSidebar();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
+  const [selectedCategory, setSelectedCategory] = useState('all');
   const [sortBy, setSortBy] = useState<'upload_at' | 'updated_at' | 'file_name' | 'file_size' | 'page_count' | 'status'>('updated_at');
   const [documents, setDocuments] = useState<AdminDocumentItem[]>([]);
+  const [categoryStats, setCategoryStats] = useState<AdminCategoryStatsItem[]>([]);
   const [pagination, setPagination] = useState({
     page: 1,
     limit: PAGE_LIMIT,
@@ -220,6 +224,7 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
         page,
         limit: PAGE_LIMIT,
         status: filterStatus === 'all' ? undefined : filterStatusMap[filterStatus],
+        category: selectedCategory === 'all' ? undefined : selectedCategory,
         search: searchQuery.trim() || undefined,
         sort_by: sortBy,
         sort_order: 'desc',
@@ -235,7 +240,7 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [filterStatus, searchQuery, sortBy]);
+  }, [filterStatus, searchQuery, selectedCategory, sortBy]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -245,8 +250,26 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
     return () => window.clearTimeout(timeoutId);
   }, [fetchDocuments]);
 
+  const fetchCategoryStats = useCallback(async () => {
+    try {
+      const stats = await getAdminCategoryStats();
+      setCategoryStats(stats);
+    } catch (error) {
+      console.error('카테고리 통계를 불러오는 중 오류 발생:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      void fetchCategoryStats();
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [fetchCategoryStats]);
+
   const handleRefresh = () => {
     void fetchDocuments(pagination.page, false);
+    void fetchCategoryStats();
   };
 
   const handlePageChange = (nextPage: number) => {
@@ -305,6 +328,7 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
       }
 
       await fetchDocuments(pagination.page, false);
+      await fetchCategoryStats();
     } catch (error) {
       setDeleteErrorMessage(getApiErrorMessage(error, '문서를 삭제하지 못했습니다.'));
     } finally {
@@ -332,6 +356,7 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
       }
 
       await fetchDocuments(pagination.page, false);
+      await fetchCategoryStats();
     } catch (error) {
       setRetryErrorMessage(getApiErrorMessage(error, '문서 재처리를 요청하지 못했습니다.'));
     } finally {
@@ -539,6 +564,23 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
                   ))}
 
                   <div className="flex-1" />
+
+                  <div className="flex h-10 items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3">
+                    <Tag className="h-4 w-4 text-gray-400" />
+                    <select
+                      value={selectedCategory}
+                      onChange={(event) => setSelectedCategory(event.target.value)}
+                      className="bg-transparent text-sm text-gray-300 focus:outline-none"
+                      title="카테고리 필터"
+                    >
+                      <option value="all">Category Filter</option>
+                      {categoryStats.map((category) => (
+                        <option key={category.id} value={category.name}>
+                          {category.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
                   <select
                     value={sortBy}
@@ -906,6 +948,45 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
               </div>
 
               <div className="space-y-6">
+                <div className="bg-[#111116] border border-white/10 rounded-xl p-6">
+                  <h3 className="text-white font-semibold text-lg mb-4 flex items-center gap-2">
+                    <Tag className="w-5 h-5 text-primary" />
+                    카테고리 현황
+                  </h3>
+                  <div className="space-y-2">
+                    {categoryStats.length === 0 ? (
+                      <p className="text-sm text-gray-500">카테고리 통계를 불러오는 중입니다.</p>
+                    ) : categoryStats.map((category) => (
+                      <button
+                        key={category.id}
+                        type="button"
+                        onClick={() => setSelectedCategory(category.name)}
+                        className={`w-full rounded-lg border p-3 text-left transition-colors ${
+                          selectedCategory === category.name
+                            ? 'border-primary/50 bg-primary/10'
+                            : 'border-white/10 bg-white/5 hover:bg-white/10'
+                        }`}
+                        title={`${category.name} 문서 필터`}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-sm font-medium text-white">{category.name}</span>
+                          <span className="text-sm font-semibold text-primary">{category.document_count.toLocaleString()}</span>
+                        </div>
+                        <div className="mt-2 flex items-center justify-between">
+                          <span className="text-xs text-gray-500">문서 수</span>
+                          <span className={`rounded px-2 py-0.5 text-xs ${
+                            category.is_active
+                              ? 'bg-green-500/10 text-green-300'
+                              : 'bg-gray-500/10 text-gray-400'
+                          }`}>
+                            {category.is_active ? '활성' : '비활성'}
+                          </span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <div className="bg-[#111116] border border-white/10 rounded-xl p-6">
                   <h3 className="text-white font-semibold text-lg mb-4">최근 업로드</h3>
                   <div className="space-y-3">

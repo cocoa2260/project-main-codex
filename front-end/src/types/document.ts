@@ -77,6 +77,16 @@ export interface DocumentItem {
   upload_at: string;
 }
 
+export interface CategoryOption {
+  id: string;
+  name: string;
+}
+
+export interface DocumentListParams {
+  search?: string;
+  category?: string;
+}
+
 // Dashboard List 상태 화면 표시용
 export type DocumentDisplayStatus =
   | "processing"

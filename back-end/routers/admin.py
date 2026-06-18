@@ -21,6 +21,7 @@ from models.user import User
 from models.user import UserRole
 from models.user import UserStatus
 from routers.deps import require_admin
+from schemas.category import AdminCategoryStatsResponse
 from schemas.admin import AdminAuditLogListResponse
 from schemas.admin import AdminDashboardSummaryResponse
 from schemas.admin import AdminDocumentDetailResponse
@@ -43,6 +44,7 @@ from schemas.admin import AdminUserRoleUpdateRequest
 from schemas.admin import AdminUserStatusUpdateRequest
 from schemas.admin import AdminWorkerListResponse
 from services.audit_service import list_admin_audit_logs
+from services.category_service import list_category_statistics
 from services.admin_service import delete_admin_document
 from services.admin_service import get_admin_document_detail
 from services.admin_service import get_admin_logs_summary
@@ -450,6 +452,7 @@ def list_documents(
     limit: int = Query(default=20, ge=1, le=100),
     status: str | None = None,
     owner_id: UUID | None = None,
+    category: str | None = None,
     search: str | None = None,
     uploaded_from: date | None = None,
     uploaded_to: date | None = None,
@@ -473,12 +476,24 @@ def list_documents(
         limit=limit,
         status=status,
         owner_id=owner_id,
+        category=category,
         search=search,
         uploaded_from=uploaded_from,
         uploaded_to=uploaded_to,
         sort_by=sort_by,
         sort_order=sort_order,
     )
+
+
+@router.get(
+    "/categories/stats",
+    response_model=list[AdminCategoryStatsResponse],
+)
+def category_stats(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    return list_category_statistics(db)
 
 
 @router.get(

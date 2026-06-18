@@ -6,12 +6,14 @@ from fastapi import Depends
 from fastapi import File
 from fastapi import Form
 from fastapi import HTTPException
+from fastapi import Query
 from fastapi import Request
 from fastapi import UploadFile
 from fastapi import WebSocket
 from fastapi import WebSocketDisconnect
 from fastapi.responses import FileResponse
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from sqlalchemy.orm import joinedload
 
@@ -21,7 +23,9 @@ from core.config import settings
 from core.logging_config import get_logger
 from db.database import SessionLocal
 from db.session import get_db
+from models.category import Category
 from models.document import Document, DocumentStatus
+from models.document_category import DocumentCategory
 from models.task_tracker import TaskStage, TaskStatus, TaskType
 from models.user import User
 from routers.deps import get_current_user
@@ -102,16 +106,42 @@ def get_embedding_models():
     }
 @router.get("", response_model=list[DocumentResponse])
 def list_documents(
+    search: str | None = Query(default=None),
+    category: str | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return (
+    query = (
         db.query(Document)
-        .options(joinedload(Document.document_categories))
+        .outerjoin(DocumentCategory, DocumentCategory.document_id == Document.id)
+        .outerjoin(Category, Category.id == DocumentCategory.category_id)
+        .options(joinedload(Document.document_categories).joinedload(DocumentCategory.category))
         .filter(Document.user_id == current_user.id)
-        .order_by(Document.upload_at.desc())
-        .all()
     )
+
+    if category:
+        category_name = category.strip()
+        if category_name:
+            query = query.filter(
+                or_(
+                    Category.name == category_name,
+                    Document.category == category_name,
+                )
+            )
+
+    if search:
+        search_text = search.strip()
+        if search_text:
+            keyword = f"%{search_text}%"
+            query = query.filter(
+                or_(
+                    Document.file_name.ilike(keyword),
+                    Category.name.ilike(keyword),
+                    Document.category.ilike(keyword),
+                )
+            )
+
+    return query.order_by(Document.upload_at.desc()).all()
 
 
 @router.get(

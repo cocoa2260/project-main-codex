@@ -27,6 +27,7 @@ from core.security import ACCESS_TOKEN_EXPIRE_MINUTES
 from core.security import ALGORITHM
 from models.document import Document
 from models.document import DocumentStatus
+from models.category import Category
 from models.document_chunk import DocumentChunk
 from models.document_category import DocumentCategory
 from models.document_embedding import DocumentEmbedding
@@ -944,6 +945,7 @@ def _apply_document_filters(
     query,
     status: str | None,
     owner_id: UUID | None,
+    category: str | None,
     search: str | None,
     uploaded_from: date | None,
     uploaded_to: date | None,
@@ -954,11 +956,22 @@ def _apply_document_filters(
     if owner_id:
         query = query.filter(Document.user_id == owner_id)
 
+    if category:
+        category_name = category.strip()
+        if category_name:
+            query = query.filter(
+                or_(
+                    Category.name == category_name,
+                    Document.category == category_name,
+                )
+            )
+
     if search:
         keyword = f"%{search.strip()}%"
         query = query.filter(
             or_(
                 Document.file_name.ilike(keyword),
+                Category.name.ilike(keyword),
                 Document.category.ilike(keyword),
                 User.name.ilike(keyword),
                 User.email.ilike(keyword),
@@ -1662,6 +1675,7 @@ def list_admin_documents(
     limit: int = 20,
     status: str | None = None,
     owner_id: UUID | None = None,
+    category: str | None = None,
     search: str | None = None,
     uploaded_from: date | None = None,
     uploaded_to: date | None = None,
@@ -1671,11 +1685,17 @@ def list_admin_documents(
     page = max(page, 1)
     limit = min(max(limit, 1), 100)
 
-    count_query = db.query(func.count(Document.id)).join(User)
+    count_query = (
+        db.query(func.count(func.distinct(Document.id)))
+        .join(User)
+        .outerjoin(DocumentCategory, DocumentCategory.document_id == Document.id)
+        .outerjoin(Category, Category.id == DocumentCategory.category_id)
+    )
     count_query = _apply_document_filters(
         count_query,
         status=status,
         owner_id=owner_id,
+        category=category,
         search=search,
         uploaded_from=uploaded_from,
         uploaded_to=uploaded_to,
@@ -1713,6 +1733,8 @@ def list_admin_documents(
             latest_task.c.updated_at.label("task_updated_at"),
         )
         .join(User)
+        .outerjoin(DocumentCategory, DocumentCategory.document_id == Document.id)
+        .outerjoin(Category, Category.id == DocumentCategory.category_id)
         .outerjoin(
             latest_task,
             and_(
@@ -1725,6 +1747,7 @@ def list_admin_documents(
         query,
         status=status,
         owner_id=owner_id,
+        category=category,
         search=search,
         uploaded_from=uploaded_from,
         uploaded_to=uploaded_to,

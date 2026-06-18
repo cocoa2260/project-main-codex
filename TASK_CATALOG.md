@@ -147,6 +147,14 @@
 
 ---
 
+## PHASE 8 - Category Management
+
+| ID | Task | Priority | Status |
+|------|------|------|------|
+| DOC-002 | Category Usage and Management | High | DONE |
+
+---
+
 # Notes
 
 ### FE-003-A
@@ -199,6 +207,19 @@ Status: DONE
 - Verified sensitive audit old_value / new_value / metadata keys are masked
 
 Priority: Medium
+Status: DONE
+
+### DOC-002 Category Usage and Management
+
+- Added read-only category list API at GET /api/categories
+- Added admin category statistics API at GET /api/admin/categories/stats
+- Added server-side user document category filter and category-aware search
+- Added server-side admin document category filter and category-aware search
+- Added user DocumentListPage category filter using fixed legal category list from the API
+- Added AdminDocumentPage Category Filter and read-only category statistics panel
+- Preserved DOC-001 category schema and avoided category create/update/delete, multi-category, approval, reclassification, drag/drop, auto category creation, and prompt management
+
+Priority: High
 Status: DONE
 
 # DONE

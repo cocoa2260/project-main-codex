@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from core.logging_config import get_logger, setup_logging
 
 from routers import auth
+from routers import categories
 from routers import documents
 from routers import common_codes
 from routers import admin
@@ -39,6 +40,11 @@ app.include_router(
     documents.router,
     prefix="/api/documents",
     tags=["documents"],
+)
+app.include_router(
+    categories.router,
+    prefix="/api/categories",
+    tags=["categories"],
 )
 app.include_router(
     common_codes.router,

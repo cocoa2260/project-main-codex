@@ -9,6 +9,7 @@ import type {
   DocumentStatusResponse,
   DocumentUploadResponse,
   DocumentItem,
+  DocumentListParams,
   EmbeddingModelsResponse
 } from '@/types/document';
 
@@ -74,10 +75,11 @@ export async function getEmbeddingModels(): Promise<EmbeddingModelsResponse> {
   return response.data;
 }
 
-export async function getDocuments(): Promise<DocumentItem[]> {
+export async function getDocuments(params?: DocumentListParams): Promise<DocumentItem[]> {
   const response =
     await apiClient.get<DocumentItem[]>(
-      "/api/documents"
+      "/api/documents",
+      { params },
     )
   return response.data
 }

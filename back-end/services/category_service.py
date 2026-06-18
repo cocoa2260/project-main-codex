@@ -1,11 +1,15 @@
 from dataclasses import dataclass
 from decimal import Decimal
 
+from sqlalchemy import func
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from models.category import Category
 from models.document import Document
 from models.document_category import DocumentCategory
+from schemas.category import AdminCategoryStatsResponse
+from schemas.category import CategoryResponse
 
 
 LEGAL_CATEGORY_NAMES = [
@@ -66,6 +70,56 @@ def get_category_by_name(db: Session, category_name: str) -> Category | None:
         )
         .first()
     )
+
+
+def list_active_categories(db: Session) -> list[CategoryResponse]:
+    categories = (
+        db.query(Category)
+        .filter(Category.is_active.is_(True))
+        .order_by(Category.sort_order.asc(), Category.name.asc())
+        .all()
+    )
+
+    return [
+        CategoryResponse(
+            id=category.id,
+            name=category.name,
+        )
+        for category in categories
+    ]
+
+
+def list_category_statistics(db: Session) -> list[AdminCategoryStatsResponse]:
+    categories = (
+        db.query(Category)
+        .order_by(Category.sort_order.asc(), Category.name.asc())
+        .all()
+    )
+
+    stats = []
+    for category in categories:
+        document_count = (
+            db.query(func.count(func.distinct(Document.id)))
+            .outerjoin(DocumentCategory, DocumentCategory.document_id == Document.id)
+            .filter(
+                or_(
+                    DocumentCategory.category_id == category.id,
+                    Document.category == category.name,
+                )
+            )
+            .scalar()
+            or 0
+        )
+        stats.append(
+            AdminCategoryStatsResponse(
+                id=category.id,
+                name=category.name,
+                document_count=document_count,
+                is_active=category.is_active,
+            )
+        )
+
+    return stats
 
 
 def save_document_category(
