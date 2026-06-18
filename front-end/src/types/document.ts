@@ -71,6 +71,7 @@ export interface DocumentItem {
   status: DocumentStatus;
   category: string | null;
   category_confidence?: number | null;
+  keywords?: string[];
   summary?: string | null;
   page_count: number | null;
   selected_embedding_model: string | null;
@@ -84,7 +85,12 @@ export interface CategoryOption {
 
 export interface DocumentListParams {
   search?: string;
+  status?: DocumentStatus;
+  category_id?: string;
   category?: string;
+  date_from?: string;
+  date_to?: string;
+  embedding_model?: string;
 }
 
 // Dashboard List 상태 화면 표시용

@@ -112,6 +112,7 @@ class DocumentResponse(BaseModel):
     status: str
     category: str | None = None
     category_confidence: float | None = None
+    keywords: list[str] = []
     summary: str | None = None
     page_count: int | None = 0
     selected_embedding_model: str | None = None

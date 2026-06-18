@@ -154,6 +154,7 @@
 | ID | Task | Priority | Status |
 |------|------|------|------|
 | DOC-002 | Category Usage and Management | High | DONE |
+| DOC-003 | Metadata Search and Management | High | DONE |
 
 ---
 

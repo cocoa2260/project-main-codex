@@ -8,6 +8,20 @@ Generative AI Document Automation Platform
 
 ## Completed Tasks
 
+### DOC-003
+Metadata Search and Management
+Status: DONE
+Summary:
+- Extended user document list API `GET /api/documents` with server-side `search`, `status`, `category_id`, `category`, `date_from`, `date_to`, and `embedding_model` filters
+- Extended user metadata search across file name, status, category, keywords, summary, upload date, and selected embedding model
+- Extended admin document list API `GET /api/admin/documents` with `search`, `status`, `category_id`, `category`, `date_from`, `date_to`, `owner`, `owner_id`, and `embedding_model` filters while retaining legacy uploaded date params
+- Extended admin metadata search across file name, owner name/email, status, category, keywords, summary, and selected embedding model
+- Added list response metadata for keywords, summary, category confidence, upload time, page count, file size, and selected embedding model where needed
+- Added advanced search/filter panels to DocumentListPage and AdminDocumentPage with search text, status, category, date range, embedding model, owner filter for admin, and reset controls
+- Preserved existing category/status filters and connected filter state to URL query params for refresh/share continuity
+- Did not change Vector Similarity Search, Hybrid Search, RAG search logic, chat search, multi-document QA, category CRUD, or prompt management
+- Verified frontend lint/build, backend compile, and git diff whitespace check
+
 ### CHAT-001 / CHAT-002
 Chat Session Management and Chat History Management
 Status: DONE

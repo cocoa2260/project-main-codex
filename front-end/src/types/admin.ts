@@ -254,6 +254,9 @@ export interface AdminDocumentItem {
   file_name: string;
   status: DocumentStatus | string;
   category: string | null;
+  category_confidence?: number | null;
+  keywords?: string[];
+  summary?: string | null;
   file_size: number;
   page_count: number | null;
   selected_embedding_model: string | null;
@@ -305,8 +308,13 @@ export interface AdminDocumentListParams {
   limit?: number;
   status?: DocumentStatus;
   owner_id?: string;
+  owner?: string;
+  category_id?: string;
   category?: string;
   search?: string;
+  date_from?: string;
+  date_to?: string;
+  embedding_model?: string;
   uploaded_from?: string;
   uploaded_to?: string;
   sort_by?: 'upload_at' | 'updated_at' | 'file_name' | 'file_size' | 'page_count' | 'status';
