@@ -63,6 +63,8 @@
 | FE-010 | Workspace API Integration | High | DONE |
 | FE-USER-001 | User Feature Gap Implementation | High | DONE |
 | USER-CHAT-001 | User Chat API and UI Integration | High | DONE |
+| CHAT-001 | Chat Session Management | High | DONE |
+| CHAT-002 | Chat History Management | High | DONE |
 | FE-USER-002 | User Document Actions Finalization | High | DONE |
 | FE-USER-003 | User Settings Finalization | High | DONE |
 | BE-USER-004 | User Settings APIs | High | DONE |
@@ -297,6 +299,26 @@ Status: DONE
 - Connected DocumentChatPage question input, suggested questions, loading, error, answer, and citation rendering
 - Connected DocumentWorkspacePage question input, loading, error, answer, and citation rendering
 - No admin feature changes, DB schema changes, or migration
+
+Priority: High
+Status: DONE
+
+### CHAT-001 Chat Session Management
+
+- Added authenticated document chat session APIs for list, create, detail, delete, and session message send
+- Reused the existing ChatSession model and enforced owner-only document/session access
+- Preserved POST /api/documents/{document_id}/chat backward compatibility by using the latest session or creating a default session
+- Enforced COMPLETED-only chat policy and document/session ownership checks
+
+Priority: High
+Status: DONE
+
+### CHAT-002 Chat History Management
+
+- Reused the existing ChatMessage model for persisted user and assistant messages
+- Added session detail response with chronological message history
+- Updated DocumentChatPage to load, switch, delete, and preserve per-session chat history after refresh
+- Kept citation response shape unchanged and avoided citation schema redesign
 
 Priority: High
 Status: DONE

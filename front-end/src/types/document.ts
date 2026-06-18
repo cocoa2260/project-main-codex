@@ -183,6 +183,25 @@ export interface DocumentChatResponse {
   message_id?: string | null;
 }
 
+export interface DocumentChatSessionListItem {
+  id: string;
+  title: string;
+  message_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DocumentChatMessageResponse {
+  id: string;
+  role: 'user' | 'assistant' | 'system' | string;
+  content: string;
+  created_at: string;
+}
+
+export interface DocumentChatSessionDetailResponse extends DocumentChatSessionListItem {
+  messages: DocumentChatMessageResponse[];
+}
+
 export interface EmbeddingModelOption {
   value: string;
   label: string;

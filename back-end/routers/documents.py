@@ -34,8 +34,12 @@ from schemas.document import (
     DocumentChatCitation,
     DocumentChatRequest,
     DocumentChatResponse,
+    DocumentChatSessionCreateRequest,
+    DocumentChatSessionDetailResponse,
+    DocumentChatSessionListItem,
     DocumentDeleteResponse,
     DocumentMarkdownResponse,
+    DocumentChatMessageResponse,
     DocumentSummaryResponse,
     DocumentStatusResponse,
     DocumentUploadResponse,
@@ -48,6 +52,12 @@ from services.chat_service import (
     DocumentChatInvalidStateError,
     DocumentChatNotFoundError,
     answer_document_question,
+    create_chat_session,
+    delete_chat_session,
+    get_chat_session,
+    list_chat_messages,
+    list_chat_sessions,
+    serialize_chat_message,
 )
 from services.category_service import get_document_category_payload
 from services.document_service import (
@@ -73,6 +83,38 @@ from tasks.summary_tasks import process_document_summary
 
 router = APIRouter()
 logger = get_logger(__name__)
+
+
+def _handle_chat_error(error: DocumentChatContextError | DocumentChatEmptyMessageError | DocumentChatGenerationError | DocumentChatInvalidStateError | DocumentChatNotFoundError):
+    if isinstance(error, DocumentChatEmptyMessageError):
+        raise HTTPException(status_code=400, detail=str(error))
+    if isinstance(error, DocumentChatNotFoundError):
+        raise HTTPException(status_code=404, detail=str(error))
+    if isinstance(error, DocumentChatInvalidStateError):
+        raise HTTPException(status_code=409, detail=str(error))
+    if isinstance(error, DocumentChatContextError):
+        raise HTTPException(status_code=400, detail=str(error))
+    if isinstance(error, DocumentChatGenerationError):
+        raise HTTPException(status_code=502, detail=str(error))
+
+    raise HTTPException(status_code=500, detail="채팅 요청을 처리하지 못했습니다.")
+
+
+def _chat_response_from_result(result) -> DocumentChatResponse:
+    return DocumentChatResponse(
+        answer=result.answer,
+        citations=[
+            DocumentChatCitation(
+                source=citation.source,
+                label=citation.label,
+                chunk_id=citation.chunk_id,
+                page_no=citation.page_no,
+            )
+            for citation in result.citations
+        ],
+        session_id=result.session_id,
+        message_id=result.message_id,
+    )
 
 
 def _client_ip(request: Request) -> str | None:
@@ -433,6 +475,163 @@ def get_document_summary(
     )
 
 
+@router.get(
+    "/{document_id}/chat/sessions",
+    response_model=list[DocumentChatSessionListItem],
+)
+def get_document_chat_sessions(
+    document_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        sessions = list_chat_sessions(
+            db=db,
+            document_id=document_id,
+            user_id=current_user.id,
+        )
+    except (
+        DocumentChatNotFoundError,
+        DocumentChatInvalidStateError,
+    ) as exc:
+        _handle_chat_error(exc)
+
+    return [
+        DocumentChatSessionListItem(
+            id=session.id,
+            title=session.title or "새 채팅",
+            message_count=message_count,
+            created_at=session.created_at,
+            updated_at=session.updated_at,
+        )
+        for session, message_count in sessions
+    ]
+
+
+@router.post(
+    "/{document_id}/chat/sessions",
+    response_model=DocumentChatSessionDetailResponse,
+)
+def create_document_chat_session(
+    document_id: UUID,
+    payload: DocumentChatSessionCreateRequest | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        session = create_chat_session(
+            db=db,
+            document_id=document_id,
+            user_id=current_user.id,
+            title=payload.title if payload else None,
+        )
+    except (
+        DocumentChatNotFoundError,
+        DocumentChatInvalidStateError,
+    ) as exc:
+        _handle_chat_error(exc)
+
+    return DocumentChatSessionDetailResponse(
+        id=session.id,
+        title=session.title or "새 채팅",
+        message_count=0,
+        created_at=session.created_at,
+        updated_at=session.updated_at,
+        messages=[],
+    )
+
+
+@router.get(
+    "/{document_id}/chat/sessions/{session_id}",
+    response_model=DocumentChatSessionDetailResponse,
+)
+def get_document_chat_session(
+    document_id: UUID,
+    session_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        session = get_chat_session(
+            db=db,
+            document_id=document_id,
+            session_id=session_id,
+            user_id=current_user.id,
+        )
+        messages = list_chat_messages(db, session.id)
+    except (
+        DocumentChatNotFoundError,
+        DocumentChatInvalidStateError,
+    ) as exc:
+        _handle_chat_error(exc)
+
+    return DocumentChatSessionDetailResponse(
+        id=session.id,
+        title=session.title or "새 채팅",
+        message_count=len(messages),
+        created_at=session.created_at,
+        updated_at=session.updated_at,
+        messages=[
+            DocumentChatMessageResponse(**serialize_chat_message(message))
+            for message in messages
+        ],
+    )
+
+
+@router.delete("/{document_id}/chat/sessions/{session_id}", status_code=204)
+def delete_document_chat_session(
+    document_id: UUID,
+    session_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        delete_chat_session(
+            db=db,
+            document_id=document_id,
+            session_id=session_id,
+            user_id=current_user.id,
+        )
+    except (
+        DocumentChatNotFoundError,
+        DocumentChatInvalidStateError,
+    ) as exc:
+        _handle_chat_error(exc)
+
+    return None
+
+
+@router.post(
+    "/{document_id}/chat/sessions/{session_id}/messages",
+    response_model=DocumentChatResponse,
+)
+def send_document_chat_session_message(
+    document_id: UUID,
+    session_id: UUID,
+    payload: DocumentChatRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        result = answer_document_question(
+            db=db,
+            document_id=document_id,
+            user_id=current_user.id,
+            message=payload.message,
+            session_id=session_id,
+        )
+    except (
+        DocumentChatEmptyMessageError,
+        DocumentChatNotFoundError,
+        DocumentChatInvalidStateError,
+        DocumentChatContextError,
+        DocumentChatGenerationError,
+    ) as exc:
+        _handle_chat_error(exc)
+
+    return _chat_response_from_result(result)
+
+
 @router.post("/{document_id}/chat", response_model=DocumentChatResponse)
 def chat_with_document(
     document_id: UUID,
@@ -458,20 +657,7 @@ def chat_with_document(
     except DocumentChatGenerationError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 
-    return DocumentChatResponse(
-        answer=result.answer,
-        citations=[
-            DocumentChatCitation(
-                source=citation.source,
-                label=citation.label,
-                chunk_id=citation.chunk_id,
-                page_no=citation.page_no,
-            )
-            for citation in result.citations
-        ],
-        session_id=result.session_id,
-        message_id=result.message_id,
-    )
+    return _chat_response_from_result(result)
 
 
 @router.post("/{document_id}/confirm-summary", response_model=DocumentActionResponse)

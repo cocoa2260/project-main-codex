@@ -2,6 +2,7 @@ from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel
+from pydantic import Field
 
 
 class DocumentUploadResponse(BaseModel):
@@ -74,6 +75,34 @@ class DocumentChatResponse(BaseModel):
     citations: list[DocumentChatCitation] = []
     session_id: UUID | None = None
     message_id: UUID | None = None
+
+
+class DocumentChatSessionCreateRequest(BaseModel):
+    title: str | None = None
+
+
+class DocumentChatSessionListItem(BaseModel):
+    id: UUID
+    title: str
+    message_count: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class DocumentChatMessageResponse(BaseModel):
+    id: UUID
+    role: str
+    content: str
+    created_at: datetime
+
+
+class DocumentChatSessionDetailResponse(BaseModel):
+    id: UUID
+    title: str
+    message_count: int
+    created_at: datetime
+    updated_at: datetime
+    messages: list[DocumentChatMessageResponse] = Field(default_factory=list)
 
 
 class DocumentResponse(BaseModel):

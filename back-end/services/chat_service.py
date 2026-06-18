@@ -1,7 +1,10 @@
 from dataclasses import dataclass
+from datetime import UTC
+from datetime import datetime
 from uuid import UUID
 
 import httpx
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ai.llms.llm_factory import get_llm_provider
@@ -56,6 +59,174 @@ class DocumentChatResult:
     citations: list[DocumentChatCitation]
     session_id: UUID | None
     message_id: UUID | None
+
+
+DEFAULT_CHAT_SESSION_TITLE = "새 채팅"
+TITLE_MAX_LENGTH = 50
+
+
+def _normalize_title(title: str | None) -> str:
+    normalized = (title or "").strip()
+    return normalized[:120] if normalized else DEFAULT_CHAT_SESSION_TITLE
+
+
+def _title_from_question(question: str) -> str:
+    return question.replace("\n", " ").strip()[:TITLE_MAX_LENGTH] or DEFAULT_CHAT_SESSION_TITLE
+
+
+def _role_to_response(role: str) -> str:
+    if role == ChatRole.USER:
+        return "user"
+    if role == ChatRole.ASSISTANT:
+        return "assistant"
+    return role.lower()
+
+
+def get_user_document_for_chat(
+    db: Session,
+    document_id: UUID,
+    user_id: UUID,
+) -> Document:
+    document = (
+        db.query(Document)
+        .filter(
+            Document.id == document_id,
+            Document.user_id == user_id,
+        )
+        .first()
+    )
+    if document is None:
+        raise DocumentChatNotFoundError("문서를 찾을 수 없습니다.")
+
+    if document.status != DocumentStatus.COMPLETED:
+        raise DocumentChatInvalidStateError("처리가 완료된 문서만 질문할 수 있습니다.")
+
+    return document
+
+
+def create_chat_session(
+    db: Session,
+    document_id: UUID,
+    user_id: UUID,
+    title: str | None = None,
+) -> ChatSession:
+    document = get_user_document_for_chat(db, document_id, user_id)
+    session = ChatSession(
+        user_id=user_id,
+        document_id=document.id,
+        title=_normalize_title(title),
+        llm_model=settings.DEFAULT_LLM_MODEL,
+        embedding_model=document.selected_embedding_model,
+    )
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    return session
+
+
+def list_chat_sessions(
+    db: Session,
+    document_id: UUID,
+    user_id: UUID,
+) -> list[tuple[ChatSession, int]]:
+    get_user_document_for_chat(db, document_id, user_id)
+
+    rows = (
+        db.query(ChatSession, func.count(ChatMessage.id).label("message_count"))
+        .outerjoin(ChatMessage, ChatMessage.session_id == ChatSession.id)
+        .filter(
+            ChatSession.document_id == document_id,
+            ChatSession.user_id == user_id,
+        )
+        .group_by(ChatSession.id)
+        .order_by(ChatSession.updated_at.desc())
+        .all()
+    )
+    return [(session, int(message_count or 0)) for session, message_count in rows]
+
+
+def get_chat_session(
+    db: Session,
+    document_id: UUID,
+    session_id: UUID,
+    user_id: UUID,
+) -> ChatSession:
+    get_user_document_for_chat(db, document_id, user_id)
+
+    session = (
+        db.query(ChatSession)
+        .filter(
+            ChatSession.id == session_id,
+            ChatSession.document_id == document_id,
+            ChatSession.user_id == user_id,
+        )
+        .first()
+    )
+    if session is None:
+        raise DocumentChatNotFoundError("채팅 세션을 찾을 수 없습니다.")
+
+    return session
+
+
+def delete_chat_session(
+    db: Session,
+    document_id: UUID,
+    session_id: UUID,
+    user_id: UUID,
+) -> None:
+    session = get_chat_session(db, document_id, session_id, user_id)
+    db.delete(session)
+    db.commit()
+
+
+def list_chat_messages(
+    db: Session,
+    session_id: UUID,
+) -> list[ChatMessage]:
+    return (
+        db.query(ChatMessage)
+        .filter(ChatMessage.session_id == session_id)
+        .order_by(ChatMessage.created_at.asc(), ChatMessage.id.asc())
+        .all()
+    )
+
+
+def get_or_create_latest_chat_session(
+    db: Session,
+    document: Document,
+    user_id: UUID,
+) -> ChatSession:
+    session = (
+        db.query(ChatSession)
+        .filter(
+            ChatSession.document_id == document.id,
+            ChatSession.user_id == user_id,
+        )
+        .order_by(ChatSession.updated_at.desc())
+        .first()
+    )
+    if session is not None:
+        return session
+
+    session = ChatSession(
+        user_id=user_id,
+        document_id=document.id,
+        title=DEFAULT_CHAT_SESSION_TITLE,
+        llm_model=settings.DEFAULT_LLM_MODEL,
+        embedding_model=document.selected_embedding_model,
+    )
+    db.add(session)
+    db.flush()
+    return session
+
+
+def serialize_chat_message(message: ChatMessage) -> dict:
+    return {
+        "id": message.id,
+        "role": _role_to_response(message.role),
+        "content": message.content,
+        "created_at": message.created_at,
+    }
 
 
 def _score_chunk(question_terms: set[str], chunk: DocumentChunk) -> int:
@@ -141,44 +312,29 @@ def answer_document_question(
     document_id: UUID,
     user_id: UUID,
     message: str,
+    session_id: UUID | None = None,
 ) -> DocumentChatResult:
     question = message.strip()
     if not question:
         raise DocumentChatEmptyMessageError("질문 내용을 입력해 주세요.")
 
-    document = (
-        db.query(Document)
-        .filter(
-            Document.id == document_id,
-            Document.user_id == user_id,
-        )
-        .first()
-    )
-    if document is None:
-        raise DocumentChatNotFoundError("문서를 찾을 수 없습니다.")
-
-    if document.status != DocumentStatus.COMPLETED:
-        raise DocumentChatInvalidStateError("처리가 완료된 문서만 질문할 수 있습니다.")
+    document = get_user_document_for_chat(db, document_id, user_id)
 
     chunks = _select_relevant_chunks(db, document.id, question)
     context, citations = _build_chat_context(document, chunks)
     if not context:
         raise DocumentChatContextError("질문에 사용할 문서 컨텍스트가 없습니다.")
 
-    session = ChatSession(
-        user_id=user_id,
-        document_id=document.id,
-        title=question[:120],
-        llm_model=settings.DEFAULT_LLM_MODEL,
-        embedding_model=document.selected_embedding_model,
-    )
-    db.add(session)
-    db.flush()
+    if session_id is None:
+        session = get_or_create_latest_chat_session(db, document, user_id)
+    else:
+        session = get_chat_session(db, document_id, session_id, user_id)
 
     user_message = ChatMessage(
         session_id=session.id,
         role=ChatRole.USER,
         content=question,
+        created_at=datetime.now(UTC),
     )
     db.add(user_message)
     db.flush()
@@ -197,8 +353,14 @@ def answer_document_question(
         session_id=session.id,
         role=ChatRole.ASSISTANT,
         content=answer,
+        created_at=datetime.now(UTC),
     )
     db.add(assistant_message)
+
+    if session.title == DEFAULT_CHAT_SESSION_TITLE:
+        session.title = _title_from_question(question)
+    session.updated_at = datetime.now(UTC)
+
     db.commit()
     db.refresh(session)
     db.refresh(assistant_message)
