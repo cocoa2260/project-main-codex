@@ -7,6 +7,7 @@ import {
   Cpu,
   FileText,
   Home,
+  MessageSquareText,
   Settings,
   Shield,
   Upload,
@@ -46,6 +47,7 @@ const adminMenuItems: SidebarMenuItem[] = [
   { id: 'users', label: '사용자', icon: Users, path: '/admin/users' },
   { id: 'documents', label: '문서', icon: FileText, path: '/admin/documents' },
   { id: 'jobs', label: '작업', icon: Activity, path: '/admin/jobs' },
+  { id: 'prompts', label: '프롬프트', icon: MessageSquareText, path: '/admin/prompts' },
   { id: 'logs', label: '로그', icon: Cpu, path: '/admin/logs' },
   { id: 'settings', label: '설정', icon: Settings, path: '/admin/settings' },
 ];

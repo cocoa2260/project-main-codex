@@ -11,10 +11,10 @@ class BaseLLMProvider(ABC):
     def summarize_chunk(self, text: str) -> str:
         return self.summarize(text)
 
-    def summarize_from_chunk_summaries(self, summaries: list[str]) -> str:
+    def summarize_from_chunk_summaries(self, summaries: list[str], prompt: str | None = None) -> str:
         return self.summarize("\n\n".join(summaries))
 
-    def answer_question(self, question: str, context: str) -> str:
+    def answer_question(self, question: str, context: str, prompt: str | None = None) -> str:
         return self.summarize(
             "문서 컨텍스트:\n"
             f"{context}\n\n"
@@ -28,7 +28,7 @@ class BaseLLMProvider(ABC):
     def extract_question_keywords(self, question: str) -> list[str]:
         return self.extract_keywords(question)
 
-    def classify_document_category(self, markdown: str, summary: str) -> dict[str, object]:
+    def classify_document_category(self, markdown: str, summary: str, prompt: str | None = None) -> dict[str, object]:
         return {
             "category": "기타",
             "confidence": None,

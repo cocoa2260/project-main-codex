@@ -6,6 +6,9 @@ from langchain_ollama import ChatOllama
 
 from ai.llms.base import BaseLLMProvider
 from core.config import settings
+from services.prompt_defaults import DEFAULT_CATEGORY_PROMPT
+from services.prompt_defaults import DEFAULT_QA_PROMPT
+from services.prompt_defaults import DEFAULT_SUMMARY_PROMPT
 
 
 LEGAL_CATEGORY_NAMES = [
@@ -22,34 +25,6 @@ LEGAL_CATEGORY_NAMES = [
     "개인정보보호법",
     "기타",
 ]
-
-CATEGORY_PROMPT = (
-    "당신은 한국 법률 문서를 고정된 법률 카테고리 중 하나로 분류하는 전문가입니다.\n"
-    "반드시 아래 Seed 카테고리 중 하나만 선택하세요.\n\n"
-    "Seed 카테고리:\n"
-    "- 민법\n"
-    "- 형법\n"
-    "- 민사소송법\n"
-    "- 형사소송법\n"
-    "- 상법\n"
-    "- 행정법\n"
-    "- 노동법\n"
-    "- 조세법\n"
-    "- 헌법\n"
-    "- 지식재산권법\n"
-    "- 개인정보보호법\n"
-    "- 기타\n\n"
-    "규칙:\n"
-    "1. 임의 카테고리를 만들지 마세요.\n"
-    "2. 문서에 근거가 부족하면 기타를 선택하세요.\n"
-    "3. 키워드 추출 결과는 사용하지 말고 OCR 원문과 요약만 기준으로 판단하세요.\n"
-    "4. confidence는 0부터 1 사이의 숫자로 작성하세요.\n"
-    "5. 출력은 JSON 객체 하나만 작성하고 설명 문장을 붙이지 마세요.\n\n"
-    "출력 형식:\n"
-    '{"category":"노동법","confidence":0.91}\n'
-    "/no_think"
-)
-
 
 class OllamaLLMProvider(BaseLLMProvider):
     def __init__(self, model_name: str):
@@ -149,7 +124,7 @@ class OllamaLLMProvider(BaseLLMProvider):
         )
         return str(response.content).strip()
 
-    def summarize_from_chunk_summaries(self, summaries: list[str]) -> str:
+    def summarize_from_chunk_summaries(self, summaries: list[str], prompt: str | None = None) -> str:
         joined_summaries = "\n\n".join(
             f"## Chunk {idx}\n{summary}"
             for idx, summary in enumerate(summaries)
@@ -157,11 +132,7 @@ class OllamaLLMProvider(BaseLLMProvider):
         response = self.client.invoke(
             [
                 SystemMessage(
-                    content=(
-                        "당신은 여러 chunk 요약을 통합해 문서 전체 요약을 작성하는 전문가입니다. "
-                        "반드시 한국어로만 작성하고, chunk 요약에 없는 내용은 추가하지 마세요. "
-                        "최종 답변만 출력하세요. /no_think"
-                    )
+                    content=(prompt or DEFAULT_SUMMARY_PROMPT)
                 ),
                 HumanMessage(
                     content=(
@@ -185,17 +156,11 @@ class OllamaLLMProvider(BaseLLMProvider):
         )
         return str(response.content).strip()
 
-    def answer_question(self, question: str, context: str) -> str:
+    def answer_question(self, question: str, context: str, prompt: str | None = None) -> str:
         response = self.client.invoke(
             [
                 SystemMessage(
-                    content=(
-                        "당신은 문서 기반 질의응답 도우미입니다. "
-                        "제공된 문서 컨텍스트에 근거해서만 한국어로 답변하세요. "
-                        "문서에서 확인할 수 없는 내용은 확인할 수 없다고 말하세요. "
-                        "추측하지 말고, 답변은 간결하되 필요한 근거를 포함하세요. "
-                        "최종 답변만 출력하세요. /no_think"
-                    )
+                    content=(prompt or DEFAULT_QA_PROMPT)
                 ),
                 HumanMessage(
                     content=(
@@ -350,10 +315,10 @@ class OllamaLLMProvider(BaseLLMProvider):
 
         return keyword or None
 
-    def classify_document_category(self, markdown: str, summary: str) -> dict[str, object]:
+    def classify_document_category(self, markdown: str, summary: str, prompt: str | None = None) -> dict[str, object]:
         response = self.keyword_client.invoke(
             [
-                SystemMessage(content=CATEGORY_PROMPT),
+                SystemMessage(content=(prompt or DEFAULT_CATEGORY_PROMPT)),
                 HumanMessage(
                     content=(
                         "OCR 원문:\n"

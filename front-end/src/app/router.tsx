@@ -23,6 +23,7 @@ import { AdminDashboardPage } from '../pages/admin/AdminDashboardPage';
 import { AdminUserPage } from '../pages/admin/AdminUserPage';
 import { AdminDocumentPage } from '../pages/admin/AdminDocumentPage';
 import { AdminJobPage } from '../pages/admin/AdminJobPage';
+import { AdminPromptPage } from '../pages/admin/AdminPromptPage';
 import { AdminSettingsPage } from '../pages/admin/AdminSettingsPage';
 import { AdminLogPage } from '../pages/admin/AdminLogPage';
 import { ForbiddenPage } from '../pages/error/ForbiddenPage';
@@ -117,6 +118,7 @@ function AppRoutes() {
       <Route path="/admin/users" element={<AdminRoute><AdminUserPage onLogout={logout} /></AdminRoute>} />
       <Route path="/admin/documents" element={<AdminRoute><AdminDocumentPage onLogout={logout} /></AdminRoute>} />
       <Route path="/admin/jobs" element={<AdminRoute><AdminJobPage onLogout={logout} /></AdminRoute>} />
+      <Route path="/admin/prompts" element={<AdminRoute><AdminPromptPage onLogout={logout} /></AdminRoute>} />
       <Route path="/admin/settings" element={<AdminRoute><AdminSettingsPage onLogout={logout} /></AdminRoute>} />
       <Route path="/admin/logs" element={<AdminRoute><AdminLogPage onLogout={logout} /></AdminRoute>} />
 

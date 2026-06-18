@@ -1167,3 +1167,37 @@ Scope notes:
 - No Primary/Secondary Category.
 - No Admin Category Management.
 - No Prompt Management.
+
+## 2026-06-18 ADMIN-001 Prompt Management
+
+Branch: feature/admin-001-prompt-management
+
+Implemented:
+
+- Added `prompts` table through Alembic migration `20260618_000002_create_prompts`.
+- Seeded `SUMMARY_PROMPT`, `CATEGORY_PROMPT`, and `QA_PROMPT`.
+- Added Prompt SQLAlchemy model, prompt schemas, and prompt service.
+- Added admin-only APIs:
+  - GET `/api/admin/prompts`
+  - GET `/api/admin/prompts/{prompt_key}`
+  - PUT `/api/admin/prompts/{prompt_key}`
+- Enforced existing `require_admin` policy for Prompt APIs: ADMIN only, USER 403, unauthenticated 401.
+- Connected Summary generation to use `SUMMARY_PROMPT` from DB first, then fallback to existing hardcoded prompt.
+- Connected Category classification to use `CATEGORY_PROMPT` from DB first, then fallback to existing hardcoded prompt.
+- Connected document QA answer generation and streaming QA prompt construction to use `QA_PROMPT` from DB first, then fallback to existing hardcoded prompt.
+- Added `PROMPT_UPDATED` audit action and `PROMPT` audit target type.
+- Prompt updates record AuditLog metadata with `prompt_key` and `updated_by`.
+- Added `/admin/prompts` page with Prompt list, Prompt Key display, description, updated time, content editing, save success message, save failure message, and refresh flow.
+- Added frontend admin API client/types and sidebar/router entry for Prompt Management.
+- Added backend tests for seed/list/detail/update/requery/USER 403/unauth 401/AuditLog creation.
+
+Scope notes:
+
+- No Prompt Versioning.
+- No Prompt History.
+- No Prompt Rollback.
+- No Prompt Export.
+- No Prompt Import.
+- No Prompt Diff.
+- No Prompt Template Marketplace.
+- No User Prompt management.
