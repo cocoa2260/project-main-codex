@@ -191,6 +191,9 @@ class AdminDocumentListItemResponse(BaseModel):
     file_name: str
     status: str
     category: str | None = None
+    category_confidence: float | None = None
+    keywords: list[str] = []
+    summary: str | None = None
     file_size: int
     page_count: int | None = 0
     selected_embedding_model: str | None = None
@@ -215,9 +218,7 @@ class AdminDocumentListResponse(BaseModel):
 
 
 class AdminDocumentDetailResponse(AdminDocumentListItemResponse):
-    summary: str | None = None
     chunk_count: int
-    keywords: list[str]
 
 
 class AdminDocumentDeleteResponse(BaseModel):

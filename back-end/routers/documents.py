@@ -1,4 +1,5 @@
 import asyncio
+from datetime import date
 from uuid import UUID
 
 from fastapi import APIRouter
@@ -13,6 +14,9 @@ from fastapi import WebSocket
 from fastapi import WebSocketDisconnect
 from fastapi.responses import FileResponse
 
+from sqlalchemy import String
+from sqlalchemy import cast
+from sqlalchemy import func
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from sqlalchemy.orm import joinedload
@@ -149,10 +153,24 @@ def get_embedding_models():
 @router.get("", response_model=list[DocumentResponse])
 def list_documents(
     search: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    category_id: UUID | None = Query(default=None),
     category: str | None = Query(default=None),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    embedding_model: str | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if status and status not in {
+        DocumentStatus.PENDING,
+        DocumentStatus.PROCESSING,
+        DocumentStatus.REVIEW_REQUIRED,
+        DocumentStatus.COMPLETED,
+        DocumentStatus.FAILED,
+    }:
+        raise HTTPException(status_code=400, detail="지원하지 않는 문서 상태입니다.")
+
     query = (
         db.query(Document)
         .outerjoin(DocumentCategory, DocumentCategory.document_id == Document.id)
@@ -160,6 +178,12 @@ def list_documents(
         .options(joinedload(Document.document_categories).joinedload(DocumentCategory.category))
         .filter(Document.user_id == current_user.id)
     )
+
+    if status:
+        query = query.filter(Document.status == status)
+
+    if category_id:
+        query = query.filter(DocumentCategory.category_id == category_id)
 
     if category:
         category_name = category.strip()
@@ -171,6 +195,17 @@ def list_documents(
                 )
             )
 
+    if date_from:
+        query = query.filter(func.date(Document.upload_at) >= date_from)
+
+    if date_to:
+        query = query.filter(func.date(Document.upload_at) <= date_to)
+
+    if embedding_model:
+        embedding_model_text = embedding_model.strip()
+        if embedding_model_text:
+            query = query.filter(Document.selected_embedding_model == embedding_model_text)
+
     if search:
         search_text = search.strip()
         if search_text:
@@ -178,8 +213,13 @@ def list_documents(
             query = query.filter(
                 or_(
                     Document.file_name.ilike(keyword),
+                    cast(Document.status, String).ilike(keyword),
                     Category.name.ilike(keyword),
                     Document.category.ilike(keyword),
+                    func.array_to_string(Document.keywords, " ").ilike(keyword),
+                    Document.summary.ilike(keyword),
+                    func.to_char(Document.upload_at, "YYYY-MM-DD").ilike(keyword),
+                    Document.selected_embedding_model.ilike(keyword),
                 )
             )
 

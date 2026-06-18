@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   deleteAdminDocument,
   downloadAdminDocumentOriginal,
@@ -7,11 +8,12 @@ import {
   getAdminDocuments,
   retryAdminDocumentFromStage,
 } from '../../api/admin';
+import { getEmbeddingModels } from '../../api/document';
 import { Sidebar } from '../../components/common/Sidebar';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { usePersistentSidebar } from '../../hooks/usePersistentSidebar';
 import type { AdminCategoryStatsItem, AdminDocumentDetailResponse, AdminDocumentItem, AdminDocumentRetryStage } from '../../types/admin';
-import type { DocumentStatus, TaskType } from '../../types/document';
+import type { DocumentStatus, EmbeddingModelOption, TaskType } from '../../types/document';
 import {
   getDocumentStatusPresentation,
   getTaskStageLabel,
@@ -58,6 +60,14 @@ const filterStatusMap: Record<Exclude<FilterStatus, 'all'>, DocumentStatus> = {
   completed: 'COMPLETED',
   failed: 'FAILED',
 };
+
+function getFilterStatusFromParam(status?: string | null): FilterStatus {
+  if (status === 'PROCESSING') return 'processing';
+  if (status === 'REVIEW_REQUIRED') return 'review_required';
+  if (status === 'COMPLETED') return 'completed';
+  if (status === 'FAILED') return 'failed';
+  return 'all';
+}
 
 const taskTypeLabels: Record<TaskType, string> = {
   OCR: 'OCR',
@@ -177,13 +187,19 @@ function canRetryDocument(status?: string | null): boolean {
 }
 
 export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [sidebarOpen, setSidebarOpen] = usePersistentSidebar();
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
-  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [searchQuery, setSearchQuery] = useState(searchParams.get('search') ?? '');
+  const [filterStatus, setFilterStatus] = useState<FilterStatus>(getFilterStatusFromParam(searchParams.get('status')));
+  const [selectedCategory, setSelectedCategory] = useState(searchParams.get('category') ?? 'all');
+  const [ownerQuery, setOwnerQuery] = useState(searchParams.get('owner') ?? '');
+  const [dateFrom, setDateFrom] = useState(searchParams.get('date_from') ?? '');
+  const [dateTo, setDateTo] = useState(searchParams.get('date_to') ?? '');
+  const [selectedEmbeddingModel, setSelectedEmbeddingModel] = useState(searchParams.get('embedding_model') ?? 'all');
   const [sortBy, setSortBy] = useState<'upload_at' | 'updated_at' | 'file_name' | 'file_size' | 'page_count' | 'status'>('updated_at');
   const [documents, setDocuments] = useState<AdminDocumentItem[]>([]);
   const [categoryStats, setCategoryStats] = useState<AdminCategoryStatsItem[]>([]);
+  const [embeddingModels, setEmbeddingModels] = useState<EmbeddingModelOption[]>([]);
   const [pagination, setPagination] = useState({
     page: 1,
     limit: PAGE_LIMIT,
@@ -210,6 +226,37 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
   const [downloadErrorMessage, setDownloadErrorMessage] = useState<string | null>(null);
   const [downloadSuccessMessage, setDownloadSuccessMessage] = useState<string | null>(null);
 
+  const updateQueryParam = useCallback((key: string, value: string) => {
+    const nextParams = new URLSearchParams(searchParams);
+    const trimmedValue = value.trim();
+
+    if (!trimmedValue || trimmedValue === 'all') nextParams.delete(key);
+    else nextParams.set(key, trimmedValue);
+
+    setSearchParams(nextParams, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  const updateStatusFilter = (nextStatus: FilterStatus) => {
+    setFilterStatus(nextStatus);
+    updateQueryParam('status', nextStatus === 'all' ? 'all' : filterStatusMap[nextStatus]);
+  };
+
+  const updateCategoryFilter = (nextCategory: string) => {
+    setSelectedCategory(nextCategory);
+    updateQueryParam('category', nextCategory);
+  };
+
+  const resetFilters = () => {
+    setSearchQuery('');
+    setFilterStatus('all');
+    setSelectedCategory('all');
+    setOwnerQuery('');
+    setDateFrom('');
+    setDateTo('');
+    setSelectedEmbeddingModel('all');
+    setSearchParams(new URLSearchParams(), { replace: true });
+  };
+
   const fetchDocuments = useCallback(async (page: number, showLoading = false) => {
     if (showLoading) {
       setIsLoading(true);
@@ -226,6 +273,10 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
         status: filterStatus === 'all' ? undefined : filterStatusMap[filterStatus],
         category: selectedCategory === 'all' ? undefined : selectedCategory,
         search: searchQuery.trim() || undefined,
+        owner: ownerQuery.trim() || undefined,
+        date_from: dateFrom || undefined,
+        date_to: dateTo || undefined,
+        embedding_model: selectedEmbeddingModel === 'all' ? undefined : selectedEmbeddingModel,
         sort_by: sortBy,
         sort_order: 'desc',
       });
@@ -240,7 +291,7 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [filterStatus, searchQuery, selectedCategory, sortBy]);
+  }, [dateFrom, dateTo, filterStatus, ownerQuery, searchQuery, selectedCategory, selectedEmbeddingModel, sortBy]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -266,6 +317,27 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
 
     return () => window.clearTimeout(timeoutId);
   }, [fetchCategoryStats]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchEmbeddingModels = async () => {
+      try {
+        const response = await getEmbeddingModels();
+        if (isMounted) {
+          setEmbeddingModels(response.models);
+        }
+      } catch (error) {
+        console.error('임베딩 모델 목록을 불러오는 중 오류 발생:', error);
+      }
+    };
+
+    void fetchEmbeddingModels();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleRefresh = () => {
     void fetchDocuments(pagination.page, false);
@@ -460,7 +532,10 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
                 type="search"
                 placeholder="문서 검색..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  updateQueryParam('search', e.target.value);
+                }}
                 className="w-64 lg:w-96 pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
               />
             </div>
@@ -541,6 +616,123 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
 
             <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
               <div className="xl:col-span-3 space-y-4">
+                <div className="rounded-xl border border-white/10 bg-[#111116] p-4">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
+                    <label className="space-y-1">
+                      <span className="text-xs font-medium text-gray-500">검색어</span>
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+                        <input
+                          type="search"
+                          value={searchQuery}
+                          onChange={(event) => {
+                            setSearchQuery(event.target.value);
+                            updateQueryParam('search', event.target.value);
+                          }}
+                          className="h-10 w-full rounded-lg border border-white/10 bg-white/5 pl-9 pr-3 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary/50"
+                          placeholder="파일명, 키워드, 요약"
+                        />
+                      </div>
+                    </label>
+
+                    <label className="space-y-1">
+                      <span className="text-xs font-medium text-gray-500">상태</span>
+                      <select
+                        value={filterStatus}
+                        onChange={(event) => updateStatusFilter(event.target.value as FilterStatus)}
+                        className="h-10 w-full rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-gray-300 focus:outline-none focus:ring-2 focus:ring-primary/50"
+                      >
+                        <option value="all">전체</option>
+                        <option value="processing">처리 중</option>
+                        <option value="review_required">검토 필요</option>
+                        <option value="completed">완료</option>
+                        <option value="failed">실패</option>
+                      </select>
+                    </label>
+
+                    <label className="space-y-1">
+                      <span className="text-xs font-medium text-gray-500">카테고리</span>
+                      <select
+                        value={selectedCategory}
+                        onChange={(event) => updateCategoryFilter(event.target.value)}
+                        className="h-10 w-full rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-gray-300 focus:outline-none focus:ring-2 focus:ring-primary/50"
+                      >
+                        <option value="all">전체</option>
+                        {categoryStats.map((category) => (
+                          <option key={category.id} value={category.name}>{category.name}</option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="space-y-1">
+                      <span className="text-xs font-medium text-gray-500">시작일</span>
+                      <input
+                        type="date"
+                        value={dateFrom}
+                        onChange={(event) => {
+                          setDateFrom(event.target.value);
+                          updateQueryParam('date_from', event.target.value);
+                        }}
+                        className="h-10 w-full rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-gray-300 focus:outline-none focus:ring-2 focus:ring-primary/50"
+                      />
+                    </label>
+
+                    <label className="space-y-1">
+                      <span className="text-xs font-medium text-gray-500">종료일</span>
+                      <input
+                        type="date"
+                        value={dateTo}
+                        onChange={(event) => {
+                          setDateTo(event.target.value);
+                          updateQueryParam('date_to', event.target.value);
+                        }}
+                        className="h-10 w-full rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-gray-300 focus:outline-none focus:ring-2 focus:ring-primary/50"
+                      />
+                    </label>
+
+                    <label className="space-y-1">
+                      <span className="text-xs font-medium text-gray-500">소유자</span>
+                      <input
+                        type="search"
+                        value={ownerQuery}
+                        onChange={(event) => {
+                          setOwnerQuery(event.target.value);
+                          updateQueryParam('owner', event.target.value);
+                        }}
+                        className="h-10 w-full rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary/50"
+                        placeholder="이름 또는 이메일"
+                      />
+                    </label>
+
+                    <label className="space-y-1">
+                      <span className="text-xs font-medium text-gray-500">임베딩 모델</span>
+                      <select
+                        value={selectedEmbeddingModel}
+                        onChange={(event) => {
+                          setSelectedEmbeddingModel(event.target.value);
+                          updateQueryParam('embedding_model', event.target.value);
+                        }}
+                        className="h-10 w-full rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-gray-300 focus:outline-none focus:ring-2 focus:ring-primary/50"
+                      >
+                        <option value="all">전체</option>
+                        {embeddingModels.map((model) => (
+                          <option key={model.value} value={model.value}>{model.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  <div className="mt-3 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={resetFilters}
+                      className="inline-flex h-10 items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 text-sm font-medium text-gray-300 transition-colors hover:bg-white/10 hover:text-white"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                      초기화
+                    </button>
+                  </div>
+                </div>
+
                 <div className="flex flex-wrap items-center gap-2">
                   {([
                     ['all', '전체'],
@@ -552,7 +744,7 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
                     <button
                       key={status}
                       type="button"
-                      onClick={() => setFilterStatus(status)}
+                      onClick={() => updateStatusFilter(status)}
                       className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                         filterStatus === status
                           ? 'bg-primary text-white'
@@ -569,7 +761,7 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
                     <Tag className="h-4 w-4 text-gray-400" />
                     <select
                       value={selectedCategory}
-                      onChange={(event) => setSelectedCategory(event.target.value)}
+                      onChange={(event) => updateCategoryFilter(event.target.value)}
                       className="bg-transparent text-sm text-gray-300 focus:outline-none"
                       title="카테고리 필터"
                     >
@@ -960,7 +1152,7 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
                       <button
                         key={category.id}
                         type="button"
-                        onClick={() => setSelectedCategory(category.name)}
+                        onClick={() => updateCategoryFilter(category.name)}
                         className={`w-full rounded-lg border p-3 text-left transition-colors ${
                           selectedCategory === category.name
                             ? 'border-primary/50 bg-primary/10'

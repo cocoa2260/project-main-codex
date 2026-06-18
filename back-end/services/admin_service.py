@@ -14,6 +14,8 @@ from uuid import UUID
 import httpx
 import redis
 from sqlalchemy import and_
+from sqlalchemy import String
+from sqlalchemy import cast
 from sqlalchemy import func
 from sqlalchemy import inspect
 from sqlalchemy import text
@@ -845,6 +847,9 @@ def _document_list_item_response(row) -> AdminDocumentListItemResponse:
         file_name=row.file_name,
         status=row.document_status,
         category=row.category,
+        category_confidence=float(row.category_confidence) if row.category_confidence is not None else None,
+        keywords=row.keywords or [],
+        summary=row.summary,
         file_size=row.file_size,
         page_count=row.page_count,
         selected_embedding_model=row.selected_embedding_model,
@@ -945,16 +950,33 @@ def _apply_document_filters(
     query,
     status: str | None,
     owner_id: UUID | None,
+    owner: str | None,
+    category_id: UUID | None,
     category: str | None,
     search: str | None,
-    uploaded_from: date | None,
-    uploaded_to: date | None,
+    date_from: date | None,
+    date_to: date | None,
+    embedding_model: str | None,
 ):
     if status:
         query = query.filter(Document.status == status)
 
     if owner_id:
         query = query.filter(Document.user_id == owner_id)
+
+    if owner:
+        owner_text = owner.strip()
+        if owner_text:
+            owner_keyword = f"%{owner_text}%"
+            query = query.filter(
+                or_(
+                    User.name.ilike(owner_keyword),
+                    User.email.ilike(owner_keyword),
+                )
+            )
+
+    if category_id:
+        query = query.filter(DocumentCategory.category_id == category_id)
 
     if category:
         category_name = category.strip()
@@ -966,23 +988,34 @@ def _apply_document_filters(
                 )
             )
 
+    if embedding_model:
+        embedding_model_text = embedding_model.strip()
+        if embedding_model_text:
+            query = query.filter(Document.selected_embedding_model == embedding_model_text)
+
     if search:
-        keyword = f"%{search.strip()}%"
-        query = query.filter(
-            or_(
-                Document.file_name.ilike(keyword),
-                Category.name.ilike(keyword),
-                Document.category.ilike(keyword),
-                User.name.ilike(keyword),
-                User.email.ilike(keyword),
+        search_text = search.strip()
+        if search_text:
+            keyword = f"%{search_text}%"
+            query = query.filter(
+                or_(
+                    Document.file_name.ilike(keyword),
+                    User.name.ilike(keyword),
+                    User.email.ilike(keyword),
+                    cast(Document.status, String).ilike(keyword),
+                    Category.name.ilike(keyword),
+                    Document.category.ilike(keyword),
+                    func.array_to_string(Document.keywords, " ").ilike(keyword),
+                    Document.summary.ilike(keyword),
+                    Document.selected_embedding_model.ilike(keyword),
+                )
             )
-        )
 
-    if uploaded_from:
-        query = query.filter(Document.upload_at >= _date_start(uploaded_from))
+    if date_from:
+        query = query.filter(Document.upload_at >= _date_start(date_from))
 
-    if uploaded_to:
-        query = query.filter(Document.upload_at <= _date_end(uploaded_to))
+    if date_to:
+        query = query.filter(Document.upload_at <= _date_end(date_to))
 
     return query
 
@@ -1675,10 +1708,13 @@ def list_admin_documents(
     limit: int = 20,
     status: str | None = None,
     owner_id: UUID | None = None,
+    owner: str | None = None,
+    category_id: UUID | None = None,
     category: str | None = None,
     search: str | None = None,
-    uploaded_from: date | None = None,
-    uploaded_to: date | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    embedding_model: str | None = None,
     sort_by: str = "updated_at",
     sort_order: str = "desc",
 ) -> AdminDocumentListResponse:
@@ -1695,10 +1731,13 @@ def list_admin_documents(
         count_query,
         status=status,
         owner_id=owner_id,
+        owner=owner,
+        category_id=category_id,
         category=category,
         search=search,
-        uploaded_from=uploaded_from,
-        uploaded_to=uploaded_to,
+        date_from=date_from,
+        date_to=date_to,
+        embedding_model=embedding_model,
     )
     total = count_query.scalar() or 0
 
@@ -1709,6 +1748,9 @@ def list_admin_documents(
             Document.file_name.label("file_name"),
             Document.status.label("document_status"),
             Document.category.label("category"),
+            DocumentCategory.confidence.label("category_confidence"),
+            Document.keywords.label("keywords"),
+            Document.summary.label("summary"),
             Document.file_size.label("file_size"),
             Document.page_count.label("page_count"),
             Document.selected_embedding_model.label("selected_embedding_model"),
@@ -1747,10 +1789,13 @@ def list_admin_documents(
         query,
         status=status,
         owner_id=owner_id,
+        owner=owner,
+        category_id=category_id,
         category=category,
         search=search,
-        uploaded_from=uploaded_from,
-        uploaded_to=uploaded_to,
+        date_from=date_from,
+        date_to=date_to,
+        embedding_model=embedding_model,
     )
     rows = (
         query.order_by(_sort_expression(sort_by, sort_order), Document.id.desc())
@@ -1776,7 +1821,10 @@ def get_admin_document_detail(
 ) -> AdminDocumentDetailResponse | None:
     document = (
         db.query(Document)
-        .options(joinedload(Document.user))
+        .options(
+            joinedload(Document.user),
+            joinedload(Document.document_categories).joinedload(DocumentCategory.category),
+        )
         .filter(Document.id == document_id)
         .first()
     )
@@ -1796,7 +1844,7 @@ def get_admin_document_detail(
         .scalar()
         or 0
     )
-    keywords = []
+    keywords = list(document.keywords or [])
     if _table_has_column(db, DocumentChunk.__tablename__, "keywords"):
         chunk_keywords = (
             db.query(DocumentChunk.keywords)
@@ -1815,6 +1863,7 @@ def get_admin_document_detail(
         file_name=document.file_name,
         status=document.status,
         category=document.category,
+        category_confidence=document.category_confidence,
         file_size=document.file_size,
         page_count=document.page_count,
         selected_embedding_model=document.selected_embedding_model,
