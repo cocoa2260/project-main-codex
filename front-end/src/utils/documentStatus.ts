@@ -5,6 +5,7 @@ import type {
   PipelineStep,
   PipelineStepId,
   TaskStage,
+  DocumentStatusFilters,
 } from "@/types/document";
 
 export type DocumentStatusIconName =
@@ -45,6 +46,8 @@ export function normalizeDocumentStatus(
   const upperStatus = status?.toUpperCase();
 
   switch (upperStatus) {
+    case "ALL":
+      return "ALL";
     case "PENDING":
       return "PENDING";
     case "PROCESSING":

@@ -8,6 +8,8 @@ import aiofiles
 from fastapi import UploadFile
 from sqlalchemy.orm import Session
 
+from unicodedata import normalize
+
 from ai.embeddings.embedding_factory import resolve_embedding_model
 from core.config import settings
 from models.document import Document, DocumentStatus
@@ -95,7 +97,7 @@ async def create_document_from_upload(
 
     document = Document(
         user_id=user_id,
-        file_name=file.filename,
+        file_name=normalize("NFC", file.filename),
         storage_path=storage_path,
         file_size=file_size,
         selected_embedding_model=selected_embedding_model,

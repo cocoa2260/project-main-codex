@@ -1,9 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel
-from pydantic import Field
-
+from pydantic import BaseModel, Field, field_validator
 
 class DocumentUploadResponse(BaseModel):
     document_id: UUID
@@ -35,7 +33,7 @@ class DocumentSummaryResponse(BaseModel):
     status: str
     summary: str | None = None
     # documents.keywords에 저장된 문서 대표 키워드를 프론트 요약 화면에 내려준다.
-    keywords: list[str] = []
+    keywords: list[str] = Field(default_factory=list)
     page_count: int | None = 0
     file_size: int
     upload_at: datetime
@@ -72,7 +70,7 @@ class DocumentChatCitation(BaseModel):
 
 class DocumentChatResponse(BaseModel):
     answer: str
-    citations: list[DocumentChatCitation] = []
+    citations: list[DocumentChatCitation] = Field(default_factory=list)
     session_id: UUID | None = None
     message_id: UUID | None = None
 
@@ -112,11 +110,15 @@ class DocumentResponse(BaseModel):
     status: str
     category: str | None = None
     category_confidence: float | None = None
-    keywords: list[str] = []
+    keywords: list[str] = Field(default_factory=list)
     summary: str | None = None
     page_count: int | None = 0
     selected_embedding_model: str | None = None
     upload_at: datetime
 
+    @field_validator("keywords", mode="before")
+    @classmethod
+    def normalize_keywords(cls, value):
+        return value or []
     class Config:
         from_attributes = True

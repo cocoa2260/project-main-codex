@@ -596,7 +596,7 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                   >
                     <option value="all">전체</option>
                     <option value="PENDING">대기</option>
-                    <option value="processing">처리 중</option>
+                    <option value="PROCESSING">처리 중</option>
                     <option value="REVIEW_REQUIRED">검토 필요</option>
                     <option value="COMPLETED">완료</option>
                     <option value="FAILED">실패</option>
