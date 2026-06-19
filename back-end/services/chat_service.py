@@ -7,6 +7,8 @@ import httpx
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+import json
+
 from ai.llms.llm_factory import get_llm_provider
 from core.config import settings
 from models.chat_message import ChatMessage
@@ -378,6 +380,44 @@ def answer_document_question(
     )
 
 async def generate_rag_stream(user_message: str, document_id: str, db: Session):
+    question = user_message.strip()
+
+    if not question:
+        yield json.dumps({
+            "type": "error",
+            "message": "질문 내용을 입력해 주세요."
+        }, ensure_ascii=False)
+        return
+
+    try:
+        document_uuid = UUID(document_id)
+    except ValueError:
+        yield json.dumps({
+            "type": "error",
+            "message": "잘못된 문서 ID입니다."
+        }, ensure_ascii=False)
+        return
+
+    document = (
+        db.query(Document)
+        .filter(Document.id == document_uuid)
+        .first()
+    )
+
+    if document is None:
+        yield json.dumps({
+            "type": "error",
+            "message": "문서를 찾을 수 없습니다."
+        }, ensure_ascii=False)
+        return
+
+    if document.status != DocumentStatus.COMPLETED:
+        yield json.dumps({
+            "type": "error",
+            "message": "처리가 완료된 문서만 질문할 수 있습니다."
+        }, ensure_ascii=False)
+        return
+
     """
     [안정화된 스트리밍 브릿지]
     """

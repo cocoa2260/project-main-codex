@@ -685,7 +685,8 @@ def set_chunks(
 
 ):
     chunks = split_text(
-        text
+        text,
+        1000
     )
 
     chunk_rows = []

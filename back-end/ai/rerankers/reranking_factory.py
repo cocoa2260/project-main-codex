@@ -2,6 +2,9 @@ from ai.rerankers.base import ( BaseRerankerProvider )
 from ai.rerankers.reranking_provider import ( HFRerankingProvider )
 
 RERANKING_REGISTRY = {
+    "BAAI/bge-reranker-m3": {
+        "base_model": "BAAI/bge-reranker-v2-m3",
+    },
     "BAAI/bge-m3": {
         "base_model": "BAAI/bge-reranker-v2-m3",
     }

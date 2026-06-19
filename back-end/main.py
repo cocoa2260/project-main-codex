@@ -9,6 +9,7 @@ from routers import documents
 from routers import common_codes
 from routers import admin
 from routers import users
+from routers import chatbot
 
 
 setup_logging()
@@ -60,4 +61,9 @@ app.include_router(
     users.router,
     prefix="/api/users",
     tags=["users"],
+)
+app.include_router(
+    chatbot.router,
+    prefix="/api/chatbot",
+    tags=["chatbot"],
 )

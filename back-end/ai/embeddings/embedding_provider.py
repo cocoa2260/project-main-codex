@@ -74,23 +74,32 @@ def retrieval(
     ):
         contents = []
 
+        similarity = (
+            1 - DocumentEmbedding.embedding.cosine_distance(vector_question)
+        ).label("similarity")
+
         # 문서id, 임베딩 모델과 관련된 데이터 추출
         rows = (
             db.query(
                 DocumentEmbedding.chunk_id,
                 DocumentChunk.content,
-                DocumentEmbedding.embedding.cosine_distance(vector_question)
-                    .label("distance")
+                similarity
             )
             .join(
                 DocumentEmbedding.chunk
             )
             .filter(
                 DocumentEmbedding.embedding_model == embedding_model,
-                DocumentEmbedding.document_id == document_id,
+                # DocumentEmbedding.document_id == document_id,
+                # DocumentEmbedding.embedding_model == embedding_model,
+                # (
+                #     1 - DocumentEmbedding.embedding.cosine_distance(
+                #         vector_question
+                #     )
+                # )
             )
             .order_by(
-                DocumentEmbedding.embedding.cosine_distance(vector_question)
+                similarity.desc()
             )
             .limit(top_k)
             .all()
@@ -98,5 +107,6 @@ def retrieval(
 
         for o in rows :
             contents.append(o.content)
+            print(o.similarity)
 
         return contents

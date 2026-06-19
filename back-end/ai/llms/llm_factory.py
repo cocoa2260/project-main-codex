@@ -4,10 +4,16 @@ from ai.llms.llm_provider import OllamaLLMProvider
 # 지원 가능한 LLM 모델 목록이다.
 # 새 LLM 모델을 추가할 때는 여기에 model_name과 provider만 등록하면 된다.
 LLM_REGISTRY = {
+    "qwen2.5:0.5b": {
+        "provider": OllamaLLMProvider,
+    },
     "qwen3:4b": {
         "provider": OllamaLLMProvider,
     },
     "gemma3:4b": {
+        "provider": OllamaLLMProvider,
+    },
+    "legal-qwen": {
         "provider": OllamaLLMProvider,
     },
 }

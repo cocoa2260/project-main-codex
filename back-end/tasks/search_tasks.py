@@ -94,7 +94,7 @@ def merge_retrieved_chunks(*chunk_lists: list[str]) -> list[str]:
 
     return merged_chunks
 
-def embedding_retrieval(db, document_id:str, task_id:str, input_question:str , embedding_model:str = "snowflake-ko", top_k:int = 5):
+def embedding_retrieval(db, document_id:str, task_id:str, input_question:str , embedding_model:str = "snowflake-ko-lora", top_k:int = 5):
     chunks = []
 
     '''
@@ -136,7 +136,7 @@ def embedding_retrieval(db, document_id:str, task_id:str, input_question:str , e
         vector_question = provider.embed(input_question)
 
         # 6. db에서 question vector 유사도 기반 추출
-        chunks = provider.search(db, document_id, vector_question, embedding_model, top_k * 2)
+        chunks = provider.search(db, document_id, vector_question, embedding_model, top_k)
 
     except Exception as exc:
         print(exc)
@@ -147,15 +147,14 @@ def embedding_retrieval(db, document_id:str, task_id:str, input_question:str , e
 
     return chunks
 
-def reranking(chunks, input_question:str , reranking_model:str = "BAAI/bge-m3", top_k:int = 5):
+def reranking(chunks, input_question:str , reranking_model:str = "BAAI/bge-reranker-m3", top_k:int = 5):
     rerank_chunks = []
 
     try :
         # 1. reranker 모델 불러오기
-        reranker_model = reranking_model
 
         reranker = get_reranker_provider(
-            reranker_model
+            reranking_model
         )
 
         # 2. reranking
@@ -180,6 +179,8 @@ def process_search_chunks(document_id:str, task_id:str, question:str, embedding_
     # 3. embedding Retriever + llm Retriever
     # 4. rerank(embed + llm)
     try:    
+        
+        # question = summary_question(question)
 
         # 1. embeddingRetriever
         chunks = embedding_retrieval(db, document_id, task_id, question, embedding_model, top_k*2)
@@ -198,7 +199,7 @@ def process_search_chunks(document_id:str, task_id:str, question:str, embedding_
         chunk_set = merge_retrieved_chunks(chunks, chunks2)
 
         # 4. rerank(embed + llm)
-        rerank_chunks = reranking(chunk_set, question, "BAAI/bge-m3", top_k)
+        rerank_chunks = reranking(chunk_set, question, "BAAI/bge-reranker-m3", top_k)
         '''
         rerank_chunks 결과 = [('string', 유사도 float), ('string', 유사도 float)]
         '''
@@ -214,3 +215,7 @@ def process_search_chunks(document_id:str, task_id:str, question:str, embedding_
 
     return contents
 
+def summary_question(question:str):
+    llm_provider = get_llm_provider(settings.DEFAULT_LLM_MODEL)
+
+    return llm_provider.summarize_question(question)

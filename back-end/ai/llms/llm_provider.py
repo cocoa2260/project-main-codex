@@ -32,7 +32,10 @@ class OllamaLLMProvider(BaseLLMProvider):
         self.client = ChatOllama(
             base_url=settings.OLLAMA_URL,
             model=model_name,
-            temperature=0.2,
+            temperature=0.1,
+            num_ctx=2048,
+            num_predict=180,
+            client_kwargs={"timeout": 90.0},
         )
         self.keyword_client = ChatOllama(
             base_url=settings.OLLAMA_URL,
@@ -40,8 +43,15 @@ class OllamaLLMProvider(BaseLLMProvider):
             temperature=0,
         )
 
-    # 이전 프롬프트: 문서 전문을 한 번에 요약하던 방식입니다.
+    def _limit_text(self, text: str, max_chars: int = 2000) -> str:
+        if not text:
+            return ""
+        return text[:max_chars]
+
+    # 문서 전체를 직접 요약하는 경우용
     def summarize(self, markdown: str) -> str:
+        markdown = self._limit_text(markdown, 3000)
+
         response = self.client.invoke(
             [
                 SystemMessage(
@@ -105,18 +115,24 @@ class OllamaLLMProvider(BaseLLMProvider):
         return str(response.content).strip()
 
     def summarize_chunk(self, text: str) -> str:
+        text = self._limit_text(text, 1800)
+
+        if not text.strip():
+            return "내용이 비어 있어 요약할 수 없습니다."
+
         response = self.client.invoke(
             [
                 SystemMessage(
                     content=(
                         "당신은 법률/계약 문서 chunk를 한국어로 요약하는 전문가입니다. "
-                        "원문에 없는 내용은 만들지 말고, 핵심 쟁점과 조건만 간결하게 정리하세요. "
+                        "원문에 없는 내용은 만들지 마세요. "
+                        "핵심 쟁점, 조건, 날짜, 금액만 짧게 정리하세요. "
                         "최종 답변만 출력하세요. /no_think"
                     )
                 ),
                 HumanMessage(
                     content=(
-                        "아래 chunk를 3~5문장으로 요약하세요.\n\n"
+                        "아래 chunk를 한국어 1~2문장으로만 요약하세요.\n\n"
                         f"{text}\n\n/no_think"
                     )
                 ),
@@ -129,6 +145,12 @@ class OllamaLLMProvider(BaseLLMProvider):
             f"## Chunk {idx}\n{summary}"
             for idx, summary in enumerate(summaries)
         )
+
+        joined_summaries = self._limit_text(joined_summaries, 3000)
+
+        if not joined_summaries.strip():
+            return "요약할 내용이 없습니다."
+
         response = self.client.invoke(
             [
                 SystemMessage(
@@ -154,9 +176,51 @@ class OllamaLLMProvider(BaseLLMProvider):
                 ),
             ]
         )
+
+        return str(response.content).strip()
+
+    def summarize_question(self, question: str) -> str:
+        response = self.client.invoke(
+            [
+                SystemMessage(
+                    content=(
+                        '''
+                        당신은 문서 검색(RAG)용 질문 압축 전문가입니다.
+                        입력 질문의 핵심 의미와 검색 의도를 유지하면서 한국어 중심으로 압축하세요.
+
+                        규칙:
+
+                        질문의 핵심 의미, 조건, 대상, 관계는 유지하세요.
+                        검색과 관계없는 표현은 제거하세요.
+                        예: "설명해줘", "알려줘", "궁금합니다", "자세히", "혹시", "왜", "어떻게 생각해"
+                        중복 표현은 하나로 통합하세요.
+                        동일 의미의 표현은 대표 표현 하나만 유지하세요.
+                        질문 안의 한국어, 영어, 숫자, 버전명, 조항 번호, 모델명은 유지하세요.
+                        의미가 달라지지 않는 범위에서 최대한 짧게 작성하세요.
+                        관계 비교가 있으면 유지하세요.
+                        예: "차이", "관계", "비교", "영향", "순서"
+                        질문이 여러 개이면 의미 단위로 유지하세요.
+                        최대 출력 길이는 약 30~50 토큰 수준으로 유지하세요.
+                        단, 길이 제한 때문에 문장이 중간에 끊기거나 의미가 잘리면 안 됩니다.
+                        길이 제한보다 의미 보존을 우선합니다.
+                        설명, 번호, 따옴표, 문장부호를 추가하지 마세요.
+                        압축된 질문만 출력하세요. /no_think
+                        '''
+                    )
+                ),
+                HumanMessage(
+                    content=(
+                        f"질문:\n{question}\n\n"
+                    )
+                ),
+            ]
+        )
+
         return str(response.content).strip()
 
     def answer_question(self, question: str, context: str, prompt: str | None = None) -> str:
+        context = self._limit_text(context, 5000)
+
         response = self.client.invoke(
             [
                 SystemMessage(
@@ -171,40 +235,45 @@ class OllamaLLMProvider(BaseLLMProvider):
                 ),
             ]
         )
+
         return str(response.content).strip()
 
+    # 개발용: 문서 chunk 키워드 추출은 LLM 호출하지 않음
     def extract_keywords(self, text: str) -> list[str]:
-        response = self.keyword_client.invoke(
-            [
-                SystemMessage(
-                    content=(
-                        "당신은 법률/계약 문서 chunk에서 검색용 핵심 키워드를 추출하는 전문가입니다. "
-                        "문서 chunk 안에 실제로 등장하거나 명확히 근거가 있는 핵심 개념만 한국어 명사구 중심으로 3~8개 뽑으세요. "
-                        "명백한 OCR 오타, 깨진 띄어쓰기, 분리된 영문 약어는 자연스러운 전문 용어로 보정하세요. "
-                        "동일 의미의 표현은 하나의 대표 키워드로 통합하세요. "
-                        "단, 문서에 근거가 없는 유사어, 상위 개념, 관련 법률 용어를 새로 확장해서 만들지 마세요. "
-                        "설명하지 말고 쉼표로 구분된 키워드만 출력하세요. /no_think"
-                    )
-                ),
-                HumanMessage(content=f"chunk:\n{text}\n\n/no_think"),
-            ]
-        )
+        text = self._limit_text(text, 4000)
 
-        raw_keywords = str(response.content).strip()
-        keywords: list[str] = []
+        stopwords = {
+            "그리고", "그러나", "또한", "따라서", "대한", "관련", "경우",
+            "내용", "문서", "사항", "부분", "다음", "아래", "위해",
+            "있다", "한다", "수", "등", "및", "또는",
+        }
 
-        for keyword in re.split(r"[,，|/·\n]", raw_keywords):
-            cleaned_keyword = (
-                keyword.strip()
-                .strip("`*_")
-                .lstrip("-*0123456789. ")
-                .strip()
-            )
-            if cleaned_keyword and cleaned_keyword not in keywords:
-                keywords.append(cleaned_keyword)
+        candidates = re.findall(r"[가-힣A-Za-z0-9]{2,}", text)
 
-        return keywords[:8]
+        cleaned = []
+        for word in candidates:
+            word = word.strip()
+            if word in stopwords:
+                continue
+            if len(word) < 2:
+                continue
+            cleaned.append(word)
 
+        counter = Counter(cleaned)
+
+        keywords = []
+        for word, _ in counter.most_common(20):
+            if word not in keywords:
+                keywords.append(word)
+            if len(keywords) >= 8:
+                break
+
+        if not keywords:
+            return ["문서", "요약", "핵심내용"]
+
+        return keywords
+
+    # 질문 검색용 키워드는 RAG 검색 품질을 위해 LLM 사용
     def extract_question_keywords(self, question: str) -> list[str]:
         response = self.keyword_client.invoke(
             [
@@ -219,6 +288,8 @@ class OllamaLLMProvider(BaseLLMProvider):
                         "질문과 직접 관련된 법률 개념, 권리, 의무, 절차, 제도, 법률 용어를 우선 추출하세요.\n"
                         "질문에 드러난 사실을 단정하지 않는 범위에서, 문서 검색에 도움이 되는 중립적 법률 개념은 포함하세요.\n"
                         "질문 속 구체 정보가 법률 문서에서 더 넓은 중립적 개념으로 분류된다면 해당 개념도 포함하세요.\n"
+                        "유사하지만 다른 법률 개념을 임의로 바꾸지 마세요.\n"
+                        "일반어만 단독으로 출력하지 말고, 가능하면 대응되는 법률 문서 검색어로 변환하세요.\n"
                         "사용자의 일상 표현은 가능하면 법률 문서에서 실제 사용되는 표준 용어로 변환하세요.\n"
                         "복합 개념보다 독립적으로 검색 가능한 원자적 키워드를 우선 사용하세요.\n"
                         "지나치게 포괄적이거나 추상적인 용어는 제외하세요.\n"
@@ -293,22 +364,7 @@ class OllamaLLMProvider(BaseLLMProvider):
         return keywords[:8]
 
     def extract_representative_keyword(self, text: str) -> str | None:
-        response = self.keyword_client.invoke(
-            [
-                SystemMessage(
-                    content=(
-                        "당신은 OCR 문서 chunk에서 문서 대표 키워드 후보를 고르는 전문가입니다. "
-                        "이 chunk 안에 실제로 등장하거나 명확히 근거가 있는 내용 중, 문서 전체 주제를 설명하는 데 도움이 되는 대표 키워드 1개만 한국어 명사구로 작성하세요. "
-                        "명백한 OCR 오타는 자연스러운 전문 용어로 보정하세요. "
-                        "단, 문서에 근거가 없는 유사어, 상위 개념, 관련 개념을 새로 만들지 마세요. "
-                        "설명, 번호, 따옴표, 문장부호 없이 키워드만 출력하세요. /no_think"
-                    )
-                ),
-                HumanMessage(content=f"chunk:\n{text}\n\n/no_think"),
-            ]
-        )
-
-        keyword = str(response.content).strip()
+        keywords = self.extract_keywords(text)
         keyword = keyword.strip("`*_\"' ")
         keyword = re.sub(r"^[\\-\\*\\d\\.\\s]+", "", keyword).strip()
         keyword = re.split(r"[,，|/·\n]", keyword)[0].strip()

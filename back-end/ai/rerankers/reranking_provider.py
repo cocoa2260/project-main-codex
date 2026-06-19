@@ -36,7 +36,14 @@ class HFRerankingProvider(BaseRerankerProvider):
         # score 계산
         scores = self.model.predict(pairs)
 
-        # score + doc 묶기
-        ranked = sorted(zip(documents, scores), key=lambda x: x[1], reverse=True)
+        # score + doc 묶기 기준 유사도 설정(0.8 이상)
+        ranked = sorted(
+            ((doc, score)
+            for doc, score in zip(documents, scores)
+                # if score >= 0.7
+            ),
+            key=lambda x: x[1],
+            reverse=True
+        )
 
         return ranked[:top_k]
