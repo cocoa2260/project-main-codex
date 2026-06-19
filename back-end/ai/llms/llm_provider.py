@@ -366,9 +366,9 @@ class OllamaLLMProvider(BaseLLMProvider):
 
     def extract_representative_keyword(self, text: str) -> str | None:
         keywords = self.extract_keywords(text)
-        keyword = keywords.strip("`*_\"' ")
-        keyword = re.sub(r"^[\\-\\*\\d\\.\\s]+", "", keywords).strip()
-        keyword = re.split(r"[,，|/·\n]", keywords)[0].strip()
+        keyword = keywords[0].strip("`*_\"' ")
+        keyword = re.sub(r"^[\\-\\*\\d\\.\\s]+", "", keyword).strip()
+        keyword = re.split(r"[,，|/·\n]", keyword)[0].strip()
 
         return keyword or None
 
