@@ -1,10 +1,16 @@
 // 문서 자체 상태
 export type DocumentStatus =
+  | "ALL"
   | "PENDING"
   | "PROCESSING"
   | "REVIEW_REQUIRED"
   | "COMPLETED"
   | "FAILED";
+
+// 추후 문서 관리 화면에서 검색조건으로 사용할 수 있어야 함.(DocumentStatus "ALL"추가는 임시)
+export type DocumentStatusFilters = 
+  | "ALL"
+  | DocumentStatus;
 
 export type TaskStatus =
   | "PENDING"

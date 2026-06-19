@@ -220,7 +220,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
               <div className="relative group cursor-pointer">
                 <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-xl opacity-0 group-hover:opacity-20 blur transition-opacity" />
                 <div 
-                  onClick={() => navigate('/documents?status=PROCESSING')}
+                  onClick={() => navigate('/documents?status=processing')}
                   className="relative bg-[#15151c] border border-white/10 rounded-xl p-5 hover:border-white/20 transition-colors"
                 >
                   <div className="flex items-center justify-between mb-4">

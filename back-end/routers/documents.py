@@ -1,6 +1,7 @@
 import asyncio
 from datetime import date
 from uuid import UUID
+from unicodedata import normalize
 
 from fastapi import APIRouter
 from fastapi import Depends
@@ -170,7 +171,7 @@ def list_documents(
         DocumentStatus.FAILED,
     }:
         raise HTTPException(status_code=400, detail="지원하지 않는 문서 상태입니다.")
-
+    
     query = (
         db.query(Document)
         .outerjoin(DocumentCategory, DocumentCategory.document_id == Document.id)
@@ -207,21 +208,23 @@ def list_documents(
             query = query.filter(Document.selected_embedding_model == embedding_model_text)
 
     if search:
-        search_text = search.strip()
+        search_text = normalize("NFC", search.strip())
         if search_text:
             keyword = f"%{search_text}%"
+            logger.info(f"keyword : {keyword}")
             query = query.filter(
                 or_(
                     Document.file_name.ilike(keyword),
-                    cast(Document.status, String).ilike(keyword),
-                    Category.name.ilike(keyword),
-                    Document.category.ilike(keyword),
                     func.array_to_string(Document.keywords, " ").ilike(keyword),
                     Document.summary.ilike(keyword),
-                    func.to_char(Document.upload_at, "YYYY-MM-DD").ilike(keyword),
-                    Document.selected_embedding_model.ilike(keyword),
                 )
             )
+    # 실행 쿼리 확인을 위한 소스
+    compiled = query.statement.compile(
+    dialect=db.bind.dialect,
+    compile_kwargs={"literal_binds": True},
+    )
+    logger.info(f"compiled : {compiled}")
 
     return query.order_by(Document.upload_at.desc()).all()
 

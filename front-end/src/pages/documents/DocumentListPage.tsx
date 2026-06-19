@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Sidebar } from '../../components/common/Sidebar';
 import { StatusBadge } from '@/components/common/StatusBadge';
@@ -37,7 +37,6 @@ import {
   Trash2,
   LogOut,
   XCircle,
-  Tag,
 } from 'lucide-react';
 
 type SortBy = 'recent' | 'oldest' | 'name';
@@ -81,6 +80,48 @@ interface DocumentListPageProps {
   onOpenChat?: (id: string) => void;
 }
 
+interface DocumentFilterForm {
+  search: string;
+  status: string;
+  category: string;
+  dateFrom: string;
+  dateTo: string;
+  embeddingModel: string;
+}
+
+interface DocumentFilterDraftState {
+  key: string;
+  filters: DocumentFilterForm;
+}
+
+function getFilterFormFromParams(searchParams: URLSearchParams): DocumentFilterForm {
+  return {
+    search: searchParams.get('search') ?? '',
+    status: searchParams.get('status') ?? 'all',
+    category: searchParams.get('category') ?? 'all',
+    dateFrom: searchParams.get('date_from') ?? '',
+    dateTo: searchParams.get('date_to') ?? '',
+    embeddingModel: searchParams.get('embedding_model') ?? 'all',
+  };
+}
+
+function getDocumentListParams(filters: DocumentFilterForm) {
+  return {
+    search: filters.search.trim() || undefined,
+    category: filters.category !== 'all' ? filters.category : undefined,
+    date_from: filters.dateFrom || undefined,
+    date_to: filters.dateTo || undefined,
+    embedding_model: filters.embeddingModel !== 'all' ? filters.embeddingModel : undefined,
+  };
+}
+
+function setFilterParam(params: URLSearchParams, key: string, value: string) {
+  const trimmedValue = value.trim();
+
+  if (!trimmedValue || trimmedValue === 'all') params.delete(key);
+  else params.set(key, trimmedValue);
+}
+
 function formatBytes(bytes?: number | null) {
   if (!bytes) return '-';
 
@@ -92,6 +133,8 @@ function formatBytes(bytes?: number | null) {
 }
 
 function getFilterStatusFromParam(statusParam: string | null): FilterStatus {
+  if (statusParam === 'processing') return 'processing';
+
   const normalizedStatus = statusParam ? normalizeDocumentStatus(statusParam) : null;
 
   if (normalizedStatus === 'COMPLETED') return 'completed';
@@ -161,13 +204,16 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
   const routeState = location.state as { message?: string } | null;
   const routeMessage = routeState?.message;
   const [searchParams, setSearchParams] = useSearchParams();
-  const statusParam = searchParams.get('status');
+  const appliedFilters = getFilterFormFromParams(searchParams);
+  const appliedFiltersKey = location.search;
   const [sidebarOpen, setSidebarOpen] = usePersistentSidebar();
-  const searchQuery = searchParams.get('search') ?? '';
-  const selectedCategory = searchParams.get('category') ?? 'all';
-  const dateFrom = searchParams.get('date_from') ?? '';
-  const dateTo = searchParams.get('date_to') ?? '';
-  const selectedEmbeddingModel = searchParams.get('embedding_model') ?? 'all';
+  const [draftFilterState, setDraftFilterState] = useState<DocumentFilterDraftState>(() => ({
+    key: appliedFiltersKey,
+    filters: appliedFilters,
+  }));
+  const draftFilters = draftFilterState.key === appliedFiltersKey ? draftFilterState.filters : appliedFilters;
+  const dateFromInputRef = useRef<HTMLInputElement | null>(null);
+  const dateToInputRef = useRef<HTMLInputElement | null>(null);
   const [categoryNames, setCategoryNames] = useState<string[]>(DEFAULT_CATEGORY_NAMES);
   const [embeddingModels, setEmbeddingModels] = useState<EmbeddingModelOption[]>([]);
   const [sortBy, setSortBy] = useState<SortBy>('recent');
@@ -184,19 +230,43 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
   const [deleteTarget, setDeleteTarget] = useState<Document | null>(null);
   const [reprocessTarget, setReprocessTarget] = useState<Document | null>(null);
   const [cancelTarget, setCancelTarget] = useState<Document | null>(null);
-  const filterStatus = getFilterStatusFromParam(statusParam);
+  const filterStatus = getFilterStatusFromParam(appliedFilters.status);
 
-  const updateFilterParam = (key: string, value: string) => {
-    const nextParams = new URLSearchParams(searchParams);
-    const trimmedValue = value.trim();
+  const updateDraftFilter = (key: keyof DocumentFilterForm, value: string) => {
+    setDraftFilterState((currentDraft) => ({
+      key: appliedFiltersKey,
+      filters: {
+        ...(currentDraft.key === appliedFiltersKey ? currentDraft.filters : appliedFilters),
+        [key]: value,
+      },
+    }));
+  };
 
-    if (!trimmedValue || trimmedValue === 'all') nextParams.delete(key);
-    else nextParams.set(key, trimmedValue);
+  const openDatePicker = (input: HTMLInputElement | null) => {
+    try {
+      input?.showPicker?.();
+    } catch {
+      // showPicker can only run during supported direct user gestures.
+    }
+  };
 
+  const applyFilters = () => {
+    const nextParams = new URLSearchParams();
+    setFilterParam(nextParams, 'search', draftFilters.search);
+    setFilterParam(nextParams, 'status', draftFilters.status);
+    setFilterParam(nextParams, 'category', draftFilters.category);
+    setFilterParam(nextParams, 'date_from', draftFilters.dateFrom);
+    setFilterParam(nextParams, 'date_to', draftFilters.dateTo);
+    setFilterParam(nextParams, 'embedding_model', draftFilters.embeddingModel);
     setSearchParams(nextParams, { replace: true });
   };
 
   const resetFilters = () => {
+    const emptyFilters = getFilterFormFromParams(new URLSearchParams());
+    setDraftFilterState({
+      key: '',
+      filters: emptyFilters,
+    });
     setSearchParams(new URLSearchParams(), { replace: true });
   };
 
@@ -207,20 +277,15 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
   }, [location.pathname, location.search, navigate, routeMessage]);
 
   const loadDocuments = async (options?: { showLoading?: boolean }) => {
+    const currentFilters = getFilterFormFromParams(new URLSearchParams(appliedFiltersKey));
+
     try {
       if (options?.showLoading ?? true) {
         setIsLoading(true);
       }
       setError(null);
 
-      const docs = await getDocuments({
-        search: searchQuery.trim() || undefined,
-        status: statusParam ? normalizeDocumentStatus(statusParam) : undefined,
-        category: selectedCategory !== 'all' ? selectedCategory : undefined,
-        date_from: dateFrom || undefined,
-        date_to: dateTo || undefined,
-        embedding_model: selectedEmbeddingModel !== 'all' ? selectedEmbeddingModel : undefined,
-      });
+      const docs = await getDocuments(getDocumentListParams(currentFilters));
       setDocuments(docs.map(mapDocument));
     } catch (loadError) {
       console.error('문서 목록을 불러오는 중 오류 발생:', loadError);
@@ -232,20 +297,16 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
 
   useEffect(() => {
     let isMounted = true;
+    const currentFilters = getFilterFormFromParams(new URLSearchParams(appliedFiltersKey));
 
     const loadMountedDocuments = async () => {
       try {
         setIsLoading(true);
         setError(null);
-        const docs = await getDocuments({
-          search: searchQuery.trim() || undefined,
-          status: statusParam ? normalizeDocumentStatus(statusParam) : undefined,
-          category: selectedCategory === 'all' ? undefined : selectedCategory,
-          date_from: dateFrom || undefined,
-          date_to: dateTo || undefined,
-          embedding_model: selectedEmbeddingModel === 'all' ? undefined : selectedEmbeddingModel,
-        });
-        if (isMounted) setDocuments(docs.map(mapDocument));
+        const docs = await getDocuments(getDocumentListParams(currentFilters));
+        if (isMounted) {
+          setDocuments(docs.map(mapDocument));
+        }
       } catch (loadError) {
         if (isMounted) {
           console.error('문서 목록을 불러오는 중 오류 발생:', loadError);
@@ -256,15 +317,12 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
       }
     };
 
-    const timeoutId = window.setTimeout(() => {
-      void loadMountedDocuments();
-    }, 250);
+    void loadMountedDocuments();
 
     return () => {
       isMounted = false;
-      window.clearTimeout(timeoutId);
     };
-  }, [dateFrom, dateTo, searchQuery, selectedCategory, selectedEmbeddingModel, statusParam]);
+  }, [appliedFiltersKey]);
 
   useEffect(() => {
     let isMounted = true;
@@ -400,19 +458,13 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
     }
   };
 
-  const applyFilterStatus = (nextFilterStatus: FilterStatus) => {
-    if (nextFilterStatus === 'completed') updateFilterParam('status', 'COMPLETED');
-    else if (nextFilterStatus === 'processing') updateFilterParam('status', 'PROCESSING');
-    else if (nextFilterStatus === 'failed') updateFilterParam('status', 'FAILED');
-    else updateFilterParam('status', 'all');
-  };
-
   const stats = {
     total: documents.length,
     completed: documents.filter(d => d.status === 'COMPLETED').length,
     processing: documents.filter(d => d.status === 'PENDING' || d.status === 'PROCESSING' || d.status === 'REVIEW_REQUIRED').length,
     failed: documents.filter(d => d.status === 'FAILED').length
   };
+  const visibleDocumentCount = filteredDocuments.length;
 
   return (
     <div className="min-h-screen w-full bg-[#0f0f17] flex">
@@ -428,19 +480,7 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
       <div className="flex-1 flex flex-col min-h-screen lg:ml-0">
         {/* Top navigation */}
         <header className="h-16 bg-[#15151c]/80 backdrop-blur-xl border-b border-white/10 flex items-center justify-between px-6 sticky top-0 z-20">
-          <div className="flex items-center gap-4">
-            {/* Search */}
-            <div className="relative hidden md:block">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
-              <input
-                type="search"
-                placeholder="문서 검색..."
-                value={searchQuery}
-                onChange={(e) => updateFilterParam('search', e.target.value)}
-                className="w-64 lg:w-96 pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-zinc-400 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
-              />
-            </div>
-          </div>
+          <div className="flex items-center gap-4" />
 
           <div className="flex items-center gap-3">
             <button
@@ -469,7 +509,7 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-2xl font-bold text-white mb-1">문서 관리</h2>
-                <p className="text-zinc-300">총 {stats.total}개의 문서</p>
+                <p className="text-zinc-300">총 {visibleDocumentCount}개의 문서</p>
               </div>
 
             </div>
@@ -525,7 +565,13 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
               </div>
             </div>
 
-            <div className="rounded-xl border border-white/10 bg-[#15151c] p-4">
+            <form
+              className="rounded-xl border border-white/10 bg-[#15151c] p-4"
+              onSubmit={(event) => {
+                event.preventDefault();
+                applyFilters();
+              }}
+            >
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
                 <label className="space-y-1">
                   <span className="text-xs font-medium text-zinc-400">검색어</span>
@@ -533,8 +579,8 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
                     <input
                       type="search"
-                      value={searchQuery}
-                      onChange={(event) => updateFilterParam('search', event.target.value)}
+                      value={draftFilters.search}
+                      onChange={(event) => updateDraftFilter('search', event.target.value)}
                       className="h-10 w-full rounded-lg border border-white/10 bg-white/5 pl-9 pr-3 text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-primary/50"
                       placeholder="파일명, 키워드, 요약"
                     />
@@ -544,8 +590,8 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                 <label className="space-y-1">
                   <span className="text-xs font-medium text-zinc-400">상태</span>
                   <select
-                    value={statusParam ?? 'all'}
-                    onChange={(event) => updateFilterParam('status', event.target.value)}
+                    value={draftFilters.status}
+                    onChange={(event) => updateDraftFilter('status', event.target.value)}
                     className="h-10 w-full rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-zinc-200 focus:outline-none focus:ring-2 focus:ring-primary/50"
                   >
                     <option value="all">전체</option>
@@ -560,8 +606,8 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                 <label className="space-y-1">
                   <span className="text-xs font-medium text-zinc-400">카테고리</span>
                   <select
-                    value={selectedCategory}
-                    onChange={(event) => updateFilterParam('category', event.target.value)}
+                    value={draftFilters.category}
+                    onChange={(event) => updateDraftFilter('category', event.target.value)}
                     className="h-10 w-full rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-zinc-200 focus:outline-none focus:ring-2 focus:ring-primary/50"
                   >
                     <option value="all">전체</option>
@@ -574,9 +620,12 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                 <label className="space-y-1">
                   <span className="text-xs font-medium text-zinc-400">시작일</span>
                   <input
+                    ref={dateFromInputRef}
                     type="date"
-                    value={dateFrom}
-                    onChange={(event) => updateFilterParam('date_from', event.target.value)}
+                    readOnly
+                    value={draftFilters.dateFrom}
+                    onClick={() => openDatePicker(dateFromInputRef.current)}
+                    onChange={(event) => updateDraftFilter('dateFrom', event.target.value)}
                     className="h-10 w-full rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-zinc-200 focus:outline-none focus:ring-2 focus:ring-primary/50"
                   />
                 </label>
@@ -584,9 +633,12 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                 <label className="space-y-1">
                   <span className="text-xs font-medium text-zinc-400">종료일</span>
                   <input
+                    ref={dateToInputRef}
                     type="date"
-                    value={dateTo}
-                    onChange={(event) => updateFilterParam('date_to', event.target.value)}
+                    readOnly
+                    value={draftFilters.dateTo}
+                    onClick={() => openDatePicker(dateToInputRef.current)}
+                    onChange={(event) => updateDraftFilter('dateTo', event.target.value)}
                     className="h-10 w-full rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-zinc-200 focus:outline-none focus:ring-2 focus:ring-primary/50"
                   />
                 </label>
@@ -594,8 +646,8 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                 <label className="space-y-1">
                   <span className="text-xs font-medium text-zinc-400">임베딩 모델</span>
                   <select
-                    value={selectedEmbeddingModel}
-                    onChange={(event) => updateFilterParam('embedding_model', event.target.value)}
+                    value={draftFilters.embeddingModel}
+                    onChange={(event) => updateDraftFilter('embeddingModel', event.target.value)}
                     className="h-10 w-full rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-zinc-200 focus:outline-none focus:ring-2 focus:ring-primary/50"
                   >
                     <option value="all">전체</option>
@@ -605,7 +657,7 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                   </select>
                 </label>
               </div>
-              <div className="mt-3 flex justify-end">
+              <div className="mt-3 flex justify-end gap-2">
                 <button
                   type="button"
                   onClick={resetFilters}
@@ -614,75 +666,18 @@ export function DocumentListPage({ onLogout, onOpenSummary, onOpenChat }: Docume
                   <RefreshCw className="h-4 w-4" />
                   초기화
                 </button>
+                <button
+                  type="submit"
+                  className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-white transition-colors hover:bg-primary/90"
+                >
+                  <Search className="h-4 w-4" />
+                  검색
+                </button>
               </div>
-            </div>
+            </form>
 
             {/* Filters and controls */}
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-	                  onClick={() => applyFilterStatus('all')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                    filterStatus === 'all'
-                      ? 'bg-primary text-white'
-                      : 'bg-white/5 text-zinc-300 hover:text-white hover:bg-white/10'
-                  }`}
-                >
-                  전체
-                </button>
-                <button
-                  type="button"
-	                  onClick={() => applyFilterStatus('processing')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                    filterStatus === 'processing'
-                      ? 'bg-primary text-white'
-                      : 'bg-white/5 text-zinc-300 hover:text-white hover:bg-white/10'
-                  }`}
-                >
-                  처리 중
-                </button>
-                <button
-                  type="button"
-	                  onClick={() => applyFilterStatus('completed')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                    filterStatus === 'completed'
-                      ? 'bg-primary text-white'
-                      : 'bg-white/5 text-zinc-300 hover:text-white hover:bg-white/10'
-                  }`}
-                >
-                  완료
-                </button>
-                <button
-                  type="button"
-	                  onClick={() => applyFilterStatus('failed')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                    filterStatus === 'failed'
-                      ? 'bg-primary text-white'
-                      : 'bg-white/5 text-zinc-300 hover:text-white hover:bg-white/10'
-                  }`}
-                >
-                  실패
-                </button>
-
-                <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-                  <Tag className="h-4 w-4 text-zinc-400" />
-                  <select
-                    value={selectedCategory}
-                    onChange={(event) => updateFilterParam('category', event.target.value)}
-                    className="bg-transparent text-sm text-zinc-200 focus:outline-none"
-                    title="카테고리 필터"
-                  >
-                    <option value="all">전체</option>
-                    {categoryNames.map((categoryName) => (
-                      <option key={categoryName} value={categoryName}>
-                        {categoryName}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
+            <div className="flex flex-wrap items-center justify-end gap-4">
               <div className="flex items-center gap-2">
                 {/* View mode toggle */}
                 <div className="flex items-center gap-1 p-1 bg-white/5 border border-white/10 rounded-lg">
