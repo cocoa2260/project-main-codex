@@ -103,6 +103,7 @@ services:
       - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
+      - "${LOCAL_GGUF_DIR}:/models"
 
 volumes:
   postgres_data:
