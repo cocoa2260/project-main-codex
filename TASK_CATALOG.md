@@ -82,6 +82,7 @@
 | BE-COMP-002 | Embedding Stage Normalization | Medium | TODO |
 | BE-COMP-003 | TaskTracker Concurrency Review | Medium | TODO |
 | BE-COMP-004 | Summary Embedding Task Split Implementation | High | DONE |
+| BUG-006 | Document Pipeline Stage / Summary Persistence Fix | High | DONE |
 
 ---
 
@@ -196,6 +197,22 @@ Review API
 - Embedding 완료 시 Document.status를 COMPLETED로 전환
 - Failed Task Retry에서 EMBEDDING 재시도 지원
 - EMBEDDING_PENDING TaskStage common code 추가
+
+Priority: High
+Status: DONE
+
+### BUG-006 Document Pipeline Stage / Summary Persistence Fix
+
+- Extended user `GET /api/documents` response with latest TaskTracker `stage`, `progress`, and `task_message`
+- Preserved all existing document list response fields and routes
+- Updated confirm-summary to set `documents.status = PROCESSING` before SUMMARY TaskTracker creation
+- Confirmed Summary task commits `documents.summary` before embedding enqueue
+- Confirmed embedding enqueue failure keeps the committed summary while marking document/embedding task FAILED
+- Updated Dashboard, DocumentList, DocumentCard, and StatusBadge data flow so processing documents display Summary/Embedding stages instead of falling back to OCR
+- Updated list progress display to prefer API task progress over status-derived fallback progress
+- No DB migration
+- No API route change
+- No Summary -> Embedding order change
 
 Priority: High
 Status: DONE

@@ -101,6 +101,7 @@ function normalizeHealthServiceStatus(status?: string | null): AdminHealthServic
 
 function normalizeTaskStatus(status?: string | null): TaskStatus {
   const normalizedStatus = normalizeDocumentStatus(status);
+  if (normalizedStatus === 'ALL') return 'PENDING';
   return normalizedStatus === 'REVIEW_REQUIRED' ? 'PROCESSING' : normalizedStatus;
 }
 

@@ -50,6 +50,12 @@ function getApiErrorMessage(error: unknown, fallback: string) {
   return fallback;
 }
 
+function getDocumentListProgress(doc: DocumentItem): number {
+  if (typeof doc.progress === 'number') return Math.max(0, Math.min(100, doc.progress));
+
+  return getDocumentProgress(doc.status);
+}
+
 export function DashboardPage({ onLogout }: DashboardPageProps) {
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = usePersistentSidebar();
@@ -75,7 +81,8 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     name: doc.file_name,
     uploadDate: formatDateTime(doc.upload_at),
     status: doc.status,
-    progress: getDocumentProgress(doc.status),
+    stage: doc.stage,
+    progress: getDocumentListProgress(doc),
     pages: doc.page_count ?? 0,
     size: formatBytes(doc.file_size),
     summary: doc.summary,
@@ -357,7 +364,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
 
                               {/* Status */}
                               <div className="flex items-center gap-2 mb-2">
-                                <StatusBadge status={doc.status} />
+                                <StatusBadge status={doc.status} stage={doc.stage} />
                               </div>
 
                               {/* Progress bar */}

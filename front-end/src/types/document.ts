@@ -49,8 +49,9 @@ export interface Document {
   name: string;
   uploadDate: string;
   status: DocumentStatus;
-  stage?: TaskStage;
+  stage?: TaskStage | string | null;
   progress: number;
+  task_message?: string | null;
   pages?: number;
   summary?: string;
 }
@@ -64,10 +65,11 @@ export interface DocumentList {
   size: string;
   pages: number;
   status: DocumentStatus;
-  stage?: TaskStage;
+  stage?: TaskStage | string | null;
   category?: string;
   summary?: string;
   progress?: number;
+  task_message?: string | null;
 }
 
 export interface DocumentItem {
@@ -75,6 +77,9 @@ export interface DocumentItem {
   file_name: string;
   file_size: number;
   status: DocumentStatus;
+  stage?: TaskStage | string | null;
+  progress?: number | null;
+  task_message?: string | null;
   category: string | null;
   category_confidence?: number | null;
   keywords?: string[];

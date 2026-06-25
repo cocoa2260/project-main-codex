@@ -8,6 +8,22 @@ Generative AI Document Automation Platform
 
 ## Completed Tasks
 
+### BUG-006
+Document Pipeline Stage / Summary Persistence Fix
+Status: DONE
+Summary:
+- Extended `DocumentResponse` for user document lists with optional `stage`, `progress`, and `task_message`
+- Updated `GET /api/documents` to include the latest TaskTracker values per document using a batched latest-task lookup
+- Updated confirm-summary so `documents.status` is set to `PROCESSING` before SUMMARY TaskTracker creation
+- Preserved the existing Summary -> Embedding pipeline split and did not change API routes
+- Confirmed summary generation stores `documents.summary` and commits before embedding enqueue
+- Confirmed embedding enqueue failure does not roll back the committed summary; document and embedding task move to FAILED
+- Updated frontend document list types and Dashboard / Document List / DocumentCard status data flow to pass stage into StatusBadge
+- Updated Dashboard and Document List progress bars to prefer API task progress over fallback `getDocumentProgress()`
+- Fixed existing frontend `ALL` status type leakage that blocked `npm run build`
+- Verified backend compile, frontend build, document list stage/progress/task_message API response, confirm-summary PROCESSING transition, summary persistence, and embedding task creation
+- No DB migration
+
 ### DOC-003
 Metadata Search and Management
 Status: DONE

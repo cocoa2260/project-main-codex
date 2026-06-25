@@ -1,12 +1,13 @@
 import { FileText, Download, Trash2, MessageSquare, Eye } from 'lucide-react';
 import { StatusBadge } from '@/components/common/StatusBadge';
-import type { DocumentStatus } from '@/types/document';
+import type { DocumentStatus, TaskStage } from '@/types/document';
 
 interface Document {
   id: string;
   name: string;
   uploadDate: string;
   status: DocumentStatus;
+  stage?: TaskStage | string | null;
   summary?: string;
   pages?: number;
 }
@@ -37,7 +38,7 @@ export function DocumentCard({ document, onView, onChat, onDownload, onDelete }:
           </div>
 
           <div className="mt-2">
-            <StatusBadge status={document.status} />
+            <StatusBadge status={document.status} stage={document.stage} />
           </div>
 
           {document.summary && (

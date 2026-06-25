@@ -6,6 +6,7 @@ from pathlib import Path
 
 import aiofiles
 from fastapi import UploadFile
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from unicodedata import normalize
@@ -550,6 +551,40 @@ def get_latest_document_task(
         .order_by(TaskTracker.created_at.desc())
         .first()
     )
+
+
+def get_latest_document_tasks(
+    db: Session,
+    document_ids: list,
+) -> dict:
+    if not document_ids:
+        return {}
+
+    ranked_tasks = (
+        db.query(
+            TaskTracker.id.label("id"),
+            func.row_number()
+            .over(
+                partition_by=TaskTracker.document_id,
+                order_by=(
+                    TaskTracker.updated_at.desc(),
+                    TaskTracker.id.desc(),
+                ),
+            )
+            .label("row_number"),
+        )
+        .filter(TaskTracker.document_id.in_(document_ids))
+        .subquery()
+    )
+
+    tasks = (
+        db.query(TaskTracker)
+        .join(ranked_tasks, TaskTracker.id == ranked_tasks.c.id)
+        .filter(ranked_tasks.c.row_number == 1)
+        .all()
+    )
+
+    return {task.document_id: task for task in tasks}
 
 
 def create_document_task(

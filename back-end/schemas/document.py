@@ -108,6 +108,9 @@ class DocumentResponse(BaseModel):
     file_name: str
     file_size: int
     status: str
+    stage: str | None = None
+    progress: int | None = None
+    task_message: str | None = None
     category: str | None = None
     category_confidence: float | None = None
     keywords: list[str] = Field(default_factory=list)

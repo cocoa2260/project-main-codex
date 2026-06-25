@@ -74,6 +74,7 @@ from services.document_service import (
     delete_user_document,
     get_document_for_user,
     get_latest_document_task,
+    get_latest_document_tasks,
     prepare_user_document_original_download,
     request_user_document_reprocess,
     set_chunks,
@@ -226,7 +227,22 @@ def list_documents(
     )
     logger.info(f"compiled : {compiled}")
 
-    return query.order_by(Document.upload_at.desc()).all()
+    documents = query.order_by(Document.upload_at.desc()).all()
+    latest_tasks = get_latest_document_tasks(
+        db=db,
+        document_ids=[document.id for document in documents],
+    )
+
+    return [
+        DocumentResponse.model_validate(document).model_copy(
+            update={
+                "stage": latest_tasks[document.id].stage if document.id in latest_tasks else None,
+                "progress": latest_tasks[document.id].progress if document.id in latest_tasks else None,
+                "task_message": latest_tasks[document.id].message if document.id in latest_tasks else None,
+            }
+        )
+        for document in documents
+    ]
 
 
 @router.get(
@@ -730,6 +746,7 @@ def confirm_document_summary(
             detail="요약 진행을 승인할 수 있는 상태가 아닙니다.",
         )
     
+    document.status = DocumentStatus.PROCESSING
     set_chunks(db, document_id, document.ocr_markdown)
     
     task = create_document_task(
