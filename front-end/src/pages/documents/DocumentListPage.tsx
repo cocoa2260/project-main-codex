@@ -65,13 +65,14 @@ interface Document {
   size: string;
   pages: number;
   status: DocumentStatus;
-  stage?: TaskStage;
+  stage?: TaskStage | string | null;
   category?: string;
   categoryConfidence?: number | null;
   summary?: string;
   keywords: string[];
   selectedEmbeddingModel?: string | null;
   progress?: number;
+  taskMessage?: string | null;
 }
 
 interface DocumentListPageProps {
@@ -152,6 +153,9 @@ function getFilterStatusFromParam(statusParam: string | null): FilterStatus {
 
 function mapDocument(doc: DocumentItem): Document {
   const status = normalizeDocumentStatus(doc.status);
+  const progress = typeof doc.progress === 'number'
+    ? Math.max(0, Math.min(100, doc.progress))
+    : getDocumentProgress(status);
 
   return {
     id: doc.id,
@@ -161,12 +165,14 @@ function mapDocument(doc: DocumentItem): Document {
     size: formatBytes(doc.file_size),
     pages: doc.page_count ?? 0,
     status,
+    stage: doc.stage,
     category: doc.category ?? undefined,
     categoryConfidence: doc.category_confidence ?? null,
     summary: doc.summary ?? undefined,
     keywords: doc.keywords ?? [],
     selectedEmbeddingModel: doc.selected_embedding_model,
-    progress: getDocumentProgress(status),
+    progress,
+    taskMessage: doc.task_message ?? null,
   };
 }
 

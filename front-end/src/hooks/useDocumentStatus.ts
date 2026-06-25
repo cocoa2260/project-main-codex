@@ -24,7 +24,8 @@ interface UseDocumentStatusResult {
 const FINAL_STATUSES = new Set(['COMPLETED', 'SUCCESS', 'FAILED', 'FAILURE', 'REVIEW_REQUIRED']);
 
 function normalizeStatus(status?: string | null): UseDocumentStatusResult['normalizedStatus'] {
-  return normalizeDocumentStatus(status);
+  const normalizedStatus = normalizeDocumentStatus(status);
+  return normalizedStatus === 'ALL' ? 'PENDING' : normalizedStatus;
 }
 
 function toActivityType(status?: string | null): DocumentActivityLog['type'] {

@@ -47,6 +47,7 @@ import {
 } from 'lucide-react';
 
 type FilterStatus = 'all' | 'processing' | 'review_required' | 'completed' | 'failed';
+type ConcreteDocumentStatus = Exclude<DocumentStatus, 'ALL'>;
 
 interface AdminDocumentPageProps {
   onLogout?: () => void;
@@ -456,8 +457,9 @@ export function AdminDocumentPage({ onLogout }: AdminDocumentPageProps) {
   };
 
   const stats = useMemo(() => {
-    const countByStatus = documents.reduce<Record<DocumentStatus, number>>((counts, doc) => {
+    const countByStatus = documents.reduce<Record<ConcreteDocumentStatus, number>>((counts, doc) => {
       const status = normalizeDocumentStatus(doc.status);
+      if (status === 'ALL') return counts;
       counts[status] += 1;
       return counts;
     }, { PENDING: 0, PROCESSING: 0, REVIEW_REQUIRED: 0, COMPLETED: 0, FAILED: 0 });
