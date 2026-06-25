@@ -1,10 +1,9 @@
 import json
 import re
-from collections import Counter
 
-from core.logging_config import get_logger, setup_logging
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_ollama import ChatOllama
+from collections import Counter
 
 from ai.llms.base import BaseLLMProvider
 from core.config import settings
@@ -12,7 +11,6 @@ from services.prompt_defaults import DEFAULT_CATEGORY_PROMPT
 from services.prompt_defaults import DEFAULT_QA_PROMPT
 from services.prompt_defaults import DEFAULT_SUMMARY_PROMPT
 
-logger = get_logger(__name__)
 
 LEGAL_CATEGORY_NAMES = [
     "민법",
@@ -38,7 +36,7 @@ class OllamaLLMProvider(BaseLLMProvider):
             temperature=0.1,
             num_ctx=2048,
             num_predict=180,
-            client_kwargs={"timeout": 200.0},
+            client_kwargs={"timeout": 90.0},
         )
         self.summary_client = ChatOllama(
             base_url=settings.OLLAMA_URL,
@@ -180,9 +178,7 @@ class OllamaLLMProvider(BaseLLMProvider):
         )
 
         joined_summaries = self._limit_text(joined_summaries, 3000)
-        logger.info(f"JOINED_SUMMARIES!!!!!!!!! START !!!!!!!!!!!")
-        logger.info(f"{joined_summaries}")
-        logger.info(f"JOINED_SUMMARIES!!!!!!!!! END !!!!!!!!!!!")
+
         if not joined_summaries.strip():
             return "요약할 내용이 없습니다."
 
