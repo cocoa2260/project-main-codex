@@ -1,5 +1,4 @@
 # chatbot을 통해 들어온 질문에 대한 답변 task 내용이 들어갈 파일
-from uuid import UUID
 
 from app.celery_app import celery_app
 from core.config import settings
@@ -49,6 +48,7 @@ def keyword_retrieval(db, document_id: str, question: str, top_k: int = 5) -> li
     """
     LLM으로 질문 키워드를 추출한 뒤 document_chunks.keywords와 비교해
     전체 문서에서 관련 chunk.content를 embedding_retrieval과 같은 list[str] 형태로 반환한다.
+
     document_id는 기존 호출부와의 호환성을 위해 유지한다.
     """
     try:
