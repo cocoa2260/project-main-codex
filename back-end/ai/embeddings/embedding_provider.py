@@ -9,6 +9,7 @@ from ai.embeddings.model_loader import (
     load_merged_model,
 )
 
+from models.document import Document
 from models.document_chunk import DocumentChunk
 from models.document_embedding import DocumentEmbedding
     
@@ -81,22 +82,20 @@ def retrieval(
         # 문서id, 임베딩 모델과 관련된 데이터 추출
         rows = (
             db.query(
-                DocumentEmbedding.chunk_id,
                 DocumentChunk.content,
+                Document.file_name,
                 similarity
             )
             .join(
                 DocumentEmbedding.chunk
             )
+            .join(
+                Document,
+                DocumentEmbedding.document_id == Document.id
+            )
             .filter(
                 DocumentEmbedding.embedding_model == embedding_model,
                 # DocumentEmbedding.document_id == document_id,
-                # DocumentEmbedding.embedding_model == embedding_model,
-                # (
-                #     1 - DocumentEmbedding.embedding.cosine_distance(
-                #         vector_question
-                #     )
-                # )
             )
             .order_by(
                 similarity.desc()
@@ -106,7 +105,6 @@ def retrieval(
         )
 
         for o in rows :
-            contents.append(o.content)
-            print(o.similarity)
+            contents.append({'content': o.content, 'file_name': o.file_name})
 
         return contents

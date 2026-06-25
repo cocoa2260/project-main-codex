@@ -2,7 +2,8 @@
 
 from app.celery_app import celery_app
 from core.config import settings
-from db.database import SessionLocal
+
+from sqlalchemy.orm import Session
 
 from models.document import (Document, DocumentStatus)
 from models.document_chunk import DocumentChunk
@@ -59,7 +60,8 @@ def keyword_retrieval(db, document_id: str, question: str, top_k: int = 5) -> li
             return []
 
         chunk_rows = (
-            db.query(DocumentChunk)
+            db.query(DocumentChunk, Document.file_name)
+            .join(Document, Document.id == DocumentChunk.document_id)
             .order_by(DocumentChunk.chunk_index.asc())
             .all()
         )
@@ -69,27 +71,27 @@ def keyword_retrieval(db, document_id: str, question: str, top_k: int = 5) -> li
         for chunk in chunk_rows:
             score = keyword_match_score(question_keywords, chunk.keywords or [])
             if score > 0:
-                scored_chunks.append((score, chunk.chunk_index, chunk.content))
+                scored_chunks.append((score, chunk.chunk_index, chunk.content, chunk.file_name))
 
         scored_chunks.sort(key=lambda row: (-row[0], row[1]))
 
-        return [content for _, _, content in scored_chunks[:top_k]]
+        return [{'content': content, 'file_name': file_name} for _, _, content, file_name in scored_chunks[:top_k]]
 
     except Exception as exc:
         print(exc)
         return []
 
 
-def merge_retrieved_chunks(*chunk_lists: list[str]) -> list[str]:
+def merge_retrieved_chunks(*chunk_lists: list[dict]) -> list[dict]:
     merged_chunks = []
     seen_chunks = set()
 
     for chunks in chunk_lists:
         for chunk in chunks or []:
-            if not chunk or chunk in seen_chunks:
+            if not chunk.get("content") or chunk.get("content") in seen_chunks:
                 continue
             merged_chunks.append(chunk)
-            seen_chunks.add(chunk)
+            seen_chunks.add(chunk.get("content"))
 
     return merged_chunks
 
@@ -167,9 +169,7 @@ def reranking(chunks, input_question:str , reranking_model:str = "BAAI/bge-reran
 
 
 @celery_app.task(name="tasks.embedding_tasks.process_search_chunks")
-def process_search_chunks(document_id:str, task_id:str, question:str, embedding_model:str = "snowflake-ko-lora", top_k:int = 5):
-
-    db = SessionLocal()
+def process_search_chunks(db: Session, document_id:str, task_id:str, question:str, embedding_model:str = "snowflake-ko-lora", top_k:int = 5):
     contents = []
 
     # embedding과 llm이 각각의 방식으로
@@ -183,16 +183,13 @@ def process_search_chunks(document_id:str, task_id:str, question:str, embedding_
 
         # 1. embeddingRetriever
         chunks = embedding_retrieval(db, document_id, task_id, question, embedding_model, top_k*2)
-        '''
-        chunk 결과 = ['string', 'string', 'string']
-        '''
-        
+
         # 2. llm Retriever
         chunks2 = keyword_retrieval(db, document_id, question, top_k*2)
         '''
-        chunk 결과 = ['string', 'string', 'string']
+        chunk 결과 = [{'content': content, 'file_name': file_name}, {'content': content, 'file_name': file_name}, ...]
         '''
-
+        # chunks2 = []
 
         # 3. embedding Retriever + llm Retriever
         chunk_set = merge_retrieved_chunks(chunks, chunks2)
@@ -200,8 +197,9 @@ def process_search_chunks(document_id:str, task_id:str, question:str, embedding_
         # 4. rerank(embed + llm)
         rerank_chunks = reranking(chunk_set, question, "BAAI/bge-reranker-m3", top_k)
         '''
-        rerank_chunks 결과 = [('string', 유사도 float), ('string', 유사도 float)]
+        rerank_chunks 결과 = [({'content': content, 'file_name': file_name}, 유사도 float), ...]
         '''
+        print(rerank_chunks, flush=True)
 
         contents = rerank_chunks
 
@@ -216,5 +214,4 @@ def process_search_chunks(document_id:str, task_id:str, question:str, embedding_
 
 def summary_question(question:str):
     llm_provider = get_llm_provider(settings.DEFAULT_LLM_MODEL)
-
     return llm_provider.summarize_question(question)

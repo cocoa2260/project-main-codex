@@ -13,7 +13,7 @@ LLM_REGISTRY = {
     "gemma3:4b": {
         "provider": OllamaLLMProvider,
     },
-    "legal-qwen": {
+    "qwen-law:latest": {
         "provider": OllamaLLMProvider,
     },
 }

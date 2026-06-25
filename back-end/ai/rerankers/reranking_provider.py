@@ -29,18 +29,18 @@ class HFRerankingProvider(BaseRerankerProvider):
         return self._model
 
 
-    def reranking(self, documents: list[str], question: str, top_k: int) -> list[str]:
+    def reranking(self, documents: list[dict], question: str, top_k: int) -> list[str]:
         # (query, doc) pair 생성
-        pairs = [[question, doc] for doc in documents]
+        pairs = [[question, doc['content']] for doc in documents]
     
         # score 계산
         scores = self.model.predict(pairs)
 
-        # score + doc 묶기 기준 유사도 설정(0.8 이상)
+        # score + doc 묶기
         ranked = sorted(
             ((doc, score)
             for doc, score in zip(documents, scores)
-                # if score >= 0.7
+                
             ),
             key=lambda x: x[1],
             reverse=True

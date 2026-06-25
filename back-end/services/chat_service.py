@@ -20,6 +20,7 @@ from models.document_chunk import DocumentChunk
 from services.prompt_defaults import DEFAULT_QA_PROMPT
 from services.prompt_defaults import QA_PROMPT_KEY
 from services.prompt_service import get_active_prompt_content
+from tasks.search_tasks import process_search_chunks
 
 COLAB_LLM_URL = "https://caravan-powdery-omen.ngrok-free.dev/generate"
 MAX_CONTEXT_CHARS = 12000
@@ -90,23 +91,68 @@ def _role_to_response(role: str) -> str:
 def get_user_document_for_chat(
     db: Session,
     document_id: UUID,
-    user_id: UUID,
-) -> Document:
-    document = (
-        db.query(Document)
-        .filter(
-            Document.id == document_id,
-            Document.user_id == user_id,
-        )
-        .first()
+    question: str,
+    top_k: int = 5,
+) -> list[tuple[dict, float]]:
+    document = process_search_chunks(
+        db=db,
+        document_id=document_id,
+        task_id=None,
+        question=question,
+        embedding_model=settings.EMBEDDING_MODEL,
+        top_k=top_k,
     )
+
     if document is None:
         raise DocumentChatNotFoundError("문서를 찾을 수 없습니다.")
 
-    if document.status != DocumentStatus.COMPLETED:
-        raise DocumentChatInvalidStateError("처리가 완료된 문서만 질문할 수 있습니다.")
 
     return document
+
+
+def _build_reranked_context(rerank_chunks: list[tuple[dict, float]]) -> str:
+    chunk_texts: list[str] = []
+
+    for chunk in rerank_chunks:
+        if isinstance(chunk, tuple):
+            chunk_text = chunk[0]['content'] if isinstance(chunk[0], dict) else chunk[0]
+        else:
+            chunk_text = chunk
+
+        if isinstance(chunk_text, str) and chunk_text.strip():
+            chunk_texts.append(chunk_text.strip())
+
+    return " | ".join(chunk_texts)
+
+
+def _build_reranked_citations(rerank_chunks: list[tuple[dict, float]]) -> list[DocumentChatCitation]:
+    citations: list[DocumentChatCitation] = []
+    labels = set()
+
+    for index, chunk in enumerate(rerank_chunks, start=1):
+        
+        if isinstance(chunk, tuple):
+            chunk_text = chunk[0]['content'] if isinstance(chunk[0], dict) else chunk[0]
+        else:
+            chunk_text = chunk
+
+        if not isinstance(chunk_text, str) or not chunk_text.strip():
+            continue
+
+        label = chunk[0]['file_name'] if isinstance(chunk[0], dict) and 'file_name' in chunk[0] else f"Chunk {index}"
+        if label not in labels:
+            labels.add(label)
+
+            citations.append(
+            DocumentChatCitation(
+                source=chunk_text,
+                label=label,
+            )
+        )    
+        else :
+            continue        
+    
+    return citations
 
 
 def create_chat_session(
@@ -115,13 +161,13 @@ def create_chat_session(
     user_id: UUID,
     title: str | None = None,
 ) -> ChatSession:
-    document = get_user_document_for_chat(db, document_id, user_id)
+    # document = get_user_document_for_chat(db, document_id, user_id)
     session = ChatSession(
         user_id=user_id,
-        document_id=document.id,
+        document_id=document_id,
         title=_normalize_title(title),
         llm_model=settings.DEFAULT_LLM_MODEL,
-        embedding_model=document.selected_embedding_model,
+        embedding_model=settings.EMBEDDING_MODEL,
     )
     db.add(session)
     db.commit()
@@ -134,7 +180,7 @@ def list_chat_sessions(
     document_id: UUID,
     user_id: UUID,
 ) -> list[tuple[ChatSession, int]]:
-    get_user_document_for_chat(db, document_id, user_id)
+    # get_user_document_for_chat(db, document_id, user_id)
 
     rows = (
         db.query(ChatSession, func.count(ChatMessage.id).label("message_count"))
@@ -156,7 +202,7 @@ def get_chat_session(
     session_id: UUID,
     user_id: UUID,
 ) -> ChatSession:
-    get_user_document_for_chat(db, document_id, user_id)
+    # get_user_document_for_chat(db, document_id, user_id)
 
     session = (
         db.query(ChatSession)
@@ -198,13 +244,14 @@ def list_chat_messages(
 
 def get_or_create_latest_chat_session(
     db: Session,
-    document: Document,
+    document_id: UUID,
+    document_embedding_model: str,
     user_id: UUID,
 ) -> ChatSession:
     session = (
         db.query(ChatSession)
         .filter(
-            ChatSession.document_id == document.id,
+            ChatSession.document_id == document_id,
             ChatSession.user_id == user_id,
         )
         .order_by(ChatSession.updated_at.desc())
@@ -215,10 +262,10 @@ def get_or_create_latest_chat_session(
 
     session = ChatSession(
         user_id=user_id,
-        document_id=document.id,
+        document_id=document_id,
         title=DEFAULT_CHAT_SESSION_TITLE,
         llm_model=settings.DEFAULT_LLM_MODEL,
-        embedding_model=document.selected_embedding_model,
+        embedding_model=document_embedding_model,
     )
     db.add(session)
     db.flush()
@@ -234,81 +281,81 @@ def serialize_chat_message(message: ChatMessage) -> dict:
     }
 
 
-def _score_chunk(question_terms: set[str], chunk: DocumentChunk) -> int:
-    if not question_terms:
-        return 0
+# def _score_chunk(question_terms: set[str], chunk: DocumentChunk) -> int:
+#     if not question_terms:
+#         return 0
 
-    content = (chunk.content or "").lower()
-    keywords = " ".join(chunk.keywords or []).lower()
-    haystack = f"{content} {keywords}"
+#     content = (chunk.content or "").lower()
+#     keywords = " ".join(chunk.keywords or []).lower()
+#     haystack = f"{content} {keywords}"
 
-    return sum(1 for term in question_terms if term and term in haystack)
-
-
-def _select_relevant_chunks(db: Session, document_id: UUID, question: str) -> list[DocumentChunk]:
-    chunks = (
-        db.query(DocumentChunk)
-        .filter(DocumentChunk.document_id == document_id)
-        .order_by(DocumentChunk.chunk_index.asc())
-        .all()
-    )
-    if not chunks:
-        return []
-
-    question_terms = {
-        term.strip().lower()
-        for term in question.replace("\n", " ").split(" ")
-        if len(term.strip()) >= 2
-    }
-    scored_chunks = [
-        (_score_chunk(question_terms, chunk), chunk.chunk_index, chunk)
-        for chunk in chunks
-    ]
-    scored_chunks.sort(key=lambda item: (-item[0], item[1]))
-
-    selected = [chunk for score, _, chunk in scored_chunks if score > 0][:MAX_CHUNKS]
-    if selected:
-        return selected
-
-    return chunks[:MAX_CHUNKS]
+#     return sum(1 for term in question_terms if term and term in haystack)
 
 
-def _build_chat_context(document: Document, chunks: list[DocumentChunk]) -> tuple[str, list[DocumentChatCitation]]:
-    context_parts: list[str] = []
-    citations: list[DocumentChatCitation] = []
+# def _select_relevant_chunks(db: Session, document_id: UUID, question: str) -> list[DocumentChunk]:
+#     chunks = (
+#         db.query(DocumentChunk)
+#         .filter(DocumentChunk.document_id == document_id)
+#         .order_by(DocumentChunk.chunk_index.asc())
+#         .all()
+#     )
+#     if not chunks:
+#         return []
 
-    if document.summary:
-        context_parts.append(f"## 문서 요약\n{document.summary.strip()}")
-        citations.append(DocumentChatCitation(source="summary", label="문서 요약"))
+#     question_terms = {
+#         term.strip().lower()
+#         for term in question.replace("\n", " ").split(" ")
+#         if len(term.strip()) >= 2
+#     }
+#     scored_chunks = [
+#         (_score_chunk(question_terms, chunk), chunk.chunk_index, chunk)
+#         for chunk in chunks
+#     ]
+#     scored_chunks.sort(key=lambda item: (-item[0], item[1]))
 
-    for chunk in chunks:
-        chunk_text = (chunk.content or "").strip()
-        if not chunk_text:
-            continue
+#     selected = [chunk for score, _, chunk in scored_chunks if score > 0][:MAX_CHUNKS]
+#     if selected:
+#         return selected
 
-        label = f"Chunk {chunk.chunk_index}"
-        if chunk.page_no:
-            label = f"Page {chunk.page_no} · {label}"
-        context_parts.append(f"## {label}\n{chunk_text}")
-        citations.append(
-            DocumentChatCitation(
-                source="chunk",
-                label=label,
-                chunk_id=chunk.id,
-                page_no=chunk.page_no,
-            )
-        )
+#     return chunks[:MAX_CHUNKS]
 
-    if not context_parts and document.ocr_markdown:
-        context_parts.append(f"## OCR Markdown\n{document.ocr_markdown.strip()[:MAX_CONTEXT_CHARS]}")
-        citations.append(DocumentChatCitation(source="ocr_markdown", label="OCR Markdown"))
 
-    context = "\n\n".join(context_parts).strip()
-    return context[:MAX_CONTEXT_CHARS], citations
+# def _build_chat_context(document: Document, chunks: list[DocumentChunk]) -> tuple[str, list[DocumentChatCitation]]:
+#     context_parts: list[str] = []
+#     citations: list[DocumentChatCitation] = []
+
+#     if document.summary:
+#         context_parts.append(f"## 문서 요약\n{document.summary.strip()}")
+#         citations.append(DocumentChatCitation(source="summary", label="문서 요약"))
+
+#     for chunk in chunks:
+#         chunk_text = (chunk.content or "").strip()
+#         if not chunk_text:
+#             continue
+
+#         label = f"Chunk {chunk.chunk_index}"
+#         if chunk.page_no:
+#             label = f"Page {chunk.page_no} · {label}"
+#         context_parts.append(f"## {label}\n{chunk_text}")
+#         citations.append(
+#             DocumentChatCitation(
+#                 source="chunk",
+#                 label=label,
+#                 chunk_id=chunk.id,
+#                 page_no=chunk.page_no,
+#             )
+#         )
+
+#     if not context_parts and document.ocr_markdown:
+#         context_parts.append(f"## OCR Markdown\n{document.ocr_markdown.strip()[:MAX_CONTEXT_CHARS]}")
+#         citations.append(DocumentChatCitation(source="ocr_markdown", label="OCR Markdown"))
+
+#     context = "\n\n".join(context_parts).strip()
+#     return context[:MAX_CONTEXT_CHARS], citations
 
 
 def _generate_answer(question: str, context: str, prompt: str | None = None) -> str:
-    provider = get_llm_provider(settings.DEFAULT_LLM_MODEL)
+    provider = get_llm_provider(settings.DEFAULT_QA_MODEL)
     return provider.answer_question(question=question, context=context, prompt=prompt).strip()
 
 
@@ -323,17 +370,21 @@ def answer_document_question(
     if not question:
         raise DocumentChatEmptyMessageError("질문 내용을 입력해 주세요.")
 
-    document = get_user_document_for_chat(db, document_id, user_id)
+    rerank_chunks = get_user_document_for_chat(db, document_id, question, 5)
 
-    chunks = _select_relevant_chunks(db, document.id, question)
-    context, citations = _build_chat_context(document, chunks)
+    # chunks = _select_relevant_chunks(db, document_id, question)
+    # context, citations = _build_chat_context(document, chunks)
+
+    context = _build_reranked_context(rerank_chunks)
+    citations = _build_reranked_citations(rerank_chunks)
+    
     if not context:
         raise DocumentChatContextError("질문에 사용할 문서 컨텍스트가 없습니다.")
 
     qa_prompt = get_active_prompt_content(db, QA_PROMPT_KEY)
 
     if session_id is None:
-        session = get_or_create_latest_chat_session(db, document, user_id)
+        session = get_or_create_latest_chat_session(db, document_id, settings.EMBEDDING_MODEL, user_id)
     else:
         session = get_chat_session(db, document_id, session_id, user_id)
 
@@ -341,7 +392,7 @@ def answer_document_question(
         session_id=session.id,
         role=ChatRole.USER,
         content=question,
-        created_at=datetime.now(UTC),
+        created_at=datetime.now(),
     )
     db.add(user_message)
     db.flush()
@@ -351,7 +402,7 @@ def answer_document_question(
     except Exception as exc:
         db.rollback()
         raise DocumentChatGenerationError("LLM 답변 생성에 실패했습니다.") from exc
-
+    
     if not answer:
         db.rollback()
         raise DocumentChatGenerationError("LLM 답변이 비어 있습니다.")
@@ -360,13 +411,13 @@ def answer_document_question(
         session_id=session.id,
         role=ChatRole.ASSISTANT,
         content=answer,
-        created_at=datetime.now(UTC),
+        created_at=datetime.now(),
     )
     db.add(assistant_message)
 
     if session.title == DEFAULT_CHAT_SESSION_TITLE:
         session.title = _title_from_question(question)
-    session.updated_at = datetime.now(UTC)
+    session.updated_at = datetime.now()
 
     db.commit()
     db.refresh(session)
@@ -429,7 +480,11 @@ async def generate_rag_stream(user_message: str, document_id: str, db: Session):
     # context_text = document.content
     
     # (임시) 일단 기존 로직을 살려둡니다.
-    context_text = "[관련 판례 내용] 피고인은 고의성 없이 영장 발부 사실을 몰랐으므로..."
+    # context_text = "[관련 판례 내용] 피고인은 고의성 없이 영장 발부 사실을 몰랐으므로..."
+
+    context_text = process_search_chunks(db, document.id, question, document.selected_embedding_model, top_k=5)
+
+
     
     qa_prompt = get_active_prompt_content(db, QA_PROMPT_KEY) or DEFAULT_QA_PROMPT
     prompt = (

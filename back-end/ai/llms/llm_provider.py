@@ -33,10 +33,9 @@ class OllamaLLMProvider(BaseLLMProvider):
         self.client = ChatOllama(
             base_url=settings.OLLAMA_URL,
             model=model_name,
-            temperature=0.1,
-            num_ctx=2048,
-            num_predict=180,
-            client_kwargs={"timeout": 90.0},
+            temperature=0.2,
+            num_ctx=65536,  
+            num_predict=8192,
         )
         self.summary_client = ChatOllama(
             base_url=settings.OLLAMA_URL,
@@ -45,7 +44,6 @@ class OllamaLLMProvider(BaseLLMProvider):
             num_ctx=16384,
             num_predict=8192,
             reasoning=False,
-            client_kwargs={"timeout": 180.0},
         )
         self.keyword_client = ChatOllama(
             base_url=settings.OLLAMA_URL,
@@ -250,23 +248,27 @@ class OllamaLLMProvider(BaseLLMProvider):
         return str(response.content).strip()
 
     def answer_question(self, question: str, context: str, prompt: str | None = None) -> str:
-        context = self._limit_text(context, 5000)
+        context = self._limit_text(context, 10000)
 
-        response = self.client.invoke(
-            [
-                SystemMessage(
-                    content=(prompt or DEFAULT_QA_PROMPT)
-                ),
-                HumanMessage(
-                    content=(
-                        f"문서 컨텍스트:\n{context}\n\n"
-                        f"질문:\n{question}\n\n"
-                        "답변:"
-                    )
-                ),
-            ]
-        )
+        try:
+            response = self.client.invoke(
+                [
+                    SystemMessage(
+                        content=(prompt or DEFAULT_QA_PROMPT)
+                    ),
+                    HumanMessage(
+                        content=(
+                            f"문서 컨텍스트:\n{context}\n\n"
+                            f"질문:\n{question}\n\n"
+                            "답변:"
+                        )
+                    ),
+                ]
+            )
 
+        except Exception as exc:
+            print(exc)
+            
         return str(response.content).strip()
 
     # 개발용: 문서 chunk 키워드 추출은 LLM 호출하지 않음
