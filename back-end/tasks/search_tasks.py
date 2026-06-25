@@ -48,7 +48,8 @@ def keyword_match_score(question_keywords: list[str], chunk_keywords: list[str])
 def keyword_retrieval(db, document_id: str, question: str, top_k: int = 5) -> list[str]:
     """
     LLM으로 질문 키워드를 추출한 뒤 document_chunks.keywords와 비교해
-    관련 chunk.content를 embedding_retrieval과 같은 list[str] 형태로 반환한다.
+    전체 문서에서 관련 chunk.content를 embedding_retrieval과 같은 list[str] 형태로 반환한다.
+    document_id는 기존 호출부와의 호환성을 위해 유지한다.
     """
     try:
         llm_provider = get_llm_provider(settings.DEFAULT_LLM_MODEL)
@@ -57,10 +58,8 @@ def keyword_retrieval(db, document_id: str, question: str, top_k: int = 5) -> li
         if not question_keywords:
             return []
 
-        document_uuid = UUID(document_id)
         chunk_rows = (
             db.query(DocumentChunk)
-            .filter(DocumentChunk.document_id == document_uuid)
             .order_by(DocumentChunk.chunk_index.asc())
             .all()
         )

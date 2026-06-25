@@ -417,7 +417,7 @@ export function DocumentChatPage({ onBack, onLogout }: DocumentChatPageProps) {
   const showContextPanel = isDetailedView && contextPanelExpanded;
 
   return (
-    <div className="min-h-screen w-full bg-[#0f0f17] flex">
+    <div className="flex h-screen w-full overflow-hidden bg-[#0f0f17]">
       <Sidebar
         variant="user"
         sidebarOpen={sidebarOpen}
@@ -425,7 +425,7 @@ export function DocumentChatPage({ onBack, onLogout }: DocumentChatPageProps) {
         onLogout={onLogout}
       />
 
-      <div className="flex-1 flex flex-col min-h-screen lg:ml-0">
+      <div className="flex h-screen min-h-0 flex-1 flex-col overflow-hidden lg:ml-0">
         <PageTopNav
           onBack={handleBack}
           title="문서 채팅"
@@ -470,11 +470,11 @@ export function DocumentChatPage({ onBack, onLogout }: DocumentChatPageProps) {
           }
         />
 
-        <main className="relative flex-1 flex flex-col overflow-hidden xl:flex-row">
+        <main className="relative flex-1 flex min-h-0 flex-col overflow-hidden xl:flex-row">
           <div className={`
             ${showContextPanel ? 'w-full xl:w-80' : 'w-0'}
             bg-[#15151c] border-r border-white/10 transition-all duration-300 overflow-hidden
-            flex flex-col
+            flex min-h-0 flex-col
           `}>
             <div className="p-4 border-b border-white/10 flex items-center justify-between">
               <h3 className="text-white font-semibold">문서 정보</h3>
@@ -591,7 +591,7 @@ export function DocumentChatPage({ onBack, onLogout }: DocumentChatPageProps) {
 
           <div className={`
             ${isSessionPanelOpen ? 'w-full xl:w-72' : 'w-0'}
-            flex max-h-72 shrink-0 flex-col overflow-hidden border-b border-white/10 bg-[#111119] transition-all duration-300
+            flex max-h-72 min-h-0 shrink-0 flex-col overflow-hidden border-b border-white/10 bg-[#111119] transition-all duration-300
             xl:max-h-none xl:border-b-0 xl:border-r
           `}>
             <div className="flex items-center justify-between border-b border-white/10 p-4">
@@ -709,8 +709,8 @@ export function DocumentChatPage({ onBack, onLogout }: DocumentChatPageProps) {
             </button>
           )}
 
-          <div className="flex-1 flex flex-col">
-            <div className="flex-1 overflow-auto p-6">
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
               <div className="max-w-4xl mx-auto space-y-6">
                 {visibleMessages.map((msg) => (
                   <div key={msg.id} className={msg.type === 'user' ? 'flex justify-end' : 'flex gap-3'}>
@@ -766,30 +766,29 @@ export function DocumentChatPage({ onBack, onLogout }: DocumentChatPageProps) {
               </div>
             </div>
 
-            <div className="px-6 pb-4">
+            <div className="shrink-0 border-t border-white/10 bg-[#15151c]/50 p-4 backdrop-blur-xl">
               <div className="max-w-4xl mx-auto">
-                <div className="flex items-center gap-2 mb-3">
-                  <MessageSquare className="w-4 h-4 text-primary" />
-                  <span className="text-zinc-300 text-sm">추천 질문</span>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                  {suggestedQuestions.map((question) => (
-                    <button
-                      key={question}
-                      type="button"
-                      onClick={() => void sendQuestion(question)}
-                      disabled={!isChatPrepared || isSending}
-                      className="p-3 bg-white/5 border border-white/10 rounded-lg text-left transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      <p className="text-zinc-200 text-sm">{question}</p>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="border-t border-white/10 p-4 bg-[#15151c]/50 backdrop-blur-xl">
-              <div className="max-w-4xl mx-auto">
+                {messages.length === 0 && (
+                  <div className="mb-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <MessageSquare className="w-4 h-4 text-primary" />
+                      <span className="text-zinc-300 text-sm">추천 질문</span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      {suggestedQuestions.map((question) => (
+                        <button
+                          key={question}
+                          type="button"
+                          onClick={() => void sendQuestion(question)}
+                          disabled={!isChatPrepared || isSending}
+                          className="p-3 bg-white/5 border border-white/10 rounded-lg text-left transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          <p className="text-zinc-200 text-sm">{question}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div className="relative">
                   <textarea
                     value={message}

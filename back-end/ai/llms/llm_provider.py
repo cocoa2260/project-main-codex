@@ -2,6 +2,7 @@ import json
 import re
 from collections import Counter
 
+from core.logging_config import get_logger, setup_logging
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_ollama import ChatOllama
 
@@ -11,6 +12,7 @@ from services.prompt_defaults import DEFAULT_CATEGORY_PROMPT
 from services.prompt_defaults import DEFAULT_QA_PROMPT
 from services.prompt_defaults import DEFAULT_SUMMARY_PROMPT
 
+logger = get_logger(__name__)
 
 LEGAL_CATEGORY_NAMES = [
     "민법",
@@ -36,7 +38,16 @@ class OllamaLLMProvider(BaseLLMProvider):
             temperature=0.1,
             num_ctx=2048,
             num_predict=180,
-            client_kwargs={"timeout": 90.0},
+            client_kwargs={"timeout": 200.0},
+        )
+        self.summary_client = ChatOllama(
+            base_url=settings.OLLAMA_URL,
+            model=model_name,
+            temperature=0.1,
+            num_ctx=16384,
+            num_predict=8192,
+            reasoning=False,
+            client_kwargs={"timeout": 180.0},
         )
         self.keyword_client = ChatOllama(
             base_url=settings.OLLAMA_URL,
@@ -49,11 +60,32 @@ class OllamaLLMProvider(BaseLLMProvider):
             return ""
         return text[:max_chars]
 
+    def _extract_summary_content(self, response: object) -> str:
+        raw_content = str(getattr(response, "content", "") or "").strip()
+        response_metadata = getattr(response, "response_metadata", {}) or {}
+
+        # 출력 한도에 걸리면 최종 답변이 나오기 전 내부 추론만 반환될 수 있다.
+        # 이 경우 잘린 영어 추론문을 정상 요약으로 저장하지 않는다.
+        if response_metadata.get("done_reason") == "length":
+            raise ValueError("LLM summary response was truncated before completion.")
+
+        # 일부 Qwen3/Ollama 조합은 reasoning=False와 /no_think를 사용해도
+        # 내부 추론 뒤에 </think>를 붙여 반환하므로 최종 답변만 저장한다.
+        if "</think>" in raw_content:
+            raw_content = raw_content.rsplit("</think>", 1)[-1].strip()
+        elif re.match(r"^(Okay|We need|Let me|First,|The user)", raw_content, re.IGNORECASE):
+            raise ValueError("LLM returned reasoning text instead of a final summary.")
+
+        if not raw_content:
+            raise ValueError("LLM summary response is empty.")
+
+        return raw_content
+
     # 문서 전체를 직접 요약하는 경우용
     def summarize(self, markdown: str) -> str:
         markdown = self._limit_text(markdown, 3000)
 
-        response = self.client.invoke(
+        response = self.summary_client.invoke(
             [
                 SystemMessage(
                     content=(
@@ -113,7 +145,7 @@ class OllamaLLMProvider(BaseLLMProvider):
             ]
         )
 
-        return str(response.content).strip()
+        return self._extract_summary_content(response)
 
     def summarize_chunk(self, text: str) -> str:
         text = self._limit_text(text, 1800)
@@ -121,7 +153,7 @@ class OllamaLLMProvider(BaseLLMProvider):
         if not text.strip():
             return "내용이 비어 있어 요약할 수 없습니다."
 
-        response = self.client.invoke(
+        response = self.summary_client.invoke(
             [
                 SystemMessage(
                     content=(
@@ -139,7 +171,7 @@ class OllamaLLMProvider(BaseLLMProvider):
                 ),
             ]
         )
-        return str(response.content).strip()
+        return self._extract_summary_content(response)
 
     def summarize_from_chunk_summaries(self, summaries: list[str], prompt: str | None = None) -> str:
         joined_summaries = "\n\n".join(
@@ -148,11 +180,13 @@ class OllamaLLMProvider(BaseLLMProvider):
         )
 
         joined_summaries = self._limit_text(joined_summaries, 3000)
-
+        logger.info(f"JOINED_SUMMARIES!!!!!!!!! START !!!!!!!!!!!")
+        logger.info(f"{joined_summaries}")
+        logger.info(f"JOINED_SUMMARIES!!!!!!!!! END !!!!!!!!!!!")
         if not joined_summaries.strip():
             return "요약할 내용이 없습니다."
 
-        response = self.client.invoke(
+        response = self.summary_client.invoke(
             [
                 SystemMessage(
                     content=(prompt or DEFAULT_SUMMARY_PROMPT)
@@ -178,7 +212,7 @@ class OllamaLLMProvider(BaseLLMProvider):
             ]
         )
 
-        return str(response.content).strip()
+        return self._extract_summary_content(response)
 
     def summarize_question(self, question: str) -> str:
         response = self.client.invoke(

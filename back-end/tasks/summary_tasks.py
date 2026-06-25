@@ -151,10 +151,14 @@ def process_document_summary(document_id: str, task_id: str):
             message="chunk별 요약을 바탕으로 문서 전체 요약을 생성하는 중입니다.",
         )
 
-        document.summary = llm_provider.summarize_from_chunk_summaries(
+        generated_summary = llm_provider.summarize_from_chunk_summaries(
             chunk_summaries,
             prompt=summary_prompt,
         )
+        if not generated_summary.strip():
+            raise ValueError("Generated document summary is empty.")
+
+        document.summary = generated_summary
 
         category_result = llm_provider.classify_document_category(
             markdown=document.ocr_markdown,
