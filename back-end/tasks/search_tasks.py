@@ -1,5 +1,6 @@
 # chatbot을 통해 들어온 질문에 대한 답변 task 내용이 들어갈 파일
 
+import re
 from app.celery_app import celery_app
 from core.config import settings
 
@@ -34,7 +35,6 @@ def keyword_match_score(question_keywords: list[str], chunk_keywords: list[str])
         for keyword in chunk_keywords
         if normalize_keyword(keyword)
     ]
-
     for question_keyword in normalized_question_keywords:
         for chunk_keyword in normalized_chunk_keywords:
             if question_keyword == chunk_keyword:
@@ -68,30 +68,56 @@ def keyword_retrieval(db, document_id: str, question: str, top_k: int = 5) -> li
 
         scored_chunks = []
 
+        
         for chunk in chunk_rows:
-            score = keyword_match_score(question_keywords, chunk.keywords or [])
+            score = keyword_match_score(question_keywords, chunk[0].keywords or [])
             if score > 0:
-                scored_chunks.append((score, chunk.chunk_index, chunk.content, chunk.file_name))
+                scored_chunks.append((score, chunk[0].content, chunk[1]))
 
         scored_chunks.sort(key=lambda row: (-row[0], row[1]))
-
-        return [{'content': content, 'file_name': file_name} for _, _, content, file_name in scored_chunks[:top_k]]
+        return [{'content': content, 'file_name': file_name} for _, content, file_name in scored_chunks[:top_k]]
 
     except Exception as exc:
         print(exc)
         return []
 
 
+def normalize_chunk_content(text: str) -> str:
+    # 메타데이터 제거
+    # [page=1], [chunk=3], [source=xxx] 같은 형태 제거
+    text = re.sub(r"\[.*?\]", "", text)
+
+    # 보이지 않는 문자 제거
+    text = re.sub(r"[\u200b\xa0]", "", text)
+
+    # 공백 통합
+    text = re.sub(r"\s+", " ", text)
+
+    # 특수문자 제거
+    text = re.sub(r"[^\w가-힣]", "", text)
+
+    return text.lower().strip()
+
+
 def merge_retrieved_chunks(*chunk_lists: list[dict]) -> list[dict]:
     merged_chunks = []
-    seen_chunks = set()
+    seen = set()
 
     for chunks in chunk_lists:
         for chunk in chunks or []:
-            if not chunk.get("content") or chunk.get("content") in seen_chunks:
+
+            content = chunk.get("content")
+
+            if not content:
                 continue
+
+            normalized = normalize_chunk_content(content)
+
+            if normalized in seen:
+                continue
+
+            seen.add(normalized)
             merged_chunks.append(chunk)
-            seen_chunks.add(chunk.get("content"))
 
     return merged_chunks
 
@@ -199,7 +225,6 @@ def process_search_chunks(db: Session, document_id:str, task_id:str, question:st
         '''
         rerank_chunks 결과 = [({'content': content, 'file_name': file_name}, 유사도 float), ...]
         '''
-        print(rerank_chunks, flush=True)
 
         contents = rerank_chunks
 

@@ -5,19 +5,19 @@ class BaseLLMProvider(ABC):
     # LLM provider들이 반드시 구현해야 하는 공통 인터페이스다.
     # summary_tasks.py는 구체 모델이 Ollama인지, 다른 API인지 몰라도 summarize만 호출하면 된다.
     @abstractmethod
-    def summarize(self, markdown: str) -> str:
+    def summarize(self, markdown: str, prompt: str | None = None) -> str:
         pass
 
-    def summarize_chunk(self, text: str) -> str:
+    def summarize_chunk(self, text: str, prompt: str | None = None) -> str:
         return self.summarize(text)
 
     def summarize_from_chunk_summaries(self, summaries: list[str], prompt: str | None = None) -> str:
         return self.summarize("\n\n".join(summaries))
 
-    def summarize_question(self, question: str) -> str:
+    def summarize_question(self, question: str, prompt: str | None = None) -> str:
         return question
 
-    def answer_question(self, question: str, context: str) -> str:
+    def answer_question(self, question: str, context: str, prompt: str | None = None) -> str:
         return self.summarize(
             "문서 컨텍스트:\n"
             f"{context}\n\n"
@@ -25,10 +25,10 @@ class BaseLLMProvider(ABC):
             f"{question}"
         )
 
-    def extract_keywords(self, text: str) -> list[str]:
+    def extract_keywords(self, text: str, prompt: str | None = None) -> list[str]:
         return []
 
-    def extract_question_keywords(self, question: str) -> list[str]:
+    def extract_question_keywords(self, question: str, prompt: str | None = None) -> list[str]:
         return self.extract_keywords(question)
 
     def classify_document_category(self, markdown: str, summary: str, prompt: str | None = None) -> dict[str, object]:

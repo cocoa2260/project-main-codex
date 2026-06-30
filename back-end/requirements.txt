@@ -184,3 +184,7 @@ email-validator==2.2.0
 
 flower==2.0.1
 # Celery Monitoring Dashboard
+
+ragas
+
+RapidFuzz

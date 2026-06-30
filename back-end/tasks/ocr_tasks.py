@@ -301,8 +301,6 @@ def run_ocr_pipeline_stub(document: bytes):
         # =========================
         doc_text_result += block_to_markdown(transformed_blocks)
 
-        doc_text_result += "page\n\n"
-
     doc.close()
 
     return doc_text_result

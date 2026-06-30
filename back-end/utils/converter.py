@@ -49,7 +49,7 @@ def block_to_markdown(data):
 
             result.append("\n".join(texts))
 
-    return "\n\n".join(result)
+    return "\n".join(result)
 
 def pixmap_to_cv2(pix):
     """

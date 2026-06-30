@@ -10,6 +10,9 @@ LLM_REGISTRY = {
     "qwen3:4b": {
         "provider": OllamaLLMProvider,
     },
+    "qwen3.5:4b": {
+        "provider": OllamaLLMProvider,
+    },
     "gemma3:4b": {
         "provider": OllamaLLMProvider,
     },
