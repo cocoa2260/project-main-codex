@@ -59,7 +59,7 @@
 | FE-006 | DocumentList API Integration | High | DONE |
 | FE-007 | Upload API Validation | High | DONE |
 | FE-008 | Review API Integration | High | DONE |
-| FE-009 | Summary API Validation | High | DONE |
+| FE-009 | OCR Markdown Edit Before Summary | High | DONE |
 | FE-010 | Workspace API Integration | High | DONE |
 | FE-USER-001 | User Feature Gap Implementation | High | DONE |
 | USER-CHAT-001 | User Chat API and UI Integration | High | DONE |
@@ -179,6 +179,17 @@ Review API
 
 진입 조건:
 - document.status == REVIEW_REQUIRED
+
+### FE-009
+
+OCR Markdown Edit Before Summary
+
+- Added PATCH /api/documents/{id}/markdown for REVIEW_REQUIRED documents
+- Empty Markdown updates return 400; missing documents return 404
+- ReviewPage lets users edit, save, copy, and download the editable Markdown
+- Summary confirmation still uses POST /confirm-summary with no request body
+- Unsaved Markdown edits must be saved before continuing summary
+- Previous FE-009 Summary API Validation work remains DONE
 
 ### BE-COMP-001
 

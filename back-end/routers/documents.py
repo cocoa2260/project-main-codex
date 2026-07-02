@@ -44,6 +44,7 @@ from schemas.document import (
     DocumentChatSessionListItem,
     DocumentDeleteResponse,
     DocumentMarkdownResponse,
+    DocumentMarkdownUpdateRequest,
     DocumentChatMessageResponse,
     DocumentSummaryResponse,
     DocumentStatusResponse,
@@ -489,6 +490,48 @@ def get_document_markdown(
 
     if document is None:
         raise HTTPException(status_code=404, detail="문서를 찾을 수 없습니다.")
+
+    return DocumentMarkdownResponse(
+        document_id=document.id,
+        status=document.status,
+        markdown=document.ocr_markdown,
+        embedding_model=document.selected_embedding_model,
+    )
+
+
+@router.patch("/{document_id}/markdown", response_model=DocumentMarkdownResponse)
+def update_document_markdown(
+    document_id: UUID,
+    payload: DocumentMarkdownUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    OCR 결과 Markdown 수정 API.
+
+    Review 화면에서 사용자가 요약 진행 전에 OCR Markdown을 보정할 때 호출한다.
+    """
+    document = get_document_for_user(
+        db=db,
+        document_id=document_id,
+        user_id=current_user.id,
+    )
+
+    if document is None:
+        raise HTTPException(status_code=404, detail="문서를 찾을 수 없습니다.")
+
+    if document.status != DocumentStatus.REVIEW_REQUIRED:
+        raise HTTPException(
+            status_code=400,
+            detail="검토 대기 상태에서만 OCR Markdown을 수정할 수 있습니다.",
+        )
+
+    if not payload.markdown.strip():
+        raise HTTPException(status_code=400, detail="Markdown은 빈 문자열일 수 없습니다.")
+
+    document.ocr_markdown = payload.markdown
+    db.commit()
+    db.refresh(document)
 
     return DocumentMarkdownResponse(
         document_id=document.id,

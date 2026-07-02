@@ -150,6 +150,10 @@ export interface DocumentMarkdownResponse {
   embedding_model: string | null;
 }
 
+export interface DocumentMarkdownUpdateRequest {
+  markdown: string;
+}
+
 export interface DocumentSummaryResponse {
   document_id: string;
   file_name: string;

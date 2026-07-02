@@ -7,6 +7,7 @@ import type {
   DocumentChatSessionListItem,
   DocumentDeleteResponse,
   DocumentMarkdownResponse,
+  DocumentMarkdownUpdateRequest,
   DocumentSummaryResponse,
   DocumentStatusResponse,
   DocumentUploadResponse,
@@ -161,6 +162,18 @@ export function getDocumentStatusWebSocketUrl(documentId: string): string {
 
 export async function getDocumentMarkdown(documentId: string): Promise<DocumentMarkdownResponse> {
   const response = await apiClient.get<DocumentMarkdownResponse>(`/api/documents/${documentId}/markdown`);
+  return response.data;
+}
+
+export async function updateDocumentMarkdown(
+  documentId: string,
+  markdown: string,
+): Promise<DocumentMarkdownResponse> {
+  const payload: DocumentMarkdownUpdateRequest = { markdown };
+  const response = await apiClient.patch<DocumentMarkdownResponse>(
+    `/api/documents/${documentId}/markdown`,
+    payload,
+  );
   return response.data;
 }
 

@@ -27,6 +27,10 @@ class DocumentMarkdownResponse(BaseModel):
     embedding_model: str | None = None
 
 
+class DocumentMarkdownUpdateRequest(BaseModel):
+    markdown: str
+
+
 class DocumentSummaryResponse(BaseModel):
     document_id: UUID
     file_name: str

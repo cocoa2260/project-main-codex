@@ -15,6 +15,7 @@ import {
   cancelDocumentSummary,
   confirmDocumentSummary,
   getDocumentMarkdown,
+  updateDocumentMarkdown,
 } from '../../api/document';
 import { PageTopNav } from '../../components/common/PageTopNav';
 import type { DocumentMarkdownResponse } from '../../types/document';
@@ -47,23 +48,28 @@ export function DocumentReviewPage() {
   const location = useLocation();
   const { documentId } = useParams();
   const [reviewData, setReviewData] = useState<DocumentMarkdownResponse | null>(null);
+  const [editableMarkdown, setEditableMarkdown] = useState('');
+  const [savedMarkdown, setSavedMarkdown] = useState('');
   const [isLoading, setIsLoading] = useState(Boolean(documentId));
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(documentId ? null : '문서 ID가 없습니다.');
 
-  const markdown = reviewData?.markdown ?? '';
   const markdownStats = useMemo(() => {
-    const lineCount = markdown ? markdown.split('\n').length : 0;
-    const charCount = markdown.length;
-    const headingCount = markdown.split('\n').filter((line) => line.trim().startsWith('#')).length;
+    const lineCount = editableMarkdown ? editableMarkdown.split('\n').length : 0;
+    const charCount = editableMarkdown.length;
+    const headingCount = editableMarkdown.split('\n').filter((line) => line.trim().startsWith('#')).length;
 
     return { lineCount, charCount, headingCount };
-  }, [markdown]);
+  }, [editableMarkdown]);
   const normalizedStatus = reviewData ? normalizeDocumentStatus(reviewData.status) : null;
   const isReviewRequired = normalizedStatus === 'REVIEW_REQUIRED';
   const canOpenSummary = normalizedStatus === 'COMPLETED';
-  const canSubmitReview = isReviewRequired && Boolean(markdown);
+  const hasUnsavedChanges = editableMarkdown !== savedMarkdown;
+  const canSubmitReview = isReviewRequired && Boolean(editableMarkdown.trim());
+  const canSaveMarkdown = isReviewRequired && Boolean(editableMarkdown.trim()) && hasUnsavedChanges;
 
   useEffect(() => {
     if (!documentId) {
@@ -76,6 +82,8 @@ export function DocumentReviewPage() {
         setError(null);
         const data = await getDocumentMarkdown(documentId);
         setReviewData(data);
+        setEditableMarkdown(data.markdown ?? '');
+        setSavedMarkdown(data.markdown ?? '');
       } catch (loadError) {
         setError(getErrorMessage(loadError));
       } finally {
@@ -86,8 +94,38 @@ export function DocumentReviewPage() {
     void loadMarkdown();
   }, [documentId]);
 
+  const handleSaveMarkdown = async () => {
+    if (!documentId || isSaving || !isReviewRequired) return;
+
+    if (!editableMarkdown.trim()) {
+      setError('Markdown은 빈 문자열일 수 없습니다.');
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      setError(null);
+      setSaveMessage(null);
+      const data = await updateDocumentMarkdown(documentId, editableMarkdown);
+      const nextMarkdown = data.markdown ?? '';
+      setReviewData(data);
+      setEditableMarkdown(nextMarkdown);
+      setSavedMarkdown(nextMarkdown);
+      setSaveMessage('Markdown 저장이 완료되었습니다.');
+    } catch (saveError) {
+      setError(getErrorMessage(saveError));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleConfirmSummary = async () => {
-    if (!documentId || isSubmitting || !canSubmitReview) return;
+    if (!documentId || isSubmitting || isSaving || !canSubmitReview) return;
+
+    if (hasUnsavedChanges) {
+      setError('수정한 Markdown을 저장한 뒤 요약을 계속 진행할 수 있습니다.');
+      return;
+    }
 
     try {
       setIsSubmitting(true);
@@ -102,7 +140,7 @@ export function DocumentReviewPage() {
   };
 
   const handleCancelSummary = async () => {
-    if (!documentId || isSubmitting || !isReviewRequired) return;
+    if (!documentId || isSubmitting || isSaving || !isReviewRequired) return;
 
     try {
       setIsSubmitting(true);
@@ -117,11 +155,16 @@ export function DocumentReviewPage() {
   };
 
   const handleCopy = async () => {
-    if (!markdown) return;
+    if (!editableMarkdown) return;
 
-    await navigator.clipboard.writeText(markdown);
+    await navigator.clipboard.writeText(editableMarkdown);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1500);
+  };
+
+  const handleMarkdownChange = (value: string) => {
+    setEditableMarkdown(value);
+    setSaveMessage(null);
   };
 
   const handleBack = () => {
@@ -151,7 +194,7 @@ export function DocumentReviewPage() {
             <button
               type="button"
               onClick={handleCopy}
-              disabled={!markdown || isSubmitting}
+              disabled={!editableMarkdown || isSubmitting || isSaving}
               className="inline-flex items-center gap-2 px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-gray-200 hover:bg-white/10 disabled:opacity-50 transition-colors"
             >
               <Clipboard className="w-4 h-4" />
@@ -159,8 +202,8 @@ export function DocumentReviewPage() {
             </button>
             <button
               type="button"
-              onClick={() => documentId && downloadMarkdown(documentId, markdown)}
-              disabled={!markdown || isSubmitting}
+              onClick={() => documentId && downloadMarkdown(documentId, editableMarkdown)}
+              disabled={!editableMarkdown || isSubmitting || isSaving}
               className="inline-flex items-center gap-2 px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-gray-200 hover:bg-white/10 disabled:opacity-50 transition-colors"
             >
               <Download className="w-4 h-4" />
@@ -197,10 +240,17 @@ export function DocumentReviewPage() {
           </div>
         )}
 
+        {saveMessage && (
+          <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 text-emerald-300 flex items-center gap-3">
+            <CheckCircle2 className="w-5 h-5" />
+            <span>{saveMessage}</span>
+          </div>
+        )}
+
         {reviewData && !isReviewRequired && (
           <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 text-amber-200 flex items-center gap-3">
             <AlertCircle className="w-5 h-5" />
-	            <span>현재 문서는 검토 대기 상태가 아니므로 읽기 전용으로 표시됩니다.</span>
+            <span>현재 문서는 검토 대기 상태가 아니므로 읽기 전용으로 표시됩니다.</span>
           </div>
         )}
 
@@ -208,19 +258,24 @@ export function DocumentReviewPage() {
           <section className="bg-[#111116] border border-white/10 rounded-2xl overflow-hidden">
             <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-semibold">Markdown Preview</h2>
-                <p className="text-sm text-gray-500">OCR 팀에서 변환한 Markdown 원문입니다.</p>
+                <h2 className="text-lg font-semibold">Markdown 편집</h2>
+                <p className="text-sm text-gray-500">OCR 팀에서 변환한 Markdown 원문을 검토하고 수정하세요.</p>
               </div>
               <span className="px-3 py-1 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-300 text-xs font-medium">
-                REVIEW_REQUIRED
+                {hasUnsavedChanges ? 'UNSAVED' : (reviewData?.status ?? 'REVIEW_REQUIRED')}
               </span>
             </div>
 
-            <div className="max-h-[680px] overflow-auto p-6">
-              {markdown ? (
-                <pre className="whitespace-pre-wrap break-words text-sm leading-7 text-gray-200 font-mono">
-                  {markdown}
-                </pre>
+            <div className="p-6">
+              {editableMarkdown || isReviewRequired ? (
+                <textarea
+                  value={editableMarkdown}
+                  onChange={(event) => handleMarkdownChange(event.target.value)}
+                  disabled={!isReviewRequired || isSubmitting || isSaving}
+                  spellCheck={false}
+                  className="min-h-[560px] w-full resize-y rounded-xl border border-white/10 bg-[#0b0b10] p-5 font-mono text-sm leading-7 text-gray-200 outline-none transition-colors placeholder:text-gray-600 focus:border-blue-400/50 disabled:cursor-not-allowed disabled:opacity-70"
+                  placeholder="OCR Markdown 결과가 여기에 표시됩니다."
+                />
               ) : (
                 <div className="min-h-[360px] flex flex-col items-center justify-center text-center text-gray-500">
                   <XCircle className="w-10 h-10 mb-3 text-gray-600" />
@@ -267,10 +322,27 @@ export function DocumentReviewPage() {
                 Markdown 결과가 적절하면 요약을 진행하세요. 보류하면 OCR 결과는 저장되고, 문서 목록에서 나중에 다시 진행할 수 있습니다.
               </p>
 
+              {hasUnsavedChanges && (
+                <p className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+                  저장하지 않은 Markdown 수정사항이 있습니다.
+                </p>
+              )}
+
+              <button
+                type="button"
+                onClick={handleSaveMarkdown}
+                disabled={isSaving || isSubmitting || !canSaveMarkdown}
+                title={isReviewRequired ? undefined : '검토 대기 상태에서만 Markdown을 저장할 수 있습니다.'}
+                className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 bg-white/5 border border-blue-400/20 text-white rounded-xl hover:bg-blue-500/10 disabled:opacity-50 transition-colors font-medium"
+              >
+                {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+                Markdown 저장
+              </button>
+
               <button
                 type="button"
                 onClick={handleConfirmSummary}
-                disabled={isSubmitting || !canSubmitReview}
+                disabled={isSubmitting || isSaving || !canSubmitReview}
                 title={isReviewRequired ? undefined : '검토 대기 상태에서만 요약을 진행할 수 있습니다.'}
                 className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-primary to-blue-500 text-white rounded-xl hover:opacity-90 disabled:opacity-50 transition-opacity font-medium"
               >
@@ -281,7 +353,7 @@ export function DocumentReviewPage() {
               <button
                 type="button"
                 onClick={handleCancelSummary}
-                disabled={isSubmitting || !isReviewRequired}
+                disabled={isSubmitting || isSaving || !isReviewRequired}
                 title={isReviewRequired ? undefined : '검토 대기 상태에서만 요약을 보류할 수 있습니다.'}
                 className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 bg-white/5 border border-white/10 text-white rounded-xl hover:bg-white/10 disabled:opacity-50 transition-colors font-medium"
               >
